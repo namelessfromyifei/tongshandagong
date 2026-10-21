@@ -1,0 +1,6 @@
+node_modules/
+npm-debug.log*
+.playwright-mcp/
+*.log
+tests/*.json
+.DS_Store

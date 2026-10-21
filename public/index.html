@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通山打拱 · 多人联网</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== 大厅（进入前） ===== -->
+  <div id="lobby" style="display:none">
+    <div class="lobbyBox">
+      <h1>通山打拱 · 多人联机</h1>
+      <p class="lobbySub">先设置昵称，然后创建房间或加入已有房间</p>
+      <!-- 昵称 -->
+      <div class="lobbyRow">
+        <label>昵称</label>
+        <input id="nameInput" type="text" placeholder="我的昵称" maxlength="12">
+        <button id="btnSetName" class="btn">设置昵称</button>
+      </div>
+      <!-- 三个主按钮 -->
+      <div class="lobbyRow btns">
+        <button id="btnCreate" class="btn gold">创建房间</button>
+        <button id="btnJoin" class="btn">加入房间</button>
+        <button id="btnRejoin" class="btn">重新连接</button>
+      </div>
+      <!-- 房间列表 -->
+      <div id="roomListWrap" class="roomListWrap">
+        <div class="rlTitle">已创建的房间</div>
+        <div id="roomList">（连接服务器中…）</div>
+      </div>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <!-- 创建房间弹窗 -->
+  <div id="createModal" class="overlay" hidden>
+    <div class="modalBox">
+      <h2>创建房间</h2>
+      <p class="lobbySub">房间号留空则自动生成</p>
+      <div class="lobbyRow"><input id="createCode" type="text" placeholder="4 位房间号(可留空)" maxlength="4"></div>
+      <div class="mBtn">
+        <button id="btnCreateGo" class="btn gold">创建</button>
+        <button id="btnCreateBack" class="btn">返回</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 加入房间弹窗 -->
+  <div id="joinModal" class="overlay" hidden>
+    <div class="modalBox">
+      <h2>加入房间</h2>
+      <div class="lobbyRow"><input id="joinInput" type="text" placeholder="4 位房间号" maxlength="4"></div>
+      <div class="mBtn">
+        <button id="btnJoinGo" class="btn gold">加入</button>
+        <button id="btnJoinBack" class="btn">返回</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 重连弹窗 -->
+  <div id="rejoinModal" class="overlay" hidden>
+    <div class="modalBox">
+      <h2>重新连接</h2>
+      <p class="lobbySub" id="rejoinNameHint">将使用昵称：—</p>
+      <div class="lobbyRow"><input id="rejoinCode" type="text" placeholder="房间号" maxlength="4"></div>
+      <div class="mBtn">
+        <button id="btnRejoinGo" class="btn gold">重连</button>
+        <button id="btnRejoinBack" class="btn">返回</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 牌桌（进入后） ===== -->
+  <div id="tableWrap" style="display:none">
+    <!-- 轮结算累计显示 -->
+    <div id="seriesInfo"></div>
+    <div class="table">
+      <!-- 牌桌左上角：标题 + 房间号 -->
+      <div class="tableTitle">
+        <span class="tTitle">通山打拱</span>
+        <span class="chip" id="roomCode">房间号：—</span>
+      </div>
+      <!-- 房间号下方：我是谁 -->
+      <div class="chip tableWho" id="mySeatInfo">—</div>
+      <!-- 牌桌右上角：局数/模式/配置/退出 -->
+      <div class="tableTopRight">
+        <span class="chip" id="lblRound"></span>
+        <span class="chip" id="lblMode">2V2</span>
+        <button id="btnStart" class="btn gold">对局配置</button>
+        <button id="btnLeave" class="btn danger">退出房间</button>
+      </div>
+      <!-- 牌桌左上角（标题下方）：叫牌 + 明鸡状态 -->
+      <div class="corner" id="corner"></div>
+      <!-- 视角座位：0=南(我) 1=东(下家) 2=北(对家) 3=西 -->
+      <div class="seat seatN" data-seat="2">
+        <div class="head">
+          <div class="avatar" id="av2">北</div>
+          <div class="nm" id="nm2">北家</div>
+          <div class="tag" id="tag2"></div>
+        </div>
+        <div class="cards back" id="h2"></div>
+        <div class="pts" id="p2"></div>
+      </div>
+      <div class="seat seatW" data-seat="3">
+        <div class="head">
+          <div class="avatar" id="av3">西</div>
+          <div class="nm" id="nm3">西家</div>
+          <div class="tag" id="tag3"></div>
+        </div>
+        <div class="cards back" id="h3"></div>
+        <div class="pts" id="p3"></div>
+      </div>
+      <div class="center">
+        <div id="msg">等待开始…</div>
+        <div id="trickScore"></div>
+      </div>
+      <div class="seat seatE" data-seat="1">
+        <div class="head">
+          <div class="avatar" id="av1">东</div>
+          <div class="nm" id="nm1">东家</div>
+          <div class="tag" id="tag1"></div>
+        </div>
+        <div class="cards back" id="h1"></div>
+        <div class="pts" id="p1"></div>
+      </div>
+      <div class="trick trickN" id="t2"></div>
+      <div class="trick trickW" id="t3"></div>
+      <div class="trick trickE" id="t1"></div>
+      <!-- 玩家手牌区 -->
+      <div class="south">
+        <div class="southMain">
+          <div class="actions">
+            <button id="btnPlay" class="btn gold" disabled>出牌</button>
+            <button id="btnPass" class="btn" disabled>不明独</button>
+            <button id="btnHint" class="btn">提示</button>
+            <button id="btnHe" class="btn danger">毁牌（重发）</button>
+            <button id="btnHard" class="btn danger">明独</button>
+            <button id="btnReady" class="btn gold" style="display:none">准备</button>
+          </div>
+          <div class="handArea">
+            <div class="seat seatS" data-seat="0">
+              <div class="head">
+                <div class="avatar" id="av0">南</div>
+                <div class="nm" id="nm0">你</div>
+                <div class="tag" id="tag0"></div>
+              </div>
+              <div class="pts" id="p0"></div>
+            </div>
+            <div id="hand"></div>
+            <button id="btnSort" class="btn small">排序：点数</button>
+          </div>
+        </div>
+      </div>
+      <div class="trick trickS" id="t0"></div>
+    </div>
+
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<!-- 开始对局：设置弹窗（房主） -->
+<div id="setModal" class="overlay" hidden>
+  <div class="modalBox">
+    <h2>牌局设置</h2>
+    <div class="setGrid">
+      <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="10">10</option></select></label>
+      <label>王总数 <select id="setKings"><option value="8">8</option><option value="10">10</option><option value="12">12</option></select></label>
+      <label>王单出 <select id="setJoker"><option value="3">算3</option><option value="2">算2</option></select></label>
+      <label class="chk"><input type="checkbox" id="setTailBonus"> 尾游也可拿王奖金</label>
+      <label class="chk"><input type="checkbox" id="setShowRemain" checked> 显示剩余张数</label>
+      <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
+    </div>
+    <div class="mBtn">
+      <button id="btnSetGo" class="btn gold">开始对局</button>
+      <button id="btnSetBack" class="btn">返回</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="overlay" hidden>
+  <div class="modalBox">
+    <h2 id="mTitle">本局结果</h2>
+    <table id="mTable"></table>
+    <div class="mBtn"><button id="btnClose" class="btn gold">下一局</button></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/engine.js?v=3"></script>
+<script src="js/ai.js?v=3"></script>
+<script src="js/ui-net.js?v=3"></script>
+<script src="js/net.js?v=3"></script>
+</body>
+</html>
