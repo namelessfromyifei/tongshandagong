@@ -307,3 +307,73 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .tableWho{position:absolute;left:150px;top:38px;font-size:11px;background:rgba(0,0,0,.4);z-index:4;}
 @media (max-width:560px){ .tableWho{left:105px;top:26px;font-size:10px;} }
 @media (orientation:landscape) and (max-width:920px){ .tableWho{left:96px;top:20px;font-size:9px;} }
+
+/* ===== 强制横屏：竖屏旋转兜底（进入房间后，仅 app/移动端） ===== */
+/* 系统横屏锁定不可用时，把 #app 旋转铺满竖屏，内容仍呈横屏 */
+#app.landscapeRotate{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100vh;
+  height:100vw;
+  max-width:none;
+  margin:0;
+  transform:translate(100vw,0) rotate(90deg);
+  transform-origin:0 0;
+  overflow:hidden;
+}
+body.landscapeCompat{overflow:hidden;}
+
+/* ===== 旋转兜底时强制套用横屏样式 =====
+ * 竖屏设备上系统横屏锁定不可用、内容被旋转 90° 呈现时，
+ * 视口仍报告竖屏，媒体查询不会切到横屏——这里手动补齐横屏规则。 */
+body.landscapeCompat body{padding:4px;}
+body.landscapeCompat .topbar h1{font-size:16px;}
+body.landscapeCompat .btn{padding:4px 9px;font-size:11px;}
+body.landscapeCompat .chip{font-size:11px;padding:2px 7px;}
+body.landscapeCompat .table{height:360px;border-width:4px;border-radius:14px;}
+body.landscapeCompat .seat{width:150px;padding:4px 6px;font-size:10px;border-radius:8px;}
+body.landscapeCompat .seatN{top:2px;}
+body.landscapeCompat .seatW{left:3px;}
+body.landscapeCompat .seatE{right:3px;}
+body.landscapeCompat .avatar{width:24px;height:24px;font-size:11px;}
+body.landscapeCompat .head{gap:4px;margin-bottom:3px;}
+body.landscapeCompat .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
+body.landscapeCompat .trickRow .card .tl{font-size:8px!important;}
+body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
+body.landscapeCompat .trickRow .card .ctr{font-size:17px!important;}
+body.landscapeCompat .trick.trickN{top:74px;}
+body.landscapeCompat .trick.trickS{bottom:150px;}
+body.landscapeCompat .trick.trickW{left:156px;}
+body.landscapeCompat .trick.trickE{right:156px;}
+body.landscapeCompat .center{top:50%;}
+body.landscapeCompat #msg{font-size:12px;}
+body.landscapeCompat #trickScore{font-size:11px;}
+body.landscapeCompat .south{bottom:3px;}
+body.landscapeCompat .southMain #hand .hcard{margin-left:-28px;}
+body.landscapeCompat .southMain #hand .card{width:42px;height:60px;}
+body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
+body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
+body.landscapeCompat .southMain #hand .card .ctr{font-size:26px;}
+body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:21px;}
+body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:3px 0 5px;min-height:70px;}
+body.landscapeCompat #hand .hcard{flex:0 0 auto;}
+body.landscapeCompat .handArea #btnSort{font-size:10px;padding:3px 7px;}
+body.landscapeCompat .actions{gap:4px;}
+body.landscapeCompat .log{max-height:90px;}
+body.landscapeCompat .corner{min-width:80px;padding:3px 6px;font-size:9px;}
+body.landscapeCompat .corner .mini{width:14px;height:21px;}
+body.landscapeCompat .corner .mini .tl{font-size:6px;}
+body.landscapeCompat .corner .mini .br{font-size:6px;}
+body.landscapeCompat .corner .mini .ctr{font-size:8px;}
+body.landscapeCompat .tableTitle{font-size:12px;left:96px;top:4px;}
+body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
+body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}
+body.landscapeCompat .tableTopRight .btn{padding:2px 6px;font-size:10px;}
+body.landscapeCompat .tableWho{left:96px;top:20px;font-size:9px;}
+body.landscapeCompat .modalBox{max-width:60%;padding:12px 14px;}
+body.landscapeCompat .modalBox .lobbyRow input,body.landscapeCompat .modalBox input{font-size:15px;padding:7px 10px;}
+body.landscapeCompat .modalBox .btn{font-size:14px;padding:6px 12px;}
+body.landscapeCompat .modalBox .mBtn{gap:8px;margin-top:10px;}
+body.landscapeCompat .setGrid{gap:6px;}
+body.landscapeCompat .setGrid label{font-size:12px;}

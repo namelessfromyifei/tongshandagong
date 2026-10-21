@@ -18,11 +18,15 @@ function enterLobby(){
   if(lobby) lobby.style.display='block';
   if(table) table.style.display='none';
   if($('btnRoomToggle')) $('btnRoomToggle').textContent='返回大厅';
+  // 离开牌桌：解除横屏（大厅可竖屏）
+  if(window.LANDSCAPE) window.LANDSCAPE.exit();
 }
 function enterTable(){
   const lobby=$('lobby'), table=$('tableWrap');
   if(lobby) lobby.style.display='none';
   if(table) table.style.display='block';
+  // 进入房间：强制横屏
+  if(window.LANDSCAPE) window.LANDSCAPE.enter();
 }
 
 function toast(msg){
