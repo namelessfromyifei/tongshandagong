@@ -122,7 +122,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .handRow #btnSort{flex:0 0 auto;padding:4px 10px;font-size:12px;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-#hand{display:flex;justify-content:safe center;align-items:flex-end;min-height:100px;padding-top:10px;overflow-x:auto;}
+#hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:10px;overflow-x:auto;}
 .hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
 .hcard:first-child{margin-left:0;}
 @media (hover:hover){ /* 仅鼠标设备悬停上浮，触摸端不粘 :hover（避免"收回一半"） */
@@ -222,7 +222,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 }
 /* 移动端手牌：超宽时可横向滑动 */
 @media (max-width: 560px){
-  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;padding:12px 0 6px;min-height:0;}
+  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;-webkit-overflow-scrolling:touch;padding:12px 0 6px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   /* 本家信息框流入布局（不再压住最左几张牌），手牌紧随其右 */
   .southMain{gap:2px;}
@@ -267,7 +267,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .southMain #hand .card{width:42px;height:60px;}
   .southMain #hand .card .tl{font-size:10px;} .southMain #hand .card .br{font-size:10px;}
   .southMain #hand .card .ctr{font-size:26px;}
-  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
+  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:12px 0 2px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   .handRow #btnSort{font-size:10px;padding:3px 7px;}
   .handRow .seatS{width:150px;}
@@ -407,7 +407,7 @@ body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .ctr{font-size:26px;}
 body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:21px;}
-body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
+body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:12px 0 2px;min-height:0;}
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
 body.landscapeCompat .handRow #btnSort{font-size:10px;padding:3px 7px;}
 body.landscapeCompat .handRow .seatS{width:150px;}
