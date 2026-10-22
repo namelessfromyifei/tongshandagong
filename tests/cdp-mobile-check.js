@@ -82,7 +82,7 @@ async function main(){
       const cs=getComputedStyle(table);
       const csTw=getComputedStyle(tw);
       // 本家信息框（改在 southMain 顶部）不应与手牌重叠
-      const seatS=document.querySelector('.handArea .seatS');
+      const seatS=document.querySelector('.handRow .seatS');
       let firstLeft=null, infoRight=null, overlapCards=false;
       if(hcs.length && seatS){
         firstLeft=Math.round(hcs[0].getBoundingClientRect().left);

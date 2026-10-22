@@ -110,16 +110,18 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 /* 玩家手牌区：整块居中在桌面南侧，无框 */
 .south{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:96%;background:none;border:none;padding:0;}
 .southMain{display:flex;flex-direction:column;align-items:center;width:100%;gap:2px;}
-/* 手牌行：信息框作为行内首项，手牌紧随其后（组居中），二者永不重叠 */
-.handArea{position:relative;display:flex;justify-content:center;align-items:center;width:100%;min-height:104px;}
+/* 手牌行：tag（左）、手牌（中）、排序（右）三个独立元素，互不嵌套、永不重叠 */
+.handRow{display:flex;align-items:center;justify-content:center;width:100%;gap:6px;min-height:104px;}
+.handArea{position:relative;display:flex;justify-content:center;align-items:center;flex:1 1 auto;min-width:0;min-height:104px;}
 .handArea #hand{flex:0 1 auto;min-width:0;}
-/* 本家信息框：作为手牌行左侧的一项（不覆盖牌），宽度与其他玩家信息框一致 */
-.handArea .seatS{position:static;transform:none;width:170px;min-height:44px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;flex:0 0 auto;z-index:auto;font-size:10px;margin-right:4px;}
-.handArea .seatS .head{margin-bottom:0;gap:4px;}
-.handArea .seatS .pts{margin:0;}
+/* 本家信息框：手牌行最左侧的独立元素（不覆盖牌），宽度与其他玩家信息框一致 */
+.handRow .seatS{position:static;transform:none;width:170px;min-height:44px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;flex:0 0 auto;z-index:auto;font-size:10px;}
+.handRow .seatS .head{margin-bottom:0;gap:4px;}
+.handRow .seatS .pts{margin:0;}
+/* 排序按钮：手牌行最右侧的独立元素 */
+.handRow #btnSort{flex:0 0 auto;padding:4px 10px;font-size:12px;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-.actions #btnSort{font-size:11px;padding:3px 9px;}
 #hand{display:flex;justify-content:safe center;align-items:flex-end;min-height:100px;padding-top:10px;overflow-x:auto;}
 .hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
 .hcard:first-child{margin-left:0;}
@@ -198,8 +200,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   #trickScore{font-size:11px;}
   /* 手牌区 */
   .south{bottom:2px;}
-  .handArea #btnSort{font-size:10px;padding:3px 7px;}
-  .handArea .seatS{width:150px;}
+  .handRow #btnSort{font-size:10px;padding:3px 7px;}
+  .handRow .seatS{width:150px;}
   .southMain #hand .hcard{margin-left:-34px;}
   .southMain #hand .card{width:48px;height:68px;}
   .southMain #hand .card .tl{font-size:12px;} .southMain #hand .card .br{font-size:12px;}
@@ -225,6 +227,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   /* 本家信息框流入布局（不再压住最左几张牌），手牌紧随其右 */
   .southMain{gap:2px;}
   .actions{margin:0;gap:4px;}
+  .handRow{min-height:66px;}
   .handArea{min-height:66px;}
   .handArea #hand{flex:0 1 auto;min-width:0;max-width:100%;}
 }
@@ -266,11 +269,12 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .southMain #hand .card .ctr{font-size:26px;}
   #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
-  .handArea #btnSort{font-size:10px;padding:3px 7px;}
-  .handArea .seatS{width:150px;}
+  .handRow #btnSort{font-size:10px;padding:3px 7px;}
+  .handRow .seatS{width:150px;}
   .actions{gap:4px;margin:0;}
   /* 手牌行居中；信息框绝对居左、按钮贴手牌 */
   .southMain{gap:2px;}
+  .handRow{min-height:64px;}
   .handArea{min-height:64px;}
   .handArea #hand{flex:0 1 auto;min-width:0;max-width:100%;}
   /* 日志从牌桌底部挪到右上角"退出房间"下方，小巧不遮东/北座位 */
@@ -405,10 +409,11 @@ body.landscapeCompat .southMain #hand .card .ctr{font-size:26px;}
 body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:21px;}
 body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
-body.landscapeCompat .handArea #btnSort{font-size:10px;padding:3px 7px;}
-body.landscapeCompat .handArea .seatS{width:150px;}
+body.landscapeCompat .handRow #btnSort{font-size:10px;padding:3px 7px;}
+body.landscapeCompat .handRow .seatS{width:150px;}
 body.landscapeCompat .actions{gap:4px;margin:0;}
 body.landscapeCompat .southMain{gap:2px;}
+body.landscapeCompat .handRow{min-height:64px;}
 body.landscapeCompat .handArea{min-height:64px;}
 body.landscapeCompat .handArea #hand{flex:0 1 auto;min-width:0;max-width:100%;}
 /* 日志挪到右上角"退出房间"下方，小巧不遮东/北座位 */
