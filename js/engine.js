@@ -205,7 +205,7 @@
       landlord:-1, partner:-1, called:null, revealed:false,
       turn:-1, leader:-1, lastPlay:null, lastCards:[], lastSeat:-1,
       passes:0, trickPoints:0, roundNo:1,
-      firstOut:-1, ended:false, started:false, log:[],
+      firstOut:-1, ended:false, started:false, log:[], playNo:0,
       confirming:true, mingduSeat:-1, confirms:[],
     };
     pickLandlord(G,null);
@@ -336,6 +336,7 @@ function handHasBomb(hand){
     S.passed=false; // 本手出了牌，清掉自己残留的"不要"标记
     if(!S.kingPlayed && cards.some(c=>c.j)) S.kingPlayed=true; // 打出第一张王：触发 4+王 通知
     G.lastPlay=p; G.lastCards=cards; G.lastSeat=seatIdx; G.passes=0;
+    G.playNo=(G.playNo||0)+1; // 出牌序号：供客户端语音播报去重
     if(!G.started) G.started=true; // 第一手打出：牌局真正开始
     for(const c of cards) G.trickPoints+=pointOf(c); // 本轮分数累计，圈末由最大者收走
     // 所有有番数的炸都计入 rollcages 统计（滚笼/王炸/7-8张番炸），结算归属同规则

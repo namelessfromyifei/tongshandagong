@@ -14,6 +14,8 @@ const TS = require('./js/engine.js');
 const TSAI = require('./js/ai.js');
 
 const PORT = process.env.PORT || 8080;
+// 牌局结束后房间闲置超时自动解散（毫秒）；设为 0 可关闭。默认 5 分钟。
+const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 5*60*1000);
 const app = express();
 const server = http.createServer(app);
 // 缩短心跳，断线更快被发现（默认 ping 约 25s）
@@ -45,6 +47,7 @@ function createRoom(code){
     ready: [false,false,false,false], // 每座位是否准备（AI 座位视为自动准备）
     G: null,            // 当前局（null = 等待开局）
     aiTimer: null,
+    idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     settings: {         // 牌局设置（房主可调）
       rounds: 1,        // 一轮打多少局
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
@@ -97,6 +100,31 @@ function snapshot(room){
 function broadcast(room){
   io.to(room.code).emit('state', snapshot(room));
 }
+/* ---------- 牌局结束后房间闲置超时自动解散 ---------- */
+function clearIdleKick(room){
+  if(room && room.idleTimer){ clearTimeout(room.idleTimer); room.idleTimer=null; }
+}
+function scheduleIdleKick(room){
+  if(!(IDLE_KICK_MS>0)) return;
+  clearIdleKick(room);
+  room.idleTimer=setTimeout(()=>{ kickIdleRoom(room); }, IDLE_KICK_MS);
+}
+function kickIdleRoom(room){
+  room.idleTimer=null;
+  // 房间已被删除，或同号房间已被新房间替换 → 忽略
+  if(rooms.get(room.code)!==room) return;
+  // 只有牌局已结束（本局已结束或本场已无当前局）才解散
+  if(room.G && !room.G.ended) return;
+  const socks=[];
+  for(const s of room.seats){
+    if(s.socketId){ const so=io.sockets.sockets.get(s.socketId); if(so) socks.push(so); }
+  }
+  for(const so of socks){ try{ so.emit('roomClosed'); }catch(e){} }
+  rooms.delete(room.code);
+  // 断开连接，避免服务端闭包仍指向已删除的房间（客户端会自动重连回大厅）
+  for(const so of socks){ try{ so.disconnect(true); }catch(e){} }
+}
+
 // 服务器日志：存入房间并推给所有人
 function logLine(room, msg){
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -186,6 +214,7 @@ function checkAllReady(room){
 }
 
 function startRound(room){
+  clearIdleKick(room);
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   room.G.rollcages = room.G.seats.map(()=>[]);
   room.roundSeq++; room.G.seq=room.roundSeq;
@@ -198,6 +227,7 @@ function startRound(room){
 
 // 开下一局：按上一局一游当庄
 function startNext(room){
+  clearIdleKick(room);
   const nextLandlord = (room.G && room.G.firstOut!=null) ? room.G.firstOut : null;
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   if(nextLandlord!=null) TS.pickLandlord(room.G, nextLandlord);
@@ -237,6 +267,8 @@ function finishRoom(room){
     logLine(room, `请各玩家点击【下一局】就绪，全员就绪自动开下一局`);
   }
   broadcast(room);
+  // 牌局结束后开始闲置计时：超时仍未退出则自动解散房间
+  scheduleIdleKick(room);
   // 不自动开下一局，等所有玩家就绪
 }
 
@@ -482,7 +514,7 @@ io.on('connection', (socket)=>{
       }
     }
     // 房间无人时自动删除（LOVE 常驻房除外）
-    if(r.humanCount===0 && r.code!=='LOVE') rooms.delete(r.code);
+    if(r.humanCount===0 && r.code!=='LOVE'){ clearIdleKick(r); rooms.delete(r.code); }
     else broadcast(r);
   });
 
@@ -498,6 +530,7 @@ io.on('connection', (socket)=>{
       if(!room || mySeat!==0 || room!==r){ socket.emit('toast','对局已开始，仅房主可删除'); return; }
     }
     io.to(r.code).emit('roomClosed');
+    clearIdleKick(r);
     rooms.delete(code);
     socket.leave(code);
     if(room===r){ room=null; mySeat=-1; }

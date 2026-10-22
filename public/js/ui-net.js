@@ -163,6 +163,69 @@ function cycleCardSize(){
   applyCardSize();
 }
 
+/* ---------- 语音提示（每一手出牌朗读） ---------- */
+let voiceOn=true, zhVoice=null, lastSpokenKey='';
+function pickZhVoice(){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    const vs=window.speechSynthesis.getVoices()||[];
+    zhVoice=vs.find(v=>/^zh/i.test(v.lang||''))||null;
+  }catch(e){}
+}
+function speak(text){
+  if(!voiceOn||!text) return;
+  if(!('speechSynthesis' in window)) return;
+  try{
+    const synth=window.speechSynthesis;
+    synth.cancel(); // 不排队积压，始终读最新一手
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='zh-CN'; u.rate=1.15;
+    if(zhVoice) u.voice=zhVoice;
+    synth.speak(u);
+  }catch(e){}
+}
+function applyVoiceBtn(){ const b=$('btnVoice'); if(b) b.textContent='语音：'+(voiceOn?'开':'关'); }
+function initVoice(){
+  try{ const v=localStorage.getItem('tsVoice'); if(v!==null) voiceOn=(v==='1'); }catch(e){}
+  applyVoiceBtn();
+  pickZhVoice();
+  if('speechSynthesis' in window){ try{ window.speechSynthesis.onvoiceschanged=pickZhVoice; }catch(e){} }
+}
+function toggleVoice(){
+  voiceOn=!voiceOn;
+  try{ localStorage.setItem('tsVoice', voiceOn?'1':'0'); }catch(e){}
+  applyVoiceBtn();
+  if(!voiceOn && 'speechSynthesis' in window){ try{ speechSynthesis.cancel(); }catch(e){} }
+  if(voiceOn) speak('语音提示已开启');
+}
+function playSpeech(seatIdx, cards){
+  const p=TS.analyzePlay(cards, G&&G.cfg);
+  if(!p) return '';
+  const rn=r=>TS.RANKS[r];
+  let d='';
+  switch(p.type){
+    case 'single': d=(cards[0]&&cards[0].j)?'王':(TS.SUIT_NAME[cards[0].s]+rn(cards[0].r)); break;
+    case 'pair': d=cards.every(c=>c.j)?'对王':('对'+rn(p.val)); break;
+    case 'triple': d=cards.every(c=>c.j)?'三个王':('三个'+rn(p.val)); break;
+    case 'seqPair': d='连对'; break;
+    case 'airplane': d='飞机'; break;
+    case 'fiftyK': d='五十K'+(p.tonghua?'同花':''); break;
+    case 'bomb': d=`${p.size}张${rn(p.rank)}${p.soft?'软':'硬'}炸`; break;
+    case 'rollcage': d=`${p.fan}番滚笼`; break;
+    case 'kingBomb': d=`${p.size}个王炸`; break;
+    default: d='出牌';
+  }
+  const who=seatNames[seatIdx]||'';
+  return who ? who+'，'+d : d;
+}
+function announceLastPlay(){
+  if(!G||G.lastSeat<0||!G.lastCards||!G.lastCards.length) return;
+  const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
+  if(key===lastSpokenKey) return;
+  lastSpokenKey=key;
+  speak(playSpeech(G.lastSeat, G.lastCards));
+}
+
 /* ---------- 状态接收 ---------- */
 let curRoomCode=''; // 当前房间号（换房间时清掉上一房间遗留的牌面）
 function applyState(snap){
@@ -177,6 +240,7 @@ function applyState(snap){
     const md=$('modal'); if(md) md.hidden=true;
     selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
     cumTotals=[0,0,0,0]; cumEndedSeq=0; resetPending=false; pendingPlay=false;
+    lastSpokenKey=''; // 换房间后允许重新播报
   }
   G = snap.G || null;
   seatNames = snap.seats.map(s=>s.name);
@@ -231,6 +295,7 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
+  announceLastPlay();
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
   if($('btnNext')) $('btnNext').style.display = (G && G.ended) ? 'inline-block' : 'none';
   // 按钮：确认轮 / 出牌轮
@@ -604,8 +669,10 @@ $('btnPass').onclick=playerPass;
 $('btnHint').onclick=playerHint;
 $('btnSort').onclick=toggleSort;
 $('btnSize').onclick=cycleCardSize;
+$('btnVoice').onclick=toggleVoice;
 $('btnHard').onclick=playerHard;
 initCardSize();
+initVoice();
 $('btnHe').onclick=playerHe;
 $('btnClose').onclick=()=>{
   $('modal').hidden=true;
