@@ -57,7 +57,8 @@
       if(n===1) return {type:'single',val:soloVal};
       if(n===2) return {type:'pair',val:soloVal};
       if(n===3) return {type:'triple',val:soloVal};
-      if(n>=4&&n<=8) return {type:'kingBomb',size:n,fan:2*n-4};
+      // 王炸不设 8 张上限：房间可设 10/12 王
+      if(n>=4) return {type:'kingBomb',size:n,fan:2*n-4};
       return null;
     }
 
@@ -82,7 +83,9 @@
       if(n===1) return {type:'single',val:r0};
       if(n===2) return {type:'pair',val:r0};
       if(n===3) return {type:'triple',val:r0};
-      if(n>=4&&n<=8) return {type:'bomb',size:n,rank:r0,soft:W>0,fan:(n<=6?0:(W>0?(n-6):2*(n-6)))};
+      // 同点数炸不设 8 张上限：8 张真牌 + 癞子可凑成 9 张以上（9 张起必为软炸）
+      // 番数：4-6 张无番；7 张起每多一张翻倍（7→1/2、8→2/4、9→4/8…，软/硬）
+      if(n>=4) return {type:'bomb',size:n,rank:r0,soft:W>0,fan:(n<=6?0:Math.pow(2,n-7)*(W>0?1:2))};
       return null;
     }
 
@@ -193,8 +196,11 @@
       isLandlord:false, isPartner:false, rollcages:[], lastCards:[], passed:false, choice:null,
       kings:0, kingPlayed:false,
     });
-    // 开局统计各家王数（用于 4+ 王奖金）
-    for(const s of seats) s.kings = s.hand.filter(c=>c.j).length;
+    // 开局统计各家王数（4+ 王奖金）与硬炸奖金（起到 7/8 张纯牌同点）
+    for(const s of seats){
+      s.kings = s.hand.filter(c=>c.j).length;
+      s.hardBombBonus = hardBombBonusOf(s.hand);
+    }
     const G={ seats, rnd, seed, cfg, mode:'2v2', hardSeat:-1,
       landlord:-1, partner:-1, called:null, revealed:false,
       turn:-1, leader:-1, lastPlay:null, lastCards:[], lastSeat:-1,
@@ -235,6 +241,16 @@
 
   // 手牌是否有任何炸（用于是否给"和牌"按钮）：含 4+同点、50K、王炸、滚笼
 // 王作为癞子能补成炸的也算"有炸"（加癞子还是无炸才算无炸）
+// 硬炸奖金（起到时的手牌）：同点数纯牌 7 张 → 其他三家各 1 笼；8 张 → 各 2 笼。
+// 纯王不算（不统计王）；多门同时满足则累加。
+function hardBombBonusOf(hand){
+  const cnt=new Array(RANKS.length).fill(0);
+  for(const c of hand) if(!c.j) cnt[c.r]++;
+  let bonus=0;
+  for(const n of cnt){ if(n>=8) bonus+=2; else if(n===7) bonus+=1; }
+  return bonus;
+}
+
 function handHasBomb(hand){
   const cnt=new Array(RANKS.length).fill(0); let wilds=0;
   for(const c of hand){ if(c.j) wilds++; else cnt[c.r]++; }
@@ -463,11 +479,25 @@ function handHasBomb(hand){
         }
       }
     }
+    // 硬炸奖金：起到 7 张纯牌同点 → 其他三家各 1 笼；8 张 → 各 2 笼。
+    // 条件同王奖金：本局跑完且不是最后一个跑的（四游不拿）。
+    const bombBonus={};
+    for(let i=0;i<4;i++){
+      const s=G.seats[i];
+      if((s.hardBombBonus||0)>0 && s.out && s.outOrder!==4){
+        const bonus=s.hardBombBonus;
+        bombBonus[i]=bonus;
+        for(let j=0;j<4;j++){
+          if(j===i) continue;
+          perSeat[i]+=bonus; perSeat[j]-=bonus;
+        }
+      }
+    }
     for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2);
 
     return {
       mode:G.mode, hardSeat:G.hardSeat, basePer, delta, W, L,
-      winnerSeats, loserSeats, perSeat, perFen, kingBonus,
+      winnerSeats, loserSeats, perSeat, perFen, kingBonus, bombBonus,
     };
   }
 
@@ -475,7 +505,7 @@ function handHasBomb(hand){
     RANKS, SUIT_CH, SUIT_NAME, RANK_OF,
     mulberry32, buildDeck, shuffle, deal, cardName, pointOf,
     analyzePlay, checkChain, bombTier, isBomb, groupsOf, canBeat, legalLead,
-    newGame, pickLandlord, canDeclareHard, declareHard, teamOf, activeSeats, handHasBomb, declareRestart, confirmAdvance, confirmChoice,
+    newGame, pickLandlord, canDeclareHard, declareHard, teamOf, activeSeats, handHasBomb, hardBombBonusOf, declareRestart, confirmAdvance, confirmChoice,
     doPlay, modeEnded, nextActive, advanceTurn, handlePass, settleRound,
   };
   if(typeof module!=='undefined'&&module.exports) module.exports=TS;

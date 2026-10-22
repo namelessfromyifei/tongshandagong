@@ -140,6 +140,29 @@ function playerHint(){
 }
 function toggleSort(){ sortMode=1-sortMode; render(); }
 
+/* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
+const CARD_SCALES=[1,1.12,1.24,1.4], CARD_LABELS=['标准','大','特大','巨无霸'];
+let cardSizeIdx=2; // 默认「特大」
+function applyCardSize(){
+  document.documentElement.style.setProperty('--card-zoom', String(CARD_SCALES[cardSizeIdx]));
+  const b=$('btnSize'); if(b) b.textContent='牌大小：'+CARD_LABELS[cardSizeIdx];
+}
+function initCardSize(){
+  try{
+    const raw=localStorage.getItem('tsCardSize');
+    if(raw!==null){
+      const v=Number(raw);
+      if(Number.isInteger(v) && v>=0 && v<CARD_SCALES.length) cardSizeIdx=v;
+    }
+  }catch(e){}
+  applyCardSize();
+}
+function cycleCardSize(){
+  cardSizeIdx=(cardSizeIdx+1)%CARD_SCALES.length;
+  try{ localStorage.setItem('tsCardSize', String(cardSizeIdx)); }catch(e){}
+  applyCardSize();
+}
+
 /* ---------- 状态接收 ---------- */
 let curRoomCode=''; // 当前房间号（换房间时清掉上一房间遗留的牌面）
 function applyState(snap){
@@ -161,6 +184,9 @@ function applyState(snap){
   seatOffline = snap.seats.map(s=>!!s.offline);
   aiFill = snap.aiFill;
   settings = snap.settings || settings;
+  // 房主可在「对局配置」里开启出牌记录框（默认不显示）
+  const logEl=$('log');
+  if(logEl) logEl.style.display = settings.showLog === true ? '' : 'none';
   // 只在换新局时清空预选；同一局内其他玩家出牌时保留已选牌（方便等待时预选下一手）
   const roundKey = G ? (G.seq||G.roundNo) : -1;
   if(!G || roundKey!==lastRoundNo){ selected.clear(); lastRoundNo=roundKey; }
@@ -360,7 +386,17 @@ function renderSeats(){
     // 出牌区
     const tr=$('t'+v); tr.innerHTML='';
     const isDizhi = !s.out && s.hand.length===1;
-    const addAlert=()=>{ const d=document.createElement('div'); d.innerHTML='<span class="warnDizhi"><span class="icon">!</span>插底</span>'; d.style.cssText='padding:3px 0 0;'; tr.appendChild(d); };
+    const addAlert=()=>{
+      const d=document.createElement('div');
+      d.innerHTML='<span class="warnDizhi"><span class="icon">!</span>插底</span>';
+      if(v===2){
+        // 北家：提示放到已有内容（牌/不要/明独等）的右侧，避免挡住中间信息框；无其它内容时居中
+        d.className='dizhiAlert' + (tr.children.length ? '' : ' center');
+      } else {
+        d.style.cssText='padding:3px 0 0;';
+      }
+      tr.appendChild(d);
+    };
     const addPlace=(small)=>{
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
@@ -370,9 +406,8 @@ function renderSeats(){
       tr.appendChild(d);
     };
     if(i===G.turn && !G.ended){
-      // 轮到：插底时优先警报，否则”…”
-      if(isDizhi) addAlert();
-      else { const d=document.createElement('div'); d.textContent='…'; d.style.cssText='color:#9db8aa;font-size:13px;padding:10px 0;'; tr.appendChild(d); }
+      // 轮到：插底提示统一在末尾追加，这里只处理"…"
+      if(!isDizhi){ const d=document.createElement('div'); d.textContent='…'; d.style.cssText='color:#9db8aa;font-size:13px;padding:10px 0;'; tr.appendChild(d); }
     } else if(s.choice){
       const d=document.createElement('div');
       d.textContent = s.choice==='mingdu' ? '明独' : '不明独';
@@ -381,7 +416,9 @@ function renderSeats(){
     } else if(s.passed){
       const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffb39a;font-size:17px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
     } else if(s.lastCards&&s.lastCards.length){
-      const ROW=7;
+      // 南/北在桌面上下方，横向空间足够：所有牌叠放在同一排，不换行；
+      // 东/西在两侧，仍按每排 7 张分行。
+      const ROW = (v===0 || v===2) ? s.lastCards.length : 7;
       const rows=Math.ceil(s.lastCards.length/ROW);
       const pPlay=TS.analyzePlay(s.lastCards);
       const showFan = pPlay && (pPlay.type==='rollcage'||pPlay.type==='kingBomb'||(pPlay.type==='bomb'&&pPlay.fan>0));
@@ -400,13 +437,12 @@ function renderSeats(){
           const badge=document.createElement('span'); badge.textContent=`${pPlay.fan}笼`; badge.className='fanBadge'; lastCard.appendChild(badge);
         }
       }
-      if(isDizhi) addAlert(); // 刚出的牌之后附带插底警报（不覆盖出牌显示）
       if(s.out && s.outOrder>0) addPlace(true); // 刚出完最后一手：出的牌 + 名次一起显示
     } else if(s.out && s.outOrder>0){
       addPlace(false); // 已跑且无牌可展示：单独显示 x游
-    } else if(isDizhi){
-      addAlert();
     }
+    // 插底提示始终显示（本局结束或该玩家已跑完才消失），不会被"不要/明独/出牌"覆盖
+    if(!G.ended && isDizhi) addAlert();
   }
   const msg=$('msg');
   if(!G.ended){
@@ -421,6 +457,8 @@ function renderSeats(){
 }
 function renderCorner(){
   const c=$('corner'); if(!c) return;
+  // 房主可在「对局配置」里开启该信息框（默认不显示）
+  c.style.display = settings.showCorner === true ? '' : 'none';
   c.innerHTML='';
   const mkChip=(label,val)=>`<div class="cornerRow"><span style="color:#a8c8b8">${label}</span><b>${val||'—'}</b></div>`;
   c.innerHTML += mkChip('叫牌', G.mode==='hard'?'硬牌':(G.called?TS.cardName(G.called):'—'));
@@ -525,9 +563,10 @@ function finishLocal(){
       const gs=G.seats[i];
       const place = gs.out ? ['一','二','三','四'][gs.outOrder-1]+'游' : '—';
       const kb = s.kingBonus&&s.kingBonus[i] ? `（含王奖${s.kingBonus[i]}笼×3）` : '';
+      const bb = s.bombBonus&&s.bombBonus[i] ? `（含硬炸奖${s.bombBonus[i]}笼×3）` : '';
       tb.innerHTML+=`<tr><td>${seatNames[i]}</td>`+
         `<td>${place}</td><td>${seatTag(i)}</td><td>${bs>0?'+':''}${bs}</td>`+
-        `<td>${bombF>0?'+':''}${bombF}${kb}</td>`+
+        `<td>${bombF>0?'+':''}${bombF}${kb}${bb}</td>`+
         `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
     }
     // 说明 + 轮累计
@@ -564,7 +603,9 @@ $('btnPlay').onclick=playerPlay;
 $('btnPass').onclick=playerPass;
 $('btnHint').onclick=playerHint;
 $('btnSort').onclick=toggleSort;
+$('btnSize').onclick=cycleCardSize;
 $('btnHard').onclick=playerHard;
+initCardSize();
 $('btnHe').onclick=playerHe;
 $('btnClose').onclick=()=>{
   $('modal').hidden=true;

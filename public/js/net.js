@@ -62,8 +62,9 @@ function connect(){
     // 准备状态同步
     const readyArr = snap.ready || [];
     UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr);
-    // 房主才显示"对局配置"
-    if($('btnStart')) $('btnStart').style.display = (mySeat===0 && !(snap.G && snap.G.started)) ? 'inline-block' : 'none';
+    // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置
+    const canConfig = mySeat===0 && (!snap.G || snap.G.ended);
+    if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
     // 准备按钮：对局进行中（含确认轮、出牌轮）隐藏；未开始或一局结束才显示
     if($('btnReady')){
       const isReady = !!readyArr[mySeat];
@@ -233,7 +234,7 @@ function bindLobby(){
   $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };
   // 设置变更 → 发服务器（开局前生效）
-  ['setRounds','setKings','setJoker','setTailBonus','setShowRemain','setAIFill'].forEach(id=>{
+  ['setRounds','setKings','setJoker','setTailBonus','setShowRemain','setShowCorner','setShowLog','setAIFill'].forEach(id=>{
     const el=$(id);
     if(el) el.onchange=()=>{ if(socket) socket.emit('setSettings', collectSettings()); };
   });
@@ -262,6 +263,8 @@ function collectSettings(){
     jokerValue: Number($('setJoker')?.value||3),
     tailBonus: !!$('setTailBonus')?.checked,
     showRemain: !!$('setShowRemain')?.checked,
+    showCorner: !!$('setShowCorner')?.checked,
+    showLog: !!$('setShowLog')?.checked,
   };
   if($('setAIFill')) s.aiFill=!!$('setAIFill').checked;
   return s;
@@ -273,6 +276,8 @@ function applySettings(s){
   if($('setJoker')) $('setJoker').value=s.jokerValue||3;
   if($('setTailBonus')) $('setTailBonus').checked=!!s.tailBonus;
   if($('setShowRemain')) $('setShowRemain').checked=!!s.showRemain;
+  if($('setShowCorner')) $('setShowCorner').checked = s.showCorner === true;
+  if($('setShowLog')) $('setShowLog').checked = s.showLog === true;
   if($('setAIFill')) $('setAIFill').checked=!!s.aiFill;
 }
 

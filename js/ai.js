@@ -57,9 +57,9 @@
     if(has(r5)&&wilds>=2) mk50([pick(r5),jokers[0],jokers[1]]);
     if(has(r10)&&wilds>=2) mk50([jokers[0],pick(r10),jokers[1]]);
     if(has(rK)&&wilds>=2) mk50([jokers[0],jokers[1],pick(rK)]);
-    // 同牌炸 4-8 张（含王补）—— 无番(4-6)不能领出，但压牌可用
+    // 同牌炸 4 张起（含王补，可超过 8 张）—— 无番(4-6)不能领出，但压牌可用
     for(let r=0;r<TS.RANKS.length;r++){
-      for(let sz=4;sz<=8;sz++){
+      for(let sz=4;sz<=cnt[r]+wilds;sz++){
         const have=cnt[r];
         if(have>0 && have+wilds>=sz){
           const cs=byRank[r].slice(0,Math.min(have,sz));
@@ -126,7 +126,7 @@
       }
     }
     // 王炸
-    if(wilds>=4&&wilds<=8){ const cs=jokers.slice(0,wilds); tryAdd(cs); }
+    if(wilds>=4){ const cs=jokers.slice(0,wilds); tryAdd(cs); }
     return dedupe();
   }
 

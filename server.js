@@ -48,6 +48,8 @@ function createRoom(code){
     settings: {         // 牌局设置（房主可调）
       rounds: 1,        // 一轮打多少局
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
+      showCorner: false, // 是否显示牌桌信息框（叫牌/明鸡/庄家），默认不显示
+      showLog: false,    // 是否显示出牌记录框（右上角日志），默认不显示
       kings: 8,         // 王总数 8/10/12
       jokerValue: 3,    // 王单出算 3 或 2
       tailBonus: false, // 4+王 尾游能否拿奖金
@@ -62,6 +64,11 @@ function createRoom(code){
 }
 
 /* ---------- 广播 ---------- */
+// 配置锁定：只要当前这一局已开始且尚未结束（含发牌/确认/出牌），所有设置不可改；
+// 未开局（G 为空）或本局已结束（G.ended）时可改。
+function configLocked(room){
+  return !!(room.G && !room.G.ended);
+}
 // 把 settings 映射为引擎 cfg
 function makeCfg(room){
   return {
@@ -209,7 +216,8 @@ function finishRoom(room){
   logLine(room, `—— 第 ${room.G.roundNo} 局结算 ——`);
   for(let i=0;i<4;i++){
     logLine(room, `  ${room.seats[i].name}：${s.perFen[i]>0?'+':''}${s.perFen[i]}分` +
-      (s.kingBonus && s.kingBonus[i] ? `（含王奖金 ${s.kingBonus[i]}笼×3）` : ''));
+      (s.kingBonus && s.kingBonus[i] ? `（含王奖金 ${s.kingBonus[i]}笼×3）` : '') +
+      (s.bombBonus && s.bombBonus[i] ? `（含硬炸奖 ${s.bombBonus[i]}笼×3）` : ''));
   }
   // 轮结算：累计
   room.series.active = true;
@@ -276,10 +284,12 @@ io.on('connection', (socket)=>{
   // 房主调整牌局设置
   socket.on('setSettings', (data)=>{
     if(!room || mySeat!==0){ socket.emit('toast','只有房主能设置'); return; }
-    if(room.G && room.G.started){ socket.emit('toast','对局已开始，设置已锁定'); return; }
+    if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
     const s=room.settings;
     if(data.rounds!=null){ const n=Number(data.rounds); if(n>=1&&n<=20) s.rounds=Math.floor(n); }
     if(data.showRemain!=null) s.showRemain=!!data.showRemain;
+    if(data.showCorner!=null) s.showCorner=!!data.showCorner;
+    if(data.showLog!=null) s.showLog=!!data.showLog;
     if(data.kings!=null) s.kings=[8,10,12].includes(Number(data.kings))?Number(data.kings):8;
     if(data.jokerValue!=null) s.jokerValue=Number(data.jokerValue)===2?2:3;
     if(data.tailBonus!=null) s.tailBonus=!!data.tailBonus;
@@ -352,6 +362,7 @@ io.on('connection', (socket)=>{
   // 房主（seat 0）切换 AI 补位
   socket.on('toggleAI', ()=>{
     if(!room) return;
+    if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
     room.aiFill = !room.aiFill;
     socket.emit('toast', `AI 补位已${room.aiFill?'开启':'关闭'}`);
     broadcast(room);

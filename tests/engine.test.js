@@ -6,7 +6,7 @@ const TS = require('../js/engine.js');
 const TSAI = require('../js/ai.js');
 const { analyzePlay, canBeat, bombTier, settleRound, doPlay, handlePass,
         newGame, declareHard, legalLead, buildDeck, deal, mulberry32, pointOf,
-        confirmAdvance } = TS;
+        confirmAdvance, hardBombBonusOf } = TS;
 const { genCandidates, aiChoose, runSim } = TSAI;
 
 // 快速通过确认轮（四家都不表态）
@@ -49,6 +49,13 @@ const cards=(P)=>P.map(([r,s])=>mk(r,s)); // [['A','S'],...]
   T('7张软=1番', (p=>p.type==='bomb'&&p.size===7&&p.soft&&p.fan===1)(analyzePlay([mk('8','S'),mk('8','H'),mk('8','C'),mk('8','D'),mk('8','S'),mk('8','H'),mkj()])));
   T('8张(2副)=硬4番', (p=>p.type==='bomb'&&p.size===8&&p.fan===4)(analyzePlay([mk('8','S'),mk('8','H'),mk('8','C'),mk('8','D'),mk('8','S'),mk('8','H'),mk('8','C'),mk('8','D')])));
   T('8张软(6张2+2王)=2番', (p=>p.type==='bomb'&&p.size===8&&p.fan===2)(analyzePlay([mk('2','S'),mk('2','H'),mk('2','C'),mk('2','D'),mk('2','S'),mk('2','H'),mkj(),mkj()])));
+  // 癞子可把同点数炸扩展到 8 张以上
+  const eight8 = [['8','S'],['8','H'],['8','C'],['8','D'],['8','S'],['8','H'],['8','C'],['8','D']];
+  T('9张软炸(8张8+1王)=4番', (p=>p.type==='bomb'&&p.size===9&&p.soft&&p.fan===4)(analyzePlay([...cards(eight8),mkj()])));
+  T('10张软炸(8张8+2王)=8番', (p=>p.type==='bomb'&&p.size===10&&p.soft&&p.fan===8)(analyzePlay([...cards(eight8),mkj(),mkj()])));
+  T('11张软炸(8张8+3王)=16番', (p=>p.type==='bomb'&&p.size===11&&p.soft&&p.fan===16)(analyzePlay([...cards(eight8),mkj(),mkj(),mkj()])));
+  T('9个王炸=14番', (p=>p.type==='kingBomb'&&p.size===9&&p.fan===14)(analyzePlay([...Array(9)].map(()=>mkj()))));
+  T('候选包含9张软炸', genCandidates([...cards(eight8),mkj()], null).some(c=>c.play.type==='bomb'&&c.play.size===9));
   T('五十K同花', (p=>p.type==='fiftyK'&&p.tonghua&&p.suit===0)(analyzePlay([mk('5','S'),mk('10','S'),mk('K','S')])));
   T('杂五十K', (p=>p.type==='fiftyK'&&!p.tonghua)(analyzePlay([mk('5','S'),mk('10','H'),mk('K','C')])));
   T('五十K用王凑同花', (p=>p.type==='fiftyK'&&p.tonghua)(analyzePlay([mk('5','S'),mk('10','S'),mkj()])));
@@ -92,6 +99,13 @@ const cards=(P)=>P.map(([r,s])=>mk(r,s)); // [['A','S'],...]
   T('王炸同番最大(4王压6+6软4番)', canBeat(rc(3,2,6,true), {type:'kingBomb',size:4,fan:4}));        // prev 6+6软(4番) next 4王(4番)
   T('4王压不过5王', canBeat({type:'kingBomb',size:4,fan:4},{type:'kingBomb',size:5,fan:6}) );
   T('8王(12番)压不过8+8硬(32番)→番高者大', canBeat({type:'kingBomb',size:8,fan:12},{type:'rollcage',s:8,k:2,start:11,len:2,top:12,soft:false,fan:32}));
+  {
+    const e8=[['8','S'],['8','H'],['8','C'],['8','D'],['8','S'],['8','H'],['8','C'],['8','D']];
+    T('10张软炸压9张软炸(番高者大)', canBeat(
+      analyzePlay([...cards(e8),mkj()]),
+      analyzePlay([...cards(e8),mkj(),mkj()])
+    ));
+  }
   T('无番炸压五十K', canBeat(roll([['5','S'],['10','H'],['K','C']]), {type:'bomb',size:4,rank:8,soft:false,fan:0}));
   T('五十K不能压4炸', !canBeat({type:'bomb',size:4,rank:8,soft:false,fan:0}, roll([['5','S'],['10','H'],['K','C']])));
   T('黑桃五十K压方块五十K', canBeat(roll([['5','D'],['10','D'],['K','D']]), roll([['5','S'],['10','S'],['K','S']])));
@@ -111,8 +125,8 @@ function mkGame(seed){
   // 受控：庄=0，对家=1
   G.landlord=0; G.partner=1; G.mode='2v2';
   G.seats[0].isLandlord=true; G.seats[1].isPartner=true;
-  // 清零王数，避免随机发牌触发王奖金干扰基础结算测试（王奖金有独立用例）
-  for(const s of G.seats) s.kings=0;
+  // 清零奖金字段，避免随机发牌触发王奖金/硬炸奖金干扰基础结算测试（各有独立用例）
+  for(const s of G.seats){ s.kings=0; s.hardBombBonus=0; }
   return G;
 }
 function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
@@ -357,6 +371,29 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   const s=settleRound(G);
   // seat0 赢队、基础0 + 王奖金(5王=2番×3人=6番) = +6
   T('王奖金：5王二游+基础0=6番', Math.abs(s.perSeat[0]-6)<1e-9 && s.kingBonus[0]===2);
+}
+/* ===== 硬炸奖金（起到 7/8 张纯牌同点） ===== */
+{
+  const seven=cards([['8','S'],['8','H'],['8','C'],['8','D'],['8','S'],['8','H'],['8','C']]);
+  const eight=cards([['9','S'],['9','H'],['9','C'],['9','D'],['9','S'],['9','H'],['9','C'],['9','D']]);
+  T('硬炸奖：7张纯牌=1', hardBombBonusOf(seven)===1);
+  T('硬炸奖：8张纯牌=2', hardBombBonusOf(eight)===2);
+  T('硬炸奖：7张纯牌+1王仍算7张=1', hardBombBonusOf([...seven,mkj()])===1);
+  T('硬炸奖：纯王不算', hardBombBonusOf([...Array(8)].map(()=>mkj()))===0);
+  T('硬炸奖：6张+2王不算', hardBombBonusOf([...cards([['8','S'],['8','H'],['8','C'],['8','D'],['8','S'],['8','H']]),mkj(),mkj()])===0);
+  T('硬炸奖：两门7张累加=2', hardBombBonusOf([...seven,...cards([['9','S'],['9','H'],['9','C'],['9','D'],['9','S'],['9','H'],['9','C']])])===2);
+}
+{
+  const G=mkGame(53);
+  // seat0: 7张硬炸一游 → 其他三家各1番；seat1: 8张硬炸但四游 → 无奖金
+  G.seats[0].hardBombBonus=1; G.seats[0].out=true; G.seats[0].outOrder=1; G.seats[0].caught=20;
+  G.seats[1].hardBombBonus=2; G.seats[1].out=true; G.seats[1].outOrder=4; G.seats[1].caught=0;
+  G.seats[2].out=true; G.seats[2].outOrder=2; G.seats[2].caught=0;
+  G.seats[3].out=true; G.seats[3].outOrder=3; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('硬炸奖：7张一游收3番', Math.abs(s.perSeat[0]-3)<1e-9 && s.bombBonus[0]===1);
+  T('硬炸奖：8张四游无奖金(仍需付他人1番)', s.bombBonus[1]===undefined && Math.abs(s.perSeat[1]+1)<1e-9);
+  T('硬炸奖：其他三家各扣1番', Math.abs(s.perSeat[2]+1)<1e-9 && Math.abs(s.perSeat[3]+1)<1e-9);
 }
 /* ===== 硬牌结束判定 ===== */
 {

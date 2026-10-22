@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=49">
+<link rel="stylesheet" href="css/style.css?v=70">
 </head>
 <body>
 <div id="app">
@@ -142,7 +142,7 @@
             <button id="btnReady" class="btn gold" style="display:none">准备</button>
             <button id="btnNext" class="btn gold" style="display:none">下一局</button>
           </div>
-          <!-- 手牌行：tag（左）、手牌（中）、排序按钮（右）三个独立元素，互不嵌套 -->
+          <!-- 手牌行：信息框（左）、手牌（中）、排序按钮（右）；左右两列等宽以保证手牌居中 -->
           <div class="handRow">
             <div class="seat seatS" data-seat="0">
               <div class="head">
@@ -153,7 +153,10 @@
               <div class="pts" id="p0"></div>
             </div>
             <div class="handArea"><div id="hand"></div></div>
-            <button id="btnSort" class="btn small">排序：点数</button>
+            <div class="handTools">
+              <button id="btnSort" class="btn small">排序：点数</button>
+              <button id="btnSize" class="btn small">牌大小：特大</button>
+            </div>
           </div>
         </div>
       </div>
@@ -169,6 +172,8 @@
             <label>王单出 <select id="setJoker"><option value="3">算3</option><option value="2">算2</option></select></label>
             <label class="chk"><input type="checkbox" id="setTailBonus"> 尾游也可拿王奖金</label>
             <label class="chk"><input type="checkbox" id="setShowRemain"> 显示剩余张数</label>
+            <label class="chk"><input type="checkbox" id="setShowCorner"> 显示信息框（叫牌/明鸡/庄家）</label>
+            <label class="chk"><input type="checkbox" id="setShowLog"> 显示出牌记录框（右上角）</label>
             <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
           </div>
           <div class="mBtn">
@@ -195,10 +200,10 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=49"></script>
-<script src="js/ai.js?v=49"></script>
-<script src="js/ui-net.js?v=49"></script>
-<script src="js/screen.js?v=49"></script>
-<script src="js/net.js?v=49"></script>
+<script src="js/engine.js?v=70"></script>
+<script src="js/ai.js?v=70"></script>
+<script src="js/ui-net.js?v=70"></script>
+<script src="js/screen.js?v=70"></script>
+<script src="js/net.js?v=70"></script>
 </body>
 </html>
