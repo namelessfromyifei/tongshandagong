@@ -99,7 +99,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .card.mini .tl{font-size:9px;} .card.mini .br{font-size:9px;} .card.mini .ctr{font-size:17px;}
 .card.mini.jk .ctr{font-size:14px;}
 /* 本家（南家）手牌放大，方便看清 */
-.southMain #hand .hcard{margin-left:-42px;}
+/* 负边距只作用于第 2 张起：第一张永远从 x=0 开始，避免被更高优先级的规则覆盖后裁出可视区 */
+.southMain #hand .hcard + .hcard{margin-left:-42px;}
 .southMain #hand .hcard:first-child{margin-left:0;}
 .southMain #hand .card{width:62px;height:88px;}
 .southMain #hand .card .tl{font-size:15px;} .southMain #hand .card .br{font-size:15px;}
@@ -123,7 +124,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 #hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:10px;overflow-x:auto;}
-.hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
+.hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
+.hcard + .hcard{margin-left:-34px;}
 .hcard:first-child{margin-left:0;}
 @media (hover:hover){ /* 仅鼠标设备悬停上浮，触摸端不粘 :hover（避免"收回一半"） */
   .hcard:hover{transform:translateY(-8px);}
@@ -202,7 +204,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .south{bottom:2px;}
   .handRow #btnSort{font-size:10px;padding:3px 7px;}
   .handRow .seatS{width:150px;}
-  .southMain #hand .hcard{margin-left:-34px;}
+  .southMain #hand .hcard + .hcard{margin-left:-34px;}
   .southMain #hand .card{width:48px;height:68px;}
   .southMain #hand .card .tl{font-size:12px;} .southMain #hand .card .br{font-size:12px;}
   .southMain #hand .card .ctr{font-size:30px;}
@@ -263,7 +265,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .center{top:50%;} #msg{font-size:12px;} #trickScore{font-size:11px;}
   /* 手牌区在底部，横屏下尽量扁 */
   .south{bottom:2px;}
-  .southMain #hand .hcard{margin-left:-28px;}
+  .southMain #hand .hcard + .hcard{margin-left:-28px;}
   .southMain #hand .card{width:42px;height:60px;}
   .southMain #hand .card .tl{font-size:10px;} .southMain #hand .card .br{font-size:10px;}
   .southMain #hand .card .ctr{font-size:26px;}
@@ -401,7 +403,8 @@ body.landscapeCompat .center{top:50%;}
 body.landscapeCompat #msg{font-size:12px;}
 body.landscapeCompat #trickScore{font-size:11px;}
 body.landscapeCompat .south{bottom:2px;}
-body.landscapeCompat .southMain #hand .hcard{margin-left:-28px;}
+body.landscapeCompat .southMain #hand .hcard + .hcard{margin-left:-28px;}
+body.landscapeCompat .southMain #hand .hcard:first-child{margin-left:0;}
 body.landscapeCompat .southMain #hand .card{width:42px;height:60px;}
 body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
