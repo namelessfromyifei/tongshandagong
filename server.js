@@ -284,8 +284,16 @@ io.on('connection', (socket)=>{
     if(data.jokerValue!=null) s.jokerValue=Number(data.jokerValue)===2?2:3;
     if(data.tailBonus!=null) s.tailBonus=!!data.tailBonus;
     if(data.aiFill!=null) room.aiFill=!!data.aiFill;
+    // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
+    const wantStart = (data.start===true);
+    if(wantStart) room.ready[0]=true;
     broadcast(room);
-    socket.emit('toast','牌局设置已更新');
+    if(wantStart){
+      const started=checkAllReady(room);
+      socket.emit('toast', started? '开始对局！' : '已准备，等待其他玩家就绪后开局');
+    } else {
+      socket.emit('toast','牌局设置已更新');
+    }
   });
 
   socket.on('join', (data)=>{

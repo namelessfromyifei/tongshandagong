@@ -228,9 +228,9 @@ function bindLobby(){
     socket.emit('toggleReady', {});
   };
   $('btnSetGo').onclick=()=>{
-    if(socket) socket.emit('setSettings', collectSettings());
+    if(socket) socket.emit('setSettings', Object.assign(collectSettings(), {start:true}));
     const m=$('setModal'); if(m) m.hidden=true;
-    toast('配置已保存，等待全员准备');
+    toast('已保存配置并准备，等待开局…');
   };
   $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };
