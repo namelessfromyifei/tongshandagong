@@ -307,7 +307,7 @@ function handHasBomb(hand){
     if(!p) return {ok:false,why:'不能这样出牌'};
     const isLead = !G.lastPlay; // 新一轮第一手（刚获得出牌权）
     if(G.lastPlay && !canBeat(G.lastPlay,p)) return {ok:false,why:'压不过'};
-    if(isLead && !legalLead(G,p)) return {ok:false,why:'无番炸不能领出'};
+    if(isLead && !legalLead(G,p)) return {ok:false,why:'无笼炸不能领出'};
     // 领手里必须真的有这些牌
     const S=G.seats[seatIdx];
     const have=new Map(); for(const c of S.hand) have.set(c.id,c);

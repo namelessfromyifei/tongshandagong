@@ -14,17 +14,15 @@ const $=id=>document.getElementById(id);
 
 /* ---------- 房间界面 ---------- */
 function enterLobby(){
-  const lobby=$('lobby'), table=$('tableWrap');
-  if(lobby) lobby.style.display='block';
-  if(table) table.style.display='none';
+  const app=document.getElementById('app');
+  if(app){ app.classList.remove('inTable'); app.classList.add('inLobby'); }
   if($('btnRoomToggle')) $('btnRoomToggle').textContent='返回大厅';
   // 离开牌桌：解除横屏（大厅可竖屏）
   if(window.LANDSCAPE) window.LANDSCAPE.exit();
 }
 function enterTable(){
-  const lobby=$('lobby'), table=$('tableWrap');
-  if(lobby) lobby.style.display='none';
-  if(table) table.style.display='block';
+  const app=document.getElementById('app');
+  if(app){ app.classList.remove('inLobby'); app.classList.add('inTable'); }
   // 进入房间：强制横屏
   if(window.LANDSCAPE) window.LANDSCAPE.enter();
 }
@@ -66,10 +64,10 @@ function connect(){
     UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr);
     // 房主才显示"对局配置"
     if($('btnStart')) $('btnStart').style.display = (mySeat===0 && !(snap.G && snap.G.started)) ? 'inline-block' : 'none';
-    // 准备按钮：对局进行中隐藏；未开始或一局结束才显示（最后一局需手动准备）
+    // 准备按钮：对局进行中（含确认轮、出牌轮）隐藏；未开始或一局结束才显示
     if($('btnReady')){
       const isReady = !!readyArr[mySeat];
-      $('btnReady').style.display = (snap.G && snap.G.started && !snap.G.ended) ? 'none' : 'inline-block';
+      $('btnReady').style.display = (snap.G && !snap.G.ended) ? 'none' : 'inline-block';
       $('btnReady').textContent = isReady ? '取消准备' : '准备';
       $('btnReady').classList.toggle('gold', isReady);
     }
@@ -239,11 +237,9 @@ function bindLobby(){
     const el=$(id);
     if(el) el.onchange=()=>{ if(socket) socket.emit('setSettings', collectSettings()); };
   });
-  // 大厅显示
-  const lobby=$('lobby');
-  if(lobby) lobby.style.display='block';
-  const table=$('tableWrap');
-  if(table) table.style.display='none';
+  // 大厅显示（显隐由 #app 状态类控制，避免内联 display 覆盖牌桌 flex 布局）
+  const appEl=document.getElementById('app');
+  if(appEl) appEl.classList.add('inLobby');
   // 页面加载即连接服务器（房间列表实时加载，无需先操作）
   connect();
   // 刷新后自动重连（localStorage 有记录）

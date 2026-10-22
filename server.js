@@ -209,7 +209,7 @@ function finishRoom(room){
   logLine(room, `—— 第 ${room.G.roundNo} 局结算 ——`);
   for(let i=0;i<4;i++){
     logLine(room, `  ${room.seats[i].name}：${s.perFen[i]>0?'+':''}${s.perFen[i]}分` +
-      (s.kingBonus && s.kingBonus[i] ? `（含王奖金 ${s.kingBonus[i]}番×3）` : ''));
+      (s.kingBonus && s.kingBonus[i] ? `（含王奖金 ${s.kingBonus[i]}笼×3）` : ''));
   }
   // 轮结算：累计
   room.series.active = true;

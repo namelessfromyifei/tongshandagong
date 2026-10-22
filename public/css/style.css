@@ -6,6 +6,10 @@
 }
 body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-family:"Microsoft YaHei",system-ui,sans-serif;min-height:100vh;padding:10px;}
 #app{max-width:1100px;margin:0 auto;}
+/* 大厅/牌桌显隐用 #app 状态类控制，避免内联 display 覆盖牌桌的 flex 布局 */
+#tableWrap{display:none;}
+#app.inTable #tableWrap{display:flex;flex-direction:column;position:relative;}
+#app.inTable #lobby{display:none;}
 
 .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
 .topbar h1{color:var(--gold);font-size:22px;letter-spacing:2px;}
@@ -24,6 +28,19 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .seatW{left:12px;top:48%;transform:translateY(-50%);}
 .seatE{right:12px;top:48%;transform:translateY(-50%);}
 .seat.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
+/* 局末得分徽标（信息框外侧右下角） */
+.roundSco{position:absolute;right:-6px;bottom:-6px;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
+.roundSco.plus{background:#1d9c5c;}
+.roundSco.minus{background:#c0392b;}
+.roundSco.zero{background:#6b7a73;}
+/* 明鸡已出：同队相同标记（庄队◆ / 客队◇）+ 座位底色 */
+.teamMark{font-style:normal;font-size:13px;line-height:1;margin-right:2px;}
+.teamMark.ta{color:#ffd94a;text-shadow:0 0 5px rgba(255,217,74,.8);}
+.teamMark.tb{color:#8fc1e8;text-shadow:0 0 5px rgba(143,193,232,.7);}
+.teamMark.hard{color:#ff9d8a;}
+.teamMark.host{color:#e8c15a;}
+.seat.teamA{background:rgba(232,193,90,.16);}
+.seat.teamB{background:rgba(143,193,232,.13);}
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
 .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(150deg,#f0cf7e,#caa347);color:#4a3000;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid rgba(255,255,255,.3);flex:0 0 auto;}
 .nm{font-weight:bold;font-size:12px;}
@@ -91,12 +108,15 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 /* ===== 玩家手牌区（在桌面南侧） ===== */
 /* 玩家手牌区：整块居中在桌面南侧，无框 */
 .south{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:96%;background:none;border:none;padding:0;}
-.southMain{display:flex;flex-direction:column;align-items:center;width:100%;}
+.southMain{display:flex;flex-direction:column;align-items:center;width:100%;gap:2px;}
 /* 手牌行：手牌居中，排序按钮常驻在右侧 */
 .handArea{position:relative;display:flex;justify-content:center;align-items:center;width:100%;min-height:104px;}
 .handArea #hand{flex:0 1 auto;}
 /* 南家信息框：绝对定位在牌左侧，垂直居中同一线，不挤占手牌 */
-.handArea .seatS{position:absolute;left:8px;top:50%;transform:translateY(-50%);width:170px;min-height:104px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:8px 10px;margin:0;flex:0 0 auto;z-index:2;}
+/* 本家信息框：绝对定位于手牌左侧，宽度与其他玩家信息框一致（继承 .seat 宽度），不占布局、不挡牌 */
+.handArea .seatS{position:absolute;left:3px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;flex:0 0 auto;z-index:2;font-size:10px;min-height:44px;}
+.handArea .seatS .head{margin-bottom:0;gap:4px;}
+.handArea .seatS .pts{margin:0;}
 /* 排序按钮：绝对定位在牌右侧，垂直居中同一线，不挤占手牌 */
 .handArea #btnSort{position:absolute;right:8px;top:50%;transform:translateY(-50%);flex:0 0 auto;padding:4px 10px;font-size:12px;z-index:2;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
@@ -104,8 +124,11 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 #hand{display:flex;justify-content:center;align-items:flex-end;min-height:100px;padding-top:10px;}
 .hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
 .hcard:first-child{margin-left:0;}
-.hcard:hover{transform:translateY(-8px);z-index:3;}
-.hcard.sel{transform:translateY(-20px);border-color:var(--gold)!important;box-shadow:0 10px 16px rgba(0,0,0,.5)!important;z-index:5;}
+@media (hover:hover){ /* 仅鼠标设备悬停上浮，触摸端不粘 :hover（避免"收回一半"） */
+  .hcard:hover{transform:translateY(-8px);}
+}
+/* 选中牌只小幅上浮（露出左上角点数/花色即可）：保持原叠放次序（左邻在下、右邻在上），不挪动相邻牌 */
+.hcard.sel{transform:translateY(-10px);border-color:var(--gold)!important;box-shadow:0 10px 16px rgba(0,0,0,.5)!important;}
 
 .log{margin-top:10px;background:rgba(0,0,0,.3);border-radius:10px;padding:8px 12px;max-height:150px;overflow-y:auto;font-size:12px;color:#d7e7df;line-height:1.6;}
 .log:empty{display:none;} /* 无日志时不占位 */
@@ -156,7 +179,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .trickRow .card{width:30px!important;height:42px!important;margin-left:-16px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:18px!important;}
-  .trick.trickN{top:120px;} .trick.trickS{bottom:132px;} .trick.trickW{left:160px;} .trick.trickE{right:160px;}
+  .trick.trickN{top:136px;} .trick.trickS{bottom:150px;} .trick.trickW{left:160px;} .trick.trickE{right:160px;}
   .center{top:50%;}
   #msg{font-size:12px;}
   #trickScore{font-size:11px;}
@@ -183,10 +206,13 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 }
 /* 移动端手牌：超宽时可横向滑动 */
 @media (max-width: 560px){
-  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;padding:4px 0 8px;}
+  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;padding:12px 0 6px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
-  /* 不再裁剪手牌区，选中上弹的牌不被遮挡；同时压缩本家信息框高度 */
-  .handArea .seatS{min-height:82px;padding:4px 7px;}
+  /* 本家信息框流入布局（不再压住最左几张牌），手牌紧随其右 */
+  .southMain{gap:2px;}
+  .actions{margin:0;gap:4px;}
+  .handArea{min-height:66px;}
+  .handArea #hand{flex:0 1 auto;min-width:0;max-width:100%;}
 }
 
 /* 头像上 4+王 徽标（打出≥1张王后才显示） */
@@ -202,12 +228,12 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 
 /* ===== 移动端横向（横屏）适配 ===== */
 @media (orientation: landscape) and (max-width: 920px){
-  body{padding:4px;}
+  body{padding:3px;}
   .topbar h1{font-size:16px;}
   .btn{padding:4px 9px;font-size:11px;}
   .chip{font-size:11px;padding:2px 7px;}
-  /* 桌面更扁更矮（横屏高度有限） */
-  .table{height:360px;border-width:4px;border-radius:14px;}
+  /* 桌面铺满横向高度（弹性撑开，不留底部空白） */
+  .table{height:auto;min-height:300px;flex:1 1 auto;border-width:4px;border-radius:14px;}
   .seat{width:150px;padding:4px 6px;font-size:10px;border-radius:8px;}
   .seatN{top:2px;} .seatW{left:3px;} .seatE{right:3px;}
   .avatar{width:24px;height:24px;font-size:11px;}
@@ -216,7 +242,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:17px!important;}
-  .trick.trickN{top:74px;} .trick.trickS{bottom:150px;} .trick.trickW{left:156px;} .trick.trickE{right:156px;}
+  .trick.trickN{top:104px;} .trick.trickS{bottom:104px;} .trick.trickW{left:156px;} .trick.trickE{right:156px;}
   .center{top:50%;} #msg{font-size:12px;} #trickScore{font-size:11px;}
   /* 手牌区在底部，横屏下尽量扁 */
   .south{bottom:2px;}
@@ -224,14 +250,16 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .southMain #hand .card{width:42px;height:60px;}
   .southMain #hand .card .tl{font-size:10px;} .southMain #hand .card .br{font-size:10px;}
   .southMain #hand .card .ctr{font-size:26px;}
-  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:3px 0 5px;}
+  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   .handArea #btnSort{font-size:10px;padding:3px 7px;}
-  .actions{gap:4px;}
-  /* 本家信息框压缩 */
-  .handArea .seatS{min-height:76px;padding:4px 7px;}
+  .actions{gap:4px;margin:0;}
+  /* 手牌行居中；信息框绝对居左、按钮贴手牌 */
+  .southMain{gap:2px;}
+  .handArea{min-height:64px;}
+  .handArea #hand{flex:0 1 auto;min-width:0;max-width:100%;}
   /* 日志从牌桌底部挪到右上角"退出房间"下方，小巧不遮东/北座位 */
-  #tableWrap{position:relative;}
+  #tableWrap{height:calc(100vh - 6px);height:calc(100dvh - 6px);}
   .log{position:absolute;right:8px;top:46px;width:210px;max-width:44%;max-height:56px;font-size:9px;padding:3px 6px;margin:0;border-radius:6px;z-index:3;}
   /* 角落 */
   .corner{min-width:80px;padding:3px 6px;font-size:9px;}
@@ -336,7 +364,6 @@ body.landscapeCompat body{padding:4px;}
 body.landscapeCompat .topbar h1{font-size:16px;}
 body.landscapeCompat .btn{padding:4px 9px;font-size:11px;}
 body.landscapeCompat .chip{font-size:11px;padding:2px 7px;}
-body.landscapeCompat .table{height:360px;border-width:4px;border-radius:14px;}
 body.landscapeCompat .seat{width:150px;padding:4px 6px;font-size:10px;border-radius:8px;}
 body.landscapeCompat .seatN{top:2px;}
 body.landscapeCompat .seatW{left:3px;}
@@ -347,8 +374,8 @@ body.landscapeCompat .trickRow .card{width:28px!important;height:40px!important;
 body.landscapeCompat .trickRow .card .tl{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .ctr{font-size:17px!important;}
-body.landscapeCompat .trick.trickN{top:74px;}
-body.landscapeCompat .trick.trickS{bottom:150px;}
+body.landscapeCompat .trick.trickN{top:104px;}
+body.landscapeCompat .trick.trickS{bottom:104px;}
 body.landscapeCompat .trick.trickW{left:156px;}
 body.landscapeCompat .trick.trickE{right:156px;}
 body.landscapeCompat .center{top:50%;}
@@ -361,13 +388,16 @@ body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .ctr{font-size:26px;}
 body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:21px;}
-body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:3px 0 5px;min-height:70px;}
+body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
 body.landscapeCompat .handArea #btnSort{font-size:10px;padding:3px 7px;}
-body.landscapeCompat .actions{gap:4px;}
-body.landscapeCompat .handArea .seatS{min-height:76px;padding:4px 7px;}
+body.landscapeCompat .actions{gap:4px;margin:0;}
+body.landscapeCompat .southMain{gap:2px;}
+body.landscapeCompat .handArea{min-height:64px;}
+body.landscapeCompat .handArea #hand{flex:0 1 auto;min-width:0;max-width:100%;}
 /* 日志挪到右上角"退出房间"下方，小巧不遮东/北座位 */
-body.landscapeCompat #tableWrap{position:relative;}
+body.landscapeCompat #tableWrap{height:100vw;}
+body.landscapeCompat .table{height:auto;min-height:300px;flex:1 1 auto;border-width:4px;border-radius:14px;}
 body.landscapeCompat .log{position:absolute;right:8px;top:46px;width:210px;max-width:44%;max-height:56px;font-size:9px;padding:3px 6px;margin:0;border-radius:6px;z-index:3;}
 body.landscapeCompat .corner{min-width:80px;padding:3px 6px;font-size:9px;}
 body.landscapeCompat .corner .mini{width:14px;height:21px;}
