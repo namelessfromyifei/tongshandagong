@@ -194,7 +194,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .trickRow .card{width:30px!important;height:42px!important;margin-left:-16px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:18px!important;}
-  .trick.trickN{top:136px;} .trick.trickS{bottom:150px;} .trick.trickW{left:160px;} .trick.trickE{right:160px;}
+  .trick.trickN{top:136px;} .trick.trickS{bottom:150px;} .trick.trickW{left:210px;} .trick.trickE{right:210px;}
   .center{top:50%;}
   #msg{font-size:12px;}
   #trickScore{font-size:11px;}
@@ -257,7 +257,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:17px!important;}
-  .trick.trickN{top:104px;} .trick.trickS{bottom:104px;} .trick.trickW{left:156px;} .trick.trickE{right:156px;}
+  .trick.trickN{top:104px;} .trick.trickS{bottom:104px;} .trick.trickW{left:196px;} .trick.trickE{right:196px;}
   .center{top:50%;} #msg{font-size:12px;} #trickScore{font-size:11px;}
   /* 手牌区在底部，横屏下尽量扁 */
   .south{bottom:2px;}
@@ -353,8 +353,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 }
 /* 我是谁：房间号下方，角落上方 */
 .tableWho{position:absolute;left:150px;top:38px;font-size:11px;background:rgba(0,0,0,.4);z-index:4;}
-@media (max-width:560px){ .tableWho{left:105px;top:26px;font-size:10px;} }
-@media (orientation:landscape) and (max-width:920px){ .tableWho{left:96px;top:20px;font-size:9px;} }
+@media (max-width:560px){ .tableWho{left:105px;top:40px;font-size:10px;} }
+@media (orientation:landscape) and (max-width:920px){ .tableWho{left:96px;top:34px;font-size:9px;} }
 
 /* ===== 强制横屏：竖屏旋转兜底（进入房间后，仅 app/移动端） ===== */
 /* 系统横屏锁定不可用时，把 #app 旋转铺满竖屏，内容仍呈横屏 */
@@ -391,8 +391,8 @@ body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .ctr{font-size:17px!important;}
 body.landscapeCompat .trick.trickN{top:104px;}
 body.landscapeCompat .trick.trickS{bottom:104px;}
-body.landscapeCompat .trick.trickW{left:156px;}
-body.landscapeCompat .trick.trickE{right:156px;}
+body.landscapeCompat .trick.trickW{left:196px;}
+body.landscapeCompat .trick.trickE{right:196px;}
 body.landscapeCompat .center{top:50%;}
 body.landscapeCompat #msg{font-size:12px;}
 body.landscapeCompat #trickScore{font-size:11px;}
@@ -423,7 +423,7 @@ body.landscapeCompat .tableTitle{font-size:12px;left:96px;top:4px;}
 body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
 body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}
 body.landscapeCompat .tableTopRight .btn{padding:2px 6px;font-size:10px;}
-body.landscapeCompat .tableWho{left:96px;top:20px;font-size:9px;}
+body.landscapeCompat .tableWho{left:96px;top:34px;font-size:9px;}
 body.landscapeCompat .modalBox{max-width:94%;padding:12px 14px;}
 body.landscapeCompat .modalBox .lobbyRow input,body.landscapeCompat .modalBox input{font-size:15px;padding:7px 10px;}
 body.landscapeCompat .modalBox .btn{font-size:14px;padding:6px 12px;}

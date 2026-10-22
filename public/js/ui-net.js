@@ -141,7 +141,20 @@ function playerHint(){
 function toggleSort(){ sortMode=1-sortMode; render(); }
 
 /* ---------- 状态接收 ---------- */
+let curRoomCode=''; // 当前房间号（换房间时清掉上一房间遗留的牌面）
 function applyState(snap){
+  if(snap.code && snap.code!==curRoomCode){
+    curRoomCode=snap.code;
+    // 换房间：清掉上一房间/上一局遗留的桌面、手牌与状态
+    const h=$('hand'); if(h) h.innerHTML='';
+    for(let k=0;k<4;k++){
+      const tr=$('t'+k); if(tr) tr.innerHTML='';
+      const hc=$('h'+k); if(hc) hc.innerHTML='';
+    }
+    const md=$('modal'); if(md) md.hidden=true;
+    selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
+    cumTotals=[0,0,0,0]; cumEndedSeq=0; resetPending=false; pendingPlay=false;
+  }
   G = snap.G || null;
   seatNames = snap.seats.map(s=>s.name);
   seatTypes = snap.seats.map(s=>s.type);
@@ -226,7 +239,8 @@ function fitHandClearance(){
   if(C<=A){
     // 内容放得下：contentLeft=(A-C+pl)/2 ≥ bR+GAP → pl=2*(bR+GAP)-(A-C)
     pl=2*(bR+GAP)-(A-C);
-    if(pl>A-C) pl=A-C;                            // 最多把空余垫满
+    // 若这样会让内容溢出（太窄无法居中又让开信息框）：改左对齐+溢出可滚动，最左必可见
+    if(C+pl>A) pl=bR+GAP;
     pl=Math.max(0,pl);
   } else {
     // 内容溢出：盒占满宽，内容起点=pl → pl=bR+GAP
