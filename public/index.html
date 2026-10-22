@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
 <div id="app">
@@ -156,44 +156,46 @@
         </div>
       </div>
       <div class="trick trickS" id="t0"></div>
+
+      <!-- 牌局设置弹窗（须在 #app 内，才能随 app 一起横屏旋转） -->
+      <div id="setModal" class="overlay" hidden>
+        <div class="modalBox">
+          <h2>牌局设置</h2>
+          <div class="setGrid">
+            <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="10">10</option></select></label>
+            <label>王总数 <select id="setKings"><option value="8">8</option><option value="10">10</option><option value="12">12</option></select></label>
+            <label>王单出 <select id="setJoker"><option value="3">算3</option><option value="2">算2</option></select></label>
+            <label class="chk"><input type="checkbox" id="setTailBonus"> 尾游也可拿王奖金</label>
+            <label class="chk"><input type="checkbox" id="setShowRemain" checked> 显示剩余张数</label>
+            <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
+          </div>
+          <div class="mBtn">
+            <button id="btnSetGo" class="btn gold">开始对局</button>
+            <button id="btnSetBack" class="btn">返回</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 本局结算弹窗（须在 #app 内，才能随 app 一起横屏旋转） -->
+      <div id="modal" class="overlay" hidden>
+        <div class="modalBox">
+          <h2 id="mTitle">本局结果</h2>
+          <table id="mTable"></table>
+          <div class="mBtn"><button id="btnClose" class="btn gold">下一局</button></div>
+        </div>
+      </div>
+
     </div>
 
     <div class="log" id="log"></div>
   </div>
 </div>
 
-<!-- 开始对局：设置弹窗（房主） -->
-<div id="setModal" class="overlay" hidden>
-  <div class="modalBox">
-    <h2>牌局设置</h2>
-    <div class="setGrid">
-      <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="10">10</option></select></label>
-      <label>王总数 <select id="setKings"><option value="8">8</option><option value="10">10</option><option value="12">12</option></select></label>
-      <label>王单出 <select id="setJoker"><option value="3">算3</option><option value="2">算2</option></select></label>
-      <label class="chk"><input type="checkbox" id="setTailBonus"> 尾游也可拿王奖金</label>
-      <label class="chk"><input type="checkbox" id="setShowRemain" checked> 显示剩余张数</label>
-      <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
-    </div>
-    <div class="mBtn">
-      <button id="btnSetGo" class="btn gold">开始对局</button>
-      <button id="btnSetBack" class="btn">返回</button>
-    </div>
-  </div>
-</div>
-
-<div id="modal" class="overlay" hidden>
-  <div class="modalBox">
-    <h2 id="mTitle">本局结果</h2>
-    <table id="mTable"></table>
-    <div class="mBtn"><button id="btnClose" class="btn gold">下一局</button></div>
-  </div>
-</div>
-
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=5"></script>
-<script src="js/ai.js?v=5"></script>
-<script src="js/ui-net.js?v=5"></script>
-<script src="js/screen.js?v=5"></script>
-<script src="js/net.js?v=5"></script>
+<script src="js/engine.js?v=6"></script>
+<script src="js/ai.js?v=6"></script>
+<script src="js/ui-net.js?v=6"></script>
+<script src="js/screen.js?v=6"></script>
+<script src="js/net.js?v=6"></script>
 </body>
 </html>

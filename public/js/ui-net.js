@@ -25,6 +25,9 @@ let hintCursor=0, hintList=[];
 let total=[0,0,0,0];
 let sortMode=0;
 let lastRoundNo=-1; // 用于判断是否换了新局（换局才清空预选）
+// 拖动选牌：按下记录、移动判定、抬起后抑制随后的 click（避免拖动再切换）
+let downInfo=null, clickSuppress=false;
+let lastRoundWasLast=false; // 当前结算的这局是否为一场的最后一局
 function snapSeatOffline(i){ return !!seatOffline[i]; }
 
 /* ---------- 排序（与单机版一致） ---------- */
@@ -142,13 +145,14 @@ function applyState(snap){
   aiFill = snap.aiFill;
   settings = snap.settings || settings;
   // 只在换新局时清空预选；同一局内其他玩家出牌时保留已选牌（方便等待时预选下一手）
-  if(!G || G.roundNo!==lastRoundNo){ selected.clear(); lastRoundNo=G?G.roundNo:-1; }
+  const roundKey = G ? (G.seq||G.roundNo) : -1;
+  if(!G || roundKey!==lastRoundNo){ selected.clear(); lastRoundNo=roundKey; }
   hintCursor=0; hintList=[];
   if(!G){
     // 未开局：更新房间信息 + 座位名，显示等待
     if($('lblMode')) $('lblMode').textContent='等待开局';
     if($('lblRound')) $('lblRound').textContent='';
-    if($('msg')) $('msg').textContent='等待房主开始对局…';
+    if($('msg')) $('msg').textContent='等待全员准备…';
     if($('btnSort')) $('btnSort').style.display='none'; // 开局前不显示排序按钮
     renderSeatNames();
     setBtn(false);
@@ -158,7 +162,9 @@ function applyState(snap){
   if($('lblMode')) $('lblMode').textContent = G.mode==='hard'?('硬牌 · '+seatNames[G.hardSeat]):'2V2';
   // 结算弹窗
   if(G.ended){
-    finishLocal();
+    // 最后一局：始终弹结算窗（后面不再有 G 快照可取）；非最后一局：已就绪则不再重复弹
+    if(G.lastSeries || !seatReady[mySeat]) finishLocal();
+    else $('modal').hidden = true;
   } else {
     $('modal').hidden = true;
   }
@@ -361,8 +367,14 @@ function renderHand(){
     let cls='hcard'+(selected.has(idx)?' sel':'');
     if(G.mode!=='hard' && G.called && !c.j && c.r===G.called.r && c.s===G.called.s) cls+=' calledMark';
     el.className=cls;
+    el.dataset.i=idx;
     el.innerHTML=cardHTML(c);
-    el.onclick=()=>{ if(G.ended) return; if(selected.has(idx)) selected.delete(idx); else selected.add(idx); el.classList.toggle('sel',selected.has(idx)); };
+    el.onclick=()=>{
+      if(G.ended) return;
+      if(clickSuppress){ clickSuppress=false; return; } // 拖动手势后的 click 不再切换
+      if(selected.has(idx)) selected.delete(idx); else selected.add(idx);
+      el.classList.toggle('sel',selected.has(idx));
+    };
     handEl.appendChild(el);
   });
   const btn=$('btnSort'); if(btn) btn.textContent = sortMode===0?'排序：点数':'排序：炸前置';
@@ -397,6 +409,10 @@ function finishLocal(){
     $('mTitle').textContent = `本局结束 · ${G.mode==='hard'
       ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
       : `赢${s.winnerSeats.map(i=>seatNames[i]).join('、')}`}`;
+    // 是否本场最后一局：由服务器标记（避免客户端根据已累计的局数猜错）
+    lastRoundWasLast = !!G.lastSeries;
+    const close=$('btnClose');
+    if(close) close.textContent = lastRoundWasLast ? '本场结束' : '下一局';
     tb.innerHTML=`<tr><th>座位</th><th>身份</th><th>牌面番数</th><th>本局(分)</th><th>累计(分)</th></tr>`;
     for(let v=0;v<4;v++){
       const i=(mySeat+v)%4, fv=s.perFen[i];
@@ -440,5 +456,55 @@ $('btnHint').onclick=playerHint;
 $('btnSort').onclick=toggleSort;
 $('btnHard').onclick=playerHard;
 $('btnHe').onclick=playerHe;
-$('btnClose').onclick=()=>{ $('modal').hidden=true; getNET().nextRound(); };
+$('btnClose').onclick=()=>{
+  $('modal').hidden=true;
+  // 非最后一局：点【下一局】自动就绪等全员；最后一局：不自动准备，需手动点【准备】
+  if(!lastRoundWasLast) getNET().nextRound();
+};
+
+/* ---------- 长按拖动一次选多张 + 点击桌面空白收回已选 ---------- */
+(function(){
+  const handEl=$('hand'); if(!handEl) return;
+  const cardAt=(x,y)=>{ const el=document.elementFromPoint(x,y); return (el&&el.closest)?el.closest('.hcard'):null; };
+  handEl.addEventListener('pointerdown',(e)=>{
+    if(!G || mySeat<0 || G.seats[mySeat].out || G.ended) return;
+    const cardEl = (e.target && e.target.closest) ? e.target.closest('.hcard') : null;
+    if(!cardEl || !cardEl.dataset || cardEl.dataset.i===undefined) return;
+    downInfo={idx:Number(cardEl.dataset.i), x:e.clientX, y:e.clientY, moved:false};
+    try{ handEl.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  handEl.addEventListener('pointermove',(e)=>{
+    if(!downInfo) return;
+    const dx=e.clientX-downInfo.x, dy=e.clientY-downInfo.y;
+    if(!downInfo.moved && (Math.abs(dx)>6||Math.abs(dy)>6)){
+      downInfo.moved=true;
+      // 拖动开始：把按下的那张牌也纳入选中
+      const sc=document.querySelector('.hcard[data-i="'+downInfo.idx+'"]');
+      if(sc && !selected.has(downInfo.idx)){ selected.add(downInfo.idx); sc.classList.add('sel'); }
+    }
+    if(!downInfo.moved) return;
+    const c=cardAt(e.clientX,e.clientY);
+    if(c && c.dataset && c.dataset.i!==undefined){
+      const idx=Number(c.dataset.i);
+      if(!selected.has(idx)){ selected.add(idx); c.classList.add('sel'); }
+    }
+  });
+  const endDrag=()=>{
+    if(downInfo && downInfo.moved){
+      clickSuppress=true; // 抑制随后的 click，避免拖完又切换选中
+      setTimeout(()=>{ clickSuppress=false; }, 500);
+    }
+    downInfo=null;
+  };
+  handEl.addEventListener('pointerup',endDrag);
+  handEl.addEventListener('pointercancel',endDrag);
+  // 点击桌面空白（非手牌/按钮/座位/日志区）→ 收回已选牌
+  const tableEl=document.querySelector('.table');
+  if(tableEl) tableEl.addEventListener('click',(e)=>{
+    const t=e.target;
+    if(!t||!t.closest) return;
+    if(t.closest('.south')||t.closest('.seat')||t.closest('.log')||t.closest('button')||t.closest('.hcard')||t.closest('input')) return;
+    if(selected.size){ selected.clear(); render(); }
+  });
+})();
 })();

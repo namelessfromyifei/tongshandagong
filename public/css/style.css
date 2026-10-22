@@ -102,12 +102,13 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 #hand{display:flex;justify-content:center;align-items:flex-end;min-height:100px;padding-top:10px;}
-.hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;}
+.hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
 .hcard:first-child{margin-left:0;}
-.hcard:hover{transform:translateY(-8px);}
-.hcard.sel{transform:translateY(-20px);border-color:var(--gold)!important;box-shadow:0 10px 16px rgba(0,0,0,.5)!important;}
+.hcard:hover{transform:translateY(-8px);z-index:3;}
+.hcard.sel{transform:translateY(-20px);border-color:var(--gold)!important;box-shadow:0 10px 16px rgba(0,0,0,.5)!important;z-index:5;}
 
 .log{margin-top:10px;background:rgba(0,0,0,.3);border-radius:10px;padding:8px 12px;max-height:150px;overflow-y:auto;font-size:12px;color:#d7e7df;line-height:1.6;}
+.log:empty{display:none;} /* 无日志时不占位 */
 
 /* ===== 弹窗 ===== */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;}
@@ -160,7 +161,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   #msg{font-size:12px;}
   #trickScore{font-size:11px;}
   /* 手牌区 */
-  .south{bottom:4px;}
+  .south{bottom:2px;}
   .handArea #btnSort{font-size:10px;padding:3px 7px;}
   .southMain #hand .hcard{margin-left:-34px;}
   .southMain #hand .card{width:48px;height:68px;}
@@ -184,7 +185,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 @media (max-width: 560px){
   #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;padding:4px 0 8px;}
   #hand .hcard{flex:0 0 auto;}
-  .handArea{overflow:hidden;}
+  /* 不再裁剪手牌区，选中上弹的牌不被遮挡；同时压缩本家信息框高度 */
+  .handArea .seatS{min-height:82px;padding:4px 7px;}
 }
 
 /* 头像上 4+王 徽标（打出≥1张王后才显示） */
@@ -217,7 +219,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .trick.trickN{top:74px;} .trick.trickS{bottom:150px;} .trick.trickW{left:156px;} .trick.trickE{right:156px;}
   .center{top:50%;} #msg{font-size:12px;} #trickScore{font-size:11px;}
   /* 手牌区在底部，横屏下尽量扁 */
-  .south{bottom:3px;}
+  .south{bottom:2px;}
   .southMain #hand .hcard{margin-left:-28px;}
   .southMain #hand .card{width:42px;height:60px;}
   .southMain #hand .card .tl{font-size:10px;} .southMain #hand .card .br{font-size:10px;}
@@ -226,8 +228,11 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   #hand .hcard{flex:0 0 auto;}
   .handArea #btnSort{font-size:10px;padding:3px 7px;}
   .actions{gap:4px;}
-  /* 日志矮一些 */
-  .log{max-height:90px;}
+  /* 本家信息框压缩 */
+  .handArea .seatS{min-height:76px;padding:4px 7px;}
+  /* 日志从牌桌底部挪到右上角"退出房间"下方，小巧不遮东/北座位 */
+  #tableWrap{position:relative;}
+  .log{position:absolute;right:8px;top:46px;width:210px;max-width:44%;max-height:56px;font-size:9px;padding:3px 6px;margin:0;border-radius:6px;z-index:3;}
   /* 角落 */
   .corner{min-width:80px;padding:3px 6px;font-size:9px;}
   .corner .mini{width:14px;height:21px;}
@@ -349,7 +354,7 @@ body.landscapeCompat .trick.trickE{right:156px;}
 body.landscapeCompat .center{top:50%;}
 body.landscapeCompat #msg{font-size:12px;}
 body.landscapeCompat #trickScore{font-size:11px;}
-body.landscapeCompat .south{bottom:3px;}
+body.landscapeCompat .south{bottom:2px;}
 body.landscapeCompat .southMain #hand .hcard{margin-left:-28px;}
 body.landscapeCompat .southMain #hand .card{width:42px;height:60px;}
 body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
@@ -360,7 +365,10 @@ body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:au
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
 body.landscapeCompat .handArea #btnSort{font-size:10px;padding:3px 7px;}
 body.landscapeCompat .actions{gap:4px;}
-body.landscapeCompat .log{max-height:90px;}
+body.landscapeCompat .handArea .seatS{min-height:76px;padding:4px 7px;}
+/* 日志挪到右上角"退出房间"下方，小巧不遮东/北座位 */
+body.landscapeCompat #tableWrap{position:relative;}
+body.landscapeCompat .log{position:absolute;right:8px;top:46px;width:210px;max-width:44%;max-height:56px;font-size:9px;padding:3px 6px;margin:0;border-radius:6px;z-index:3;}
 body.landscapeCompat .corner{min-width:80px;padding:3px 6px;font-size:9px;}
 body.landscapeCompat .corner .mini{width:14px;height:21px;}
 body.landscapeCompat .corner .mini .tl{font-size:6px;}

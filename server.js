@@ -55,19 +55,26 @@ function createRoom(code){
     series: {           // 一轮（多局）累计
       active: false, roundCount: 0, totals: [0,0,0,0],
     },
+    roundSeq: 0,        // 房间内累计对局数（跨场唯一，供前端判断换局）
   };
   rooms.set(code, room);
   return room;
 }
 
 /* ---------- 广播 ---------- */
-// 把房间 settings 映射为引擎 cfg
+// 把 settings 映射为引擎 cfg
 function makeCfg(room){
   return {
     kings: room.settings.kings,
     jokerValue: room.settings.jokerValue,
     tailBonus: room.settings.tailBonus,
   };
+}
+// 标记"刚结束的这局是否为一场的最后一局"，随快照带给客户端（避免客户端猜错）
+function markLast(room){
+  if(room.G && room.G.ended && room.G.lastSeries===undefined){
+    room.G.lastSeries = (room.series.roundCount + 1) >= room.settings.rounds;
+  }
 }
 function snapshot(room){
   return {
@@ -137,6 +144,7 @@ function aiPlayTurn(room){
         }
       }
     }
+    markLast(room); // 局结束标记（AI 出完最后一手/一圈结束时带上）
     broadcast(room);
     if(room.G.ended){ finishRoom(room); return; }
     aiPlayTurn(room);
@@ -148,27 +156,47 @@ function describe(cards){
 }
 
 /* ---------- 确认轮结束 / 开局 ---------- */
-// 全员准备检查：真人座位需准备，AI 座位视为已准备（aiFill 开时参与）
+// 全员就绪检查：真人需准备，AI 座位自动视为已就绪（aiFill 开时参与）
+// 两种可开局状态：① 尚未开局（G 为空）② 上一局刚结束、等待开下一局（G.ended）
 function checkAllReady(room){
-  if(!room || room.G) return false;
-  // 人数要求：aiFill 开 → 可 AI 补位（无需4真人）；关 → 需4真人
+  if(!room) return false;
+  const waitingNext = !!(room.G && room.G.ended);
+  const noGame = !room.G;
+  if(!waitingNext && !noGame) return false;
   const needHuman = room.aiFill ? 0 : 4;
   if(room.humanCount < needHuman){ broadcast(room); return false; }
-  // 有效座位（真人或 aiFill 开的 AI）都必须已准备
   for(let i=0;i<4;i++){
     const s=room.seats[i];
     const effective = (s.type==='human') || (room.aiFill && s.type==='ai');
-    if(effective && !room.ready[i]){ broadcast(room); return false; }
+    if(effective){
+      const ready = (s.type==='ai') || !!room.ready[i];
+      if(!ready){ broadcast(room); return false; }
+    }
   }
-  logLine(room, '✅ 全员准备，开始对局！');
-  startRound(room);
+  logLine(room, waitingNext ? '✅ 全员就绪，开下一局！' : '✅ 全员准备，开始对局！');
+  if(waitingNext) startNext(room); else startRound(room);
   return true;
 }
 
 function startRound(room){
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   room.G.rollcages = room.G.seats.map(()=>[]);
+  room.roundSeq++; room.G.seq=room.roundSeq;
   // 服务器持局：开局先广播叫牌信息
+  logLine(room, `—— 第 ${room.G.roundNo} 局 ——`);
+  logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
+  broadcast(room);
+  aiPlayTurn(room);
+}
+
+// 开下一局：按上一局一游当庄
+function startNext(room){
+  const nextLandlord = (room.G && room.G.firstOut!=null) ? room.G.firstOut : null;
+  room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
+  if(nextLandlord!=null) TS.pickLandlord(room.G, nextLandlord);
+  room.G.roundNo = room.series.roundCount + 1;
+  room.roundSeq++; room.G.seq=room.roundSeq;
+  room.ready = [false,false,false,false]; // 各玩家为下一局重新就绪
   logLine(room, `—— 第 ${room.G.roundNo} 局 ——`);
   logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
   broadcast(room);
@@ -177,6 +205,7 @@ function startRound(room){
 
 function finishRoom(room){
   const s = TS.settleRound(room.G);
+  markLast(room); // 确保最后一局的标记已带上
   logLine(room, `—— 第 ${room.G.roundNo} 局结算 ——`);
   for(let i=0;i<4;i++){
     logLine(room, `  ${room.seats[i].name}：${s.perFen[i]>0?'+':''}${s.perFen[i]}分` +
@@ -194,9 +223,13 @@ function finishRoom(room){
     room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
     room.ready=[false,false,false,false]; // 准备重置，下场比赛重新准备
     room.G=null;
+  } else {
+    // 非最后一局：等所有玩家点【下一局】就绪后自动开下一局
+    room.ready=[false,false,false,false];
+    logLine(room, `请各玩家点击【下一局】就绪，全员就绪自动开下一局`);
   }
   broadcast(room);
-  // 不自动开下一局，等房主点"下一局"
+  // 不自动开下一局，等所有玩家就绪
 }
 
 /* ---------- Socket.IO ---------- */
@@ -337,17 +370,11 @@ io.on('connection', (socket)=>{
   });
 
   socket.on('nextRound', ()=>{
-    if(!room || !room.G || !room.G.ended) return;
-    if(mySeat!==0){ socket.emit('toast','只有房主能开下一局'); return; }
-    // 用一游当下一局庄家
-    const nextLandlord=room.G.firstOut;
-    room.G=TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
-    TS.pickLandlord(room.G, nextLandlord);
-    room.G.roundNo++;
-    logLine(room, `—— 第 ${room.G.roundNo} 局 ——`);
-    logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
-    broadcast(room);
-    aiPlayTurn(room);
+    if(!room || !room.G || !room.G.ended) return; // 上一局尚未结束时忽略
+    if(mySeat<0 || room.seats[mySeat].type!=='human') return;
+    room.ready[mySeat]=true;
+    socket.emit('toast','已就绪，等待其他玩家');
+    checkAllReady(room);
   });
 
   // 玩家动作
@@ -392,6 +419,7 @@ io.on('connection', (socket)=>{
       TS.handlePass(room.G, seatIdx);
       logLine(room, `${room.seats[seatIdx].name} 不出`);
     }
+    markLast(room); // 局结束标记（有则带上，重复广播幂等）
     broadcast(room);
     if(room.G.ended){ finishRoom(room); return; }
     aiPlayTurn(room);

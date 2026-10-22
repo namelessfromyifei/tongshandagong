@@ -66,10 +66,10 @@ function connect(){
     UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr);
     // 房主才显示"对局配置"
     if($('btnStart')) $('btnStart').style.display = (mySeat===0 && !(snap.G && snap.G.started)) ? 'inline-block' : 'none';
-    // 准备按钮：未开局才显示（已开局隐藏），准备/取消准备切换
+    // 准备按钮：对局进行中隐藏；未开始或一局结束才显示（最后一局需手动准备）
     if($('btnReady')){
       const isReady = !!readyArr[mySeat];
-      $('btnReady').style.display = (snap.G && snap.G.started) ? 'none' : 'inline-block';
+      $('btnReady').style.display = (snap.G && snap.G.started && !snap.G.ended) ? 'none' : 'inline-block';
       $('btnReady').textContent = isReady ? '取消准备' : '准备';
       $('btnReady').classList.toggle('gold', isReady);
     }
