@@ -262,8 +262,8 @@ function toggleVoice(){
 function playSpeech(cards){
   const p=TS.analyzePlay(cards, G&&G.cfg);
   if(!p) return '';
-  // 语音读法：Q 读“圈”，A 读“兼”
-  const rn=r=>{ const s=TS.RANKS[r]; return s==='Q'?'圈':(s==='A'?'兼':s); };
+  // 语音读法：J 读“沟”、Q 读“圈”、A 读“兼”
+  const rn=r=>{ const s=TS.RANKS[r]; return s==='J'?'沟':(s==='Q'?'圈':(s==='A'?'兼':s)); };
   let d='';
   switch(p.type){
     case 'single': d=(cards[0]&&cards[0].j)?'王':rn(cards[0].r); break;
@@ -316,6 +316,7 @@ function applyState(snap){
     for(let k=0;k<4;k++){
       const tr=$('t'+k); if(tr) tr.innerHTML='';
       const hc=$('h'+k); if(hc) hc.innerHTML='';
+      const he=$('hint'+k); if(he) he.innerHTML='';
     }
     const md=$('modal'); if(md) md.hidden=true;
     selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
@@ -363,6 +364,7 @@ function applyState(snap){
     if($('msg')) $('msg').textContent='等待全员准备…';
     if($('btnSort')) $('btnSort').style.display='none'; // 开局前不显示排序按钮
     if($('btnNext')) $('btnNext').style.display='none';
+    for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
     renderSeatNames();
     setBtn(false);
     return;
@@ -535,24 +537,21 @@ function renderSeats(){
     // 出牌区
     const tr=$('t'+v); tr.innerHTML='';
     const isDizhi = !s.out && s.hand.length===1;
+    // 状态提示（插底 / x游）：南=准备按钮右侧；东/西=信息框下方；北=信息框右侧
+    const hintEl=$('hint'+v);
+    if(hintEl) hintEl.innerHTML='';
     const addAlert=()=>{
+      if(!hintEl) return;
       const d=document.createElement('div');
       d.innerHTML='<span class="warnDizhi"><span class="icon">!</span>插底</span>';
-      if(v===2){
-        // 北家：提示放到已有内容（牌/不要/明独等）的右侧，避免挡住中间信息框；无其它内容时居中
-        d.className='dizhiAlert' + (tr.children.length ? '' : ' center');
-      } else {
-        d.style.cssText='padding:3px 0 0;';
-      }
-      tr.appendChild(d);
+      hintEl.appendChild(d);
     };
-    const addPlace=(small)=>{
+    const addPlace=()=>{
+      if(!hintEl) return;
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
-      d.style.cssText = small
-        ? 'color:#ffe9b0;font-size:12px;font-weight:bold;padding:2px 0 0;'
-        : 'color:#ffe9b0;font-size:16px;font-weight:bold;padding:8px 0;';
-      tr.appendChild(d);
+      d.style.cssText='color:#ffe9b0;font-size:13px;font-weight:bold;';
+      hintEl.appendChild(d);
     };
     if(i===G.turn && !G.ended){
       // 轮到：插底提示统一在末尾追加，这里只处理"…"
