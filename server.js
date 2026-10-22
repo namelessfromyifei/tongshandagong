@@ -16,6 +16,8 @@ const TSAI = require('./js/ai.js');
 const PORT = process.env.PORT || 8080;
 // 牌局结束后房间闲置超时自动解散（毫秒）；设为 0 可关闭。默认 5 分钟。
 const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 5*60*1000);
+// AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
+const AI_TURN_MS = Number(process.env.AI_TURN_MS || 1500);
 const app = express();
 const server = http.createServer(app);
 // 缩短心跳，断线更快被发现（默认 ping 约 25s）
@@ -183,7 +185,7 @@ function aiPlayTurn(room){
     broadcast(room);
     if(room.G.ended){ finishRoom(room); return; }
     aiPlayTurn(room);
-  }, 650);
+  }, AI_TURN_MS);
 }
 
 function describe(cards){

@@ -119,12 +119,16 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .handArea{position:relative;display:flex;justify-content:center;align-items:center;min-width:0;min-height:104px;}
 .handArea #hand{flex:0 1 auto;min-width:0;}
 /* 本家信息框：手牌行左侧；position:relative 让右上/右下角标以本框为定位参照 */
-.handRow .seatS{position:relative;transform:none;width:170px;max-width:100%;min-height:44px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;justify-self:end;z-index:auto;font-size:10px;}
+.handRow .seatS{position:relative;transform:none;width:170px;max-width:100%;min-height:44px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;justify-self:start;z-index:auto;font-size:10px;}
 .handRow .seatS .head{margin-bottom:0;gap:4px;}
 .handRow .seatS .pts{margin:0;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 /* 右侧工具列：排序按钮在上、牌大小按钮在下，贴着手牌右侧 */
-.handTools{display:flex;flex-direction:column;align-items:flex-start;gap:4px;justify-self:start;flex:0 0 auto;}
+.handTools{display:flex;flex-direction:column;align-items:flex-start;gap:4px;justify-self:end;flex:0 0 auto;}
+/* 窄屏回退：空间不足时信息框/按钮保持原宽度，手牌区域横向滚动 */
+.handRow.handRowCompact{grid-template-columns:auto minmax(0,1fr) auto;}
+.handRow.handRowCompact .seatS{justify-self:start;}
+.handRow.handRowCompact .handTools{justify-self:start;}
 .handTools .btn{padding:4px 10px;font-size:12px;white-space:nowrap;}
 #hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:10px;overflow-x:auto;}
 .hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}

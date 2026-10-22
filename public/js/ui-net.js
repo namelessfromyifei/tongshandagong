@@ -87,6 +87,7 @@ function enablePlayer(){
   $('btnPlay').disabled = !mine;
   $('btnPass').disabled = !mine || !G.lastPlay;
   $('btnPass').textContent = '不要';
+  $('btnHard').disabled=false;
   $('btnHard').style.display='none';
   $('btnHe').style.display='none';
   $('btnHint').style.display='inline-block';
@@ -94,6 +95,7 @@ function enablePlayer(){
 function enableConfirm(){
   const seat=mySeat;
   $('btnHe').style.display = TS.handHasBomb(G.seats[seat].hand) ? 'none' : 'inline-block';
+  $('btnHard').disabled=false;
   $('btnHard').style.display = 'inline-block';
   $('btnPass').disabled=false; $('btnPass').textContent='不明独';
   $('btnHint').style.display='none';
@@ -103,6 +105,7 @@ function enableConfirm(){
 /* ---------- 动作（发服务器） ---------- */
 function playerPlay(){
   if(!G||G.ended||G.turn!==mySeat) return;
+  if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   const cards=[...G.seats[mySeat].hand].filter((c,i)=>selected.has(i));
   if(cards.length===0){ flashMsg('请先选牌'); return; }
   // 先发送，待成功后（广播轮到我下家）再清空预选；失败时保留选择便于调整
@@ -111,12 +114,14 @@ function playerPlay(){
 }
 function playerPass(){
   if(!G) return;
+  if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   if(G.confirming){ getNET().act({type:'confirm', seat:mySeat, choice:'pass'}); return; }
   if(!G.lastPlay||G.turn!==mySeat) return;
   getNET().act({type:'pass', seat:mySeat});
 }
 function playerConfirmMingdu(){
   if(!G||!G.confirming) return;
+  if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   getNET().act({type:'confirm', seat:mySeat, choice:'mingdu'});
 }
 function playerHard(){ playerConfirmMingdu(); }
@@ -164,32 +169,88 @@ function cycleCardSize(){
 }
 
 /* ---------- 语音提示（每一手出牌朗读） ---------- */
-let voiceOn=true, zhVoice=null, lastSpokenKey='';
-function pickZhVoice(){
+let voiceOn=true, zhVoices=[], voiceIdx=0, lastSpokenKey='';
+let voiceBusy=false, voiceSeq=0; // 正在播报时暂不允许本地出牌
+let voiceInit=true; // 首帧只记录状态，不播报历史事件
+let prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
+                   {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
+// 音色排序：zh-CN 优先，常见高质量女声/网络音色优先
+function rankVoice(v){
+  const lang=(v.lang||'').toLowerCase(), name=(v.name||'');
+  let s=0;
+  if(lang==='zh-cn'||lang==='zh_cn') s+=40;
+  else if(lang.indexOf('zh')===0) s+=20;
+  if(/xiaoxiao|xiaoyi|huihui|yaoyao|tingting|meijia|female|女/i.test(name)) s+=15;
+  if(/network/i.test(name)||/network/i.test(v.voiceURI||'')) s+=5;
+  return s;
+}
+function refreshVoices(){
   if(!('speechSynthesis' in window)) return;
-  try{
-    const vs=window.speechSynthesis.getVoices()||[];
-    zhVoice=vs.find(v=>/^zh/i.test(v.lang||''))||null;
-  }catch(e){}
+  let list=[];
+  try{ list=(window.speechSynthesis.getVoices()||[]).filter(v=>/^zh/i.test(v.lang||'')); }catch(e){}
+  list.sort((a,b)=>rankVoice(b)-rankVoice(a));
+  zhVoices=list;
+  if(zhVoices.length){
+    let saved=null; try{ saved=localStorage.getItem('tsVoiceName'); }catch(e){}
+    const si=saved?zhVoices.findIndex(v=>v.name===saved):-1;
+    voiceIdx = si>=0 ? si : Math.min(voiceIdx, zhVoices.length-1);
+  } else voiceIdx=0;
+  const b=$('btnVoiceTone');
+  if(b){
+    b.style.display = zhVoices.length>1 ? 'inline-block' : 'none';
+    b.textContent = zhVoices.length ? `音色 ${voiceIdx+1}/${zhVoices.length}` : '音色';
+  }
+}
+function cycleVoiceTone(){
+  if(zhVoices.length<=1){ flashMsg('设备只有一个中文音色'); return; }
+  voiceIdx=(voiceIdx+1)%zhVoices.length;
+  try{ localStorage.setItem('tsVoiceName', zhVoices[voiceIdx].name); }catch(e){}
+  refreshVoices();
+  speak(`第${voiceIdx+1}个音色`);
+}
+// 播报中禁用本地出牌按钮；播报结束（或语音不可用）后恢复
+function voiceGate(){
+  if(!G) return;
+  if(voiceBusy){
+    if(!G.ended && G.turn===mySeat){
+      $('btnPlay').disabled=true;
+      $('btnPass').disabled=true;
+      if(G.confirming) $('btnHard').disabled=true;
+    }
+  } else if(!G.ended && G.turn===mySeat){
+    if(G.confirming) enableConfirm(); else enablePlayer();
+  }
+}
+function releaseVoice(){
+  voiceSeq++;
+  voiceBusy=false;
+  voiceGate();
 }
 function speak(text){
-  if(!voiceOn||!text) return;
-  if(!('speechSynthesis' in window)) return;
+  if(!voiceOn||!text){ releaseVoice(); return; }
+  if(!('speechSynthesis' in window)){ releaseVoice(); return; }
   try{
     const synth=window.speechSynthesis;
     synth.cancel(); // 不排队积压，始终读最新一手
     const u=new SpeechSynthesisUtterance(text);
-    u.lang='zh-CN'; u.rate=1.15;
-    if(zhVoice) u.voice=zhVoice;
+    u.lang='zh-CN'; u.rate=1.3; u.pitch=1.0;
+    if(zhVoices[voiceIdx]) u.voice=zhVoices[voiceIdx];
+    const seq=++voiceSeq;
+    const done=()=>{ if(seq!==voiceSeq) return; voiceBusy=false; voiceGate(); };
+    u.onend=done; u.onerror=done;
+    voiceBusy=true;
     synth.speak(u);
-  }catch(e){}
+    voiceGate();
+    // 兜底：个别 WebView 不触发 onend，按文本长度估算后自动解锁
+    setTimeout(done, Math.max(1500, text.length*300)+1000);
+  }catch(e){ releaseVoice(); }
 }
 function applyVoiceBtn(){ const b=$('btnVoice'); if(b) b.textContent='语音：'+(voiceOn?'开':'关'); }
 function initVoice(){
   try{ const v=localStorage.getItem('tsVoice'); if(v!==null) voiceOn=(v==='1'); }catch(e){}
   applyVoiceBtn();
-  pickZhVoice();
-  if('speechSynthesis' in window){ try{ window.speechSynthesis.onvoiceschanged=pickZhVoice; }catch(e){} }
+  refreshVoices();
+  if('speechSynthesis' in window){ try{ window.speechSynthesis.onvoiceschanged=refreshVoices; }catch(e){} }
 }
 function toggleVoice(){
   voiceOn=!voiceOn;
@@ -198,32 +259,51 @@ function toggleVoice(){
   if(!voiceOn && 'speechSynthesis' in window){ try{ speechSynthesis.cancel(); }catch(e){} }
   if(voiceOn) speak('语音提示已开启');
 }
-function playSpeech(seatIdx, cards){
+function playSpeech(cards){
   const p=TS.analyzePlay(cards, G&&G.cfg);
   if(!p) return '';
-  const rn=r=>TS.RANKS[r];
+  // 语音读法：Q 读“圈”，A 读“兼”
+  const rn=r=>{ const s=TS.RANKS[r]; return s==='Q'?'圈':(s==='A'?'兼':s); };
   let d='';
   switch(p.type){
-    case 'single': d=(cards[0]&&cards[0].j)?'王':(TS.SUIT_NAME[cards[0].s]+rn(cards[0].r)); break;
+    case 'single': d=(cards[0]&&cards[0].j)?'王':rn(cards[0].r); break;
     case 'pair': d=cards.every(c=>c.j)?'对王':('对'+rn(p.val)); break;
     case 'triple': d=cards.every(c=>c.j)?'三个王':('三个'+rn(p.val)); break;
     case 'seqPair': d='连对'; break;
     case 'airplane': d='飞机'; break;
-    case 'fiftyK': d='五十K'+(p.tonghua?'同花':''); break;
-    case 'bomb': d=`${p.size}张${rn(p.rank)}${p.soft?'软':'硬'}炸`; break;
-    case 'rollcage': d=`${p.fan}番滚笼`; break;
-    case 'kingBomb': d=`${p.size}个王炸`; break;
+    case 'fiftyK': d='五十K'; break;
+    case 'bomb': d=`${p.size}张${rn(p.rank)}`; break;
+    case 'rollcage': d='滚笼'; break;
+    case 'kingBomb': d=`${p.size}个王`; break;
     default: d='出牌';
   }
-  const who=seatNames[seatIdx]||'';
-  return who ? who+'，'+d : d;
+  return d;
 }
-function announceLastPlay(){
-  if(!G||G.lastSeat<0||!G.lastCards||!G.lastCards.length) return;
-  const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
-  if(key===lastSpokenKey) return;
-  lastSpokenKey=key;
-  speak(playSpeech(G.lastSeat, G.lastCards));
+// 出牌 / 不要 / 明独 / 不明独 / 插底：同一帧的事件合并成一句播报
+function announceState(){
+  if(!G) return;
+  const msgs=[];
+  if(G.lastSeat>=0 && G.lastCards && G.lastCards.length){
+    const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
+    if(key!==lastSpokenKey){
+      lastSpokenKey=key;
+      const txt=playSpeech(G.lastCards);
+      if(txt) msgs.push(txt);
+    }
+  }
+  for(let i=0;i<4;i++){
+    const s=G.seats[i]; if(!s) continue;
+    const cur={ passed:!!s.passed, choice:s.choice||null, dizhi:!s.out && !!s.hand && s.hand.length===1 };
+    const prev=prevSeatState[i]||{passed:false,choice:null,dizhi:false};
+    if(!voiceInit){
+      if(cur.passed && !prev.passed) msgs.push('过');
+      if(cur.choice && cur.choice!==prev.choice) msgs.push(cur.choice==='mingdu'?'明独':'不独');
+      if(cur.dizhi && !prev.dizhi) msgs.push('插底');
+    }
+    prevSeatState[i]=cur;
+  }
+  voiceInit=false;
+  if(msgs.length) speak(msgs.join('，'));
 }
 
 /* ---------- 状态接收 ---------- */
@@ -241,6 +321,9 @@ function applyState(snap){
     selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
     cumTotals=[0,0,0,0]; cumEndedSeq=0; resetPending=false; pendingPlay=false;
     lastSpokenKey=''; // 换房间后允许重新播报
+    voiceInit=true;
+    prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
+                   {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
   }
   G = snap.G || null;
   seatNames = snap.seats.map(s=>s.name);
@@ -295,13 +378,14 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
-  announceLastPlay();
+  announceState();
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
   if($('btnNext')) $('btnNext').style.display = (G && G.ended) ? 'inline-block' : 'none';
   // 按钮：确认轮 / 出牌轮
   if(G.ended){ setBtn(false); return; }
   if(G.confirming){ setBtn(false); if(G.turn===mySeat) enableConfirm(); }
   else { setBtn(false); if(G.turn===mySeat) enablePlayer(); }
+  voiceGate(); // 语音播报未结束时保持按钮禁用
 }
 
 /* ---------- 渲染 ---------- */
@@ -663,6 +747,20 @@ window.GameUI = {
   addLog,
 };
 
+/* ---------- 手牌行宽度自适应 ----------
+ * 宽度足够：信息框固定最左、按钮固定最右；
+ * 太窄（<780px）：退回贴近手牌，避免信息框被压扁/按钮压住手牌。 */
+(function(){
+  const row=document.querySelector('.handRow');
+  if(!row || !window.ResizeObserver) return;
+  const update=()=>{
+    const w=row.clientWidth;
+    row.classList.toggle('handRowCompact', w>0 && w<780);
+  };
+  new ResizeObserver(update).observe(row);
+  update();
+})();
+
 /* ---------- 按钮绑定 ---------- */
 $('btnPlay').onclick=playerPlay;
 $('btnPass').onclick=playerPass;
@@ -670,6 +768,7 @@ $('btnHint').onclick=playerHint;
 $('btnSort').onclick=toggleSort;
 $('btnSize').onclick=cycleCardSize;
 $('btnVoice').onclick=toggleVoice;
+if($('btnVoiceTone')) $('btnVoiceTone').onclick=cycleVoiceTone;
 $('btnHard').onclick=playerHard;
 initCardSize();
 initVoice();
