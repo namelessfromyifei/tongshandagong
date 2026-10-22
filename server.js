@@ -47,7 +47,7 @@ function createRoom(code){
     aiTimer: null,
     settings: {         // 牌局设置（房主可调）
       rounds: 1,        // 一轮打多少局
-      showRemain: true, // 是否显示剩余张数
+      showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
       kings: 8,         // 王总数 8/10/12
       jokerValue: 3,    // 王单出算 3 或 2
       tailBonus: false, // 4+王 尾游能否拿奖金

@@ -126,12 +126,13 @@ async function main(){
     return r;
   }
 
-  // ---- 场景A：原生横屏 844x390 ----
-  await setMetrics(844,390,'landscapePrimary');
+  // ---- 场景A：原生横屏（默认 844x390；可用 W1/H1 环境变量改成窄屏复现） ----
+  const W1 = process.env.W1?+process.env.W1:844, H1 = process.env.H1?+process.env.H1:390;
+  await setMetrics(W1,H1,'landscapePrimary');
   await send('Page.navigate',{url:'http://localhost:8080/'});
   await sleep(2500);
   await enterRoom();
-  const A = await measure('场景A 原生横屏 844x390');
+  const A = await measure('场景A 原生横屏 '+W1+'x'+H1);
   const Aok = A.tableBottom <= windowHeight(A.vh) + 3;
   function windowHeight(vh){ return vh; }
 

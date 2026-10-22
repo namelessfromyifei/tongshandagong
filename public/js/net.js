@@ -272,7 +272,7 @@ function applySettings(s){
   if($('setKings')) $('setKings').value=s.kings||8;
   if($('setJoker')) $('setJoker').value=s.jokerValue||3;
   if($('setTailBonus')) $('setTailBonus').checked=!!s.tailBonus;
-  if($('setShowRemain')) $('setShowRemain').checked=s.showRemain!==false;
+  if($('setShowRemain')) $('setShowRemain').checked=!!s.showRemain;
   if($('setAIFill')) $('setAIFill').checked=!!s.aiFill;
 }
 

@@ -33,14 +33,15 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .roundSco.plus{background:#1d9c5c;}
 .roundSco.minus{background:#c0392b;}
 .roundSco.zero{background:#6b7a73;}
+/* 右上角：已打出笼数徽标 */
+.cumSco{position:absolute;right:-5px;top:-5px;font-size:9px;font-weight:bold;padding:1px 5px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
+.cumSco.fan{background:#b8860b;}
 /* 明鸡已出：同队相同标记（庄队◆ / 客队◇）+ 座位底色 */
 .teamMark{font-style:normal;font-size:13px;line-height:1;margin-right:2px;}
 .teamMark.ta{color:#ffd94a;text-shadow:0 0 5px rgba(255,217,74,.8);}
-.teamMark.tb{color:#8fc1e8;text-shadow:0 0 5px rgba(143,193,232,.7);}
+.teamMark.tb{color:#ff6b5e;text-shadow:0 0 5px rgba(224,82,74,.8);}
 .teamMark.hard{color:#ff9d8a;}
 .teamMark.host{color:#e8c15a;}
-.seat.teamA{background:rgba(232,193,90,.16);}
-.seat.teamB{background:rgba(143,193,232,.13);}
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
 .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(150deg,#f0cf7e,#caa347);color:#4a3000;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid rgba(255,255,255,.3);flex:0 0 auto;}
 .nm{font-weight:bold;font-size:12px;}
@@ -121,7 +122,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .handArea #btnSort{position:absolute;right:8px;top:50%;transform:translateY(-50%);flex:0 0 auto;padding:4px 10px;font-size:12px;z-index:2;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-#hand{display:flex;justify-content:center;align-items:flex-end;min-height:100px;padding-top:10px;}
+#hand{display:flex;justify-content:safe center;align-items:flex-end;min-height:100px;padding-top:10px;overflow-x:auto;}
 .hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
 .hcard:first-child{margin-left:0;}
 @media (hover:hover){ /* 仅鼠标设备悬停上浮，触摸端不粘 :hover（避免"收回一半"） */
@@ -135,7 +136,21 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 
 /* ===== 弹窗 ===== */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;}
-.modalBox{background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:640px;width:90%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
+.modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
+#btnPeek{position:absolute;right:8px;top:8px;z-index:2;font-size:12px;padding:2px 8px;}
+/* 局末信息框中展示的"未出完手牌"小卡 */
+.cards.back .card.remainCard{width:19px;height:28px;border-radius:3px;margin-left:-12px;box-shadow:none;}
+.cards.back .card.remainCard:first-child{margin-left:0;}
+.cards.back .card.remainCard .tl{font-size:6px;top:1px;left:2px;}
+.cards.back .card.remainCard .br{font-size:6px;bottom:1px;right:2px;}
+.cards.back .card.remainCard .ctr{font-size:10px;}
+/* 局末剩余手牌：分两行、行间叠起，保留点数花色可读 */
+.cards.back.remainStack{display:block;}
+.cards.back.remainStack .remainRow{display:flex;}
+.cards.back.remainStack .remainRow + .remainRow{margin-top:-18px;}
+/* 插底警报：红色圆徽标（白！）+ 文字 */
+.warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
+.warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:11px;line-height:1;}
 .modalBox h2{color:var(--gold);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
 .modalBox th,.modalBox td{border:1px solid rgba(255,255,255,.18);padding:6px 8px;text-align:left;}
@@ -266,7 +281,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .corner .mini{width:14px;height:21px;}
   .corner .mini .tl{font-size:6px;} .corner .mini .br{font-size:6px;} .corner .mini .ctr{font-size:8px;}
   /* 设置弹窗 */
-  .modalBox{max-width:90%;padding:12px;}
+  .modalBox{max-width:94%;padding:12px;}
   .setGrid{gap:6px;}
   .setGrid label{font-size:12px;}
 }
@@ -331,7 +346,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .setGrid .chk input{width:22px;height:22px;}
 }
 @media (orientation:landscape) and (max-width:920px){
-  .modalBox{max-width:60%;padding:12px 14px;}
+  .modalBox{max-width:94%;padding:12px 14px;}
   .modalBox .lobbyRow input,.modalBox input{font-size:15px;padding:7px 10px;}
   .modalBox .btn{font-size:14px;padding:6px 12px;}
   .modalBox .mBtn{gap:8px;margin-top:10px;}
@@ -409,7 +424,7 @@ body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
 body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}
 body.landscapeCompat .tableTopRight .btn{padding:2px 6px;font-size:10px;}
 body.landscapeCompat .tableWho{left:96px;top:20px;font-size:9px;}
-body.landscapeCompat .modalBox{max-width:60%;padding:12px 14px;}
+body.landscapeCompat .modalBox{max-width:94%;padding:12px 14px;}
 body.landscapeCompat .modalBox .lobbyRow input,body.landscapeCompat .modalBox input{font-size:15px;padding:7px 10px;}
 body.landscapeCompat .modalBox .btn{font-size:14px;padding:6px 12px;}
 body.landscapeCompat .modalBox .mBtn{gap:8px;margin-top:10px;}
