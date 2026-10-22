@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=44">
+<link rel="stylesheet" href="css/style.css?v=46">
 </head>
 <body>
 <div id="app">
@@ -140,6 +140,8 @@
             <button id="btnHe" class="btn danger">毁牌（重发）</button>
             <button id="btnHard" class="btn danger">明独</button>
             <button id="btnReady" class="btn gold" style="display:none">准备</button>
+            <button id="btnSort" class="btn small">排序：点数</button>
+            <button id="btnNext" class="btn gold" style="display:none">下一局</button>
           </div>
           <div class="handArea">
             <div class="seat seatS" data-seat="0">
@@ -151,7 +153,6 @@
               <div class="pts" id="p0"></div>
             </div>
             <div id="hand"></div>
-            <button id="btnSort" class="btn small">排序：点数</button>
           </div>
         </div>
       </div>
@@ -180,7 +181,7 @@
       <div id="modal" class="overlay" hidden>
         <div class="modalBox">
           <h2 id="mTitle">本局结果</h2>
-          <button id="btnPeek" class="btn small">按住看牌</button>
+          <button id="btnPeek" class="btn small">关闭计分板</button>
           <table id="mTable"></table>
           <div class="mBtn"><button id="btnClose" class="btn gold">下一局</button></div>
         </div>
@@ -193,10 +194,10 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=44"></script>
-<script src="js/ai.js?v=44"></script>
-<script src="js/ui-net.js?v=44"></script>
-<script src="js/screen.js?v=44"></script>
-<script src="js/net.js?v=44"></script>
+<script src="js/engine.js?v=46"></script>
+<script src="js/ai.js?v=46"></script>
+<script src="js/ui-net.js?v=46"></script>
+<script src="js/screen.js?v=46"></script>
+<script src="js/net.js?v=46"></script>
 </body>
 </html>

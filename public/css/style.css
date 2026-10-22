@@ -82,9 +82,9 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 /* 牌桌左上角：叫牌 + 明鸡状态 */
 .corner{position:absolute;top:10px;left:12px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px 10px;font-size:12px;color:#e5f0e9;display:flex;flex-direction:column;gap:3px;min-width:120px;}
 .corner .cornerRow{display:flex;align-items:center;gap:6px;line-height:1.4;}
-.corner .mini{width:22px;height:31px;border-radius:4px;}
-.corner .mini .tl{font-size:8px;} .corner .mini .br{font-size:8px;} .corner .mini .ctr{font-size:13px;}
-.corner .mini.jk .ctr{font-size:10px;}
+.corner .mini{width:30px;height:42px;border-radius:4px;}
+.corner .mini .tl{font-size:10px;} .corner .mini .br{font-size:10px;} .corner .mini .ctr{font-size:17px;}
+.corner .mini.jk .ctr{font-size:13px;}
 .corner b{color:var(--gold);}
 
 /* ===== 扑克牌 ===== */
@@ -110,18 +110,16 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 /* 玩家手牌区：整块居中在桌面南侧，无框 */
 .south{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:96%;background:none;border:none;padding:0;}
 .southMain{display:flex;flex-direction:column;align-items:center;width:100%;gap:2px;}
-/* 手牌行：手牌居中，排序按钮常驻在右侧 */
+/* 手牌行：信息框作为行内首项，手牌紧随其后（组居中），二者永不重叠 */
 .handArea{position:relative;display:flex;justify-content:center;align-items:center;width:100%;min-height:104px;}
-.handArea #hand{flex:0 1 auto;}
-/* 南家信息框：绝对定位在牌左侧，垂直居中同一线，不挤占手牌 */
-/* 本家信息框：绝对定位于手牌左侧，宽度与其他玩家信息框一致（继承 .seat 宽度），不占布局、不挡牌 */
-.handArea .seatS{position:absolute;left:3px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;flex:0 0 auto;z-index:2;font-size:10px;min-height:44px;}
+.handArea #hand{flex:0 1 auto;min-width:0;}
+/* 本家信息框：作为手牌行左侧的一项（不覆盖牌），宽度与其他玩家信息框一致 */
+.handArea .seatS{position:static;transform:none;width:170px;min-height:44px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:3px 6px;flex:0 0 auto;z-index:auto;font-size:10px;margin-right:4px;}
 .handArea .seatS .head{margin-bottom:0;gap:4px;}
 .handArea .seatS .pts{margin:0;}
-/* 排序按钮：绝对定位在牌右侧，垂直居中同一线，不挤占手牌 */
-.handArea #btnSort{position:absolute;right:8px;top:50%;transform:translateY(-50%);flex:0 0 auto;padding:4px 10px;font-size:12px;z-index:2;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.actions #btnSort{font-size:11px;padding:3px 9px;}
 #hand{display:flex;justify-content:safe center;align-items:flex-end;min-height:100px;padding-top:10px;overflow-x:auto;}
 .hcard{margin-left:-34px;cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
 .hcard:first-child{margin-left:0;}
@@ -201,6 +199,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   /* 手牌区 */
   .south{bottom:2px;}
   .handArea #btnSort{font-size:10px;padding:3px 7px;}
+  .handArea .seatS{width:150px;}
   .southMain #hand .hcard{margin-left:-34px;}
   .southMain #hand .card{width:48px;height:68px;}
   .southMain #hand .card .tl{font-size:12px;} .southMain #hand .card .br{font-size:12px;}
@@ -216,8 +215,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .lobbyRow{font-size:12px;}
   /* 角落信息 */
   .corner{min-width:90px;padding:4px 6px;font-size:10px;}
-  .corner .mini{width:16px;height:24px;}
-  .corner .mini .tl{font-size:6px;} .corner .mini .br{font-size:6px;} .corner .mini .ctr{font-size:9px;}
+  .corner .mini{width:28px;height:40px;}
+  .corner .mini .tl{font-size:9px;} .corner .mini .br{font-size:9px;} .corner .mini .ctr{font-size:16px;}
 }
 /* 移动端手牌：超宽时可横向滑动 */
 @media (max-width: 560px){
@@ -268,6 +267,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   .handArea #btnSort{font-size:10px;padding:3px 7px;}
+  .handArea .seatS{width:150px;}
   .actions{gap:4px;margin:0;}
   /* 手牌行居中；信息框绝对居左、按钮贴手牌 */
   .southMain{gap:2px;}
@@ -278,8 +278,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .log{position:absolute;right:8px;top:46px;width:210px;max-width:44%;max-height:56px;font-size:9px;padding:3px 6px;margin:0;border-radius:6px;z-index:3;}
   /* 角落 */
   .corner{min-width:80px;padding:3px 6px;font-size:9px;}
-  .corner .mini{width:14px;height:21px;}
-  .corner .mini .tl{font-size:6px;} .corner .mini .br{font-size:6px;} .corner .mini .ctr{font-size:8px;}
+  .corner .mini{width:26px;height:36px;}
+  .corner .mini .tl{font-size:8px;} .corner .mini .br{font-size:8px;} .corner .mini .ctr{font-size:14px;}
   /* 设置弹窗 */
   .modalBox{max-width:94%;padding:12px;}
   .setGrid{gap:6px;}
@@ -406,6 +406,7 @@ body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:21px;}
 body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;padding:12px 0 2px;min-height:0;}
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
 body.landscapeCompat .handArea #btnSort{font-size:10px;padding:3px 7px;}
+body.landscapeCompat .handArea .seatS{width:150px;}
 body.landscapeCompat .actions{gap:4px;margin:0;}
 body.landscapeCompat .southMain{gap:2px;}
 body.landscapeCompat .handArea{min-height:64px;}
@@ -415,10 +416,10 @@ body.landscapeCompat #tableWrap{height:100vw;}
 body.landscapeCompat .table{height:auto;min-height:300px;flex:1 1 auto;border-width:4px;border-radius:14px;}
 body.landscapeCompat .log{position:absolute;right:8px;top:46px;width:210px;max-width:44%;max-height:56px;font-size:9px;padding:3px 6px;margin:0;border-radius:6px;z-index:3;}
 body.landscapeCompat .corner{min-width:80px;padding:3px 6px;font-size:9px;}
-body.landscapeCompat .corner .mini{width:14px;height:21px;}
-body.landscapeCompat .corner .mini .tl{font-size:6px;}
-body.landscapeCompat .corner .mini .br{font-size:6px;}
-body.landscapeCompat .corner .mini .ctr{font-size:8px;}
+body.landscapeCompat .corner .mini{width:26px;height:36px;}
+body.landscapeCompat .corner .mini .tl{font-size:8px;}
+body.landscapeCompat .corner .mini .br{font-size:8px;}
+body.landscapeCompat .corner .mini .ctr{font-size:14px;}
 body.landscapeCompat .tableTitle{font-size:12px;left:96px;top:4px;}
 body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
 body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}
