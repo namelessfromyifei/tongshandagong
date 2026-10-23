@@ -52,10 +52,11 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .teamDot.g{background:#2ecc71;box-shadow:0 0 4px rgba(46,204,113,.7);}
 .teamDot.r{background:#e74c3c;box-shadow:0 0 4px rgba(231,76,60,.7);}
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
-.avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(150deg,#f0cf7e,#caa347);color:#4a3000;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid rgba(255,255,255,.3);flex:0 0 auto;transition:background .2s ease,box-shadow .2s ease;}
-/* 明鸡已出：用头像圆圈颜色区分队伍（庄队绿 / 客队红） */
-.seat.teamA .avatar{background:linear-gradient(150deg,#7ee39a,#1d9c5c);color:#0a3b22;border-color:rgba(255,255,255,.5);box-shadow:0 0 8px rgba(29,156,92,.75);}
-.seat.teamB .avatar{background:linear-gradient(150deg,#ff9a8a,#c0392b);color:#fff;border-color:rgba(255,255,255,.5);box-shadow:0 0 8px rgba(192,57,43,.75);}
+.avatar{width:30px;height:30px;border-radius:50%;background:#8a8a8a;color:#eee;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid rgba(255,255,255,.35);flex:0 0 auto;transition:background .2s ease,box-shadow .2s ease;}
+/* 头像圆圈颜色：庄队（庄家+明鸡）绿；明鸡未出的其他三家灰（.plain）；明鸡已出的客其余两家蓝 */
+.seat.teamA .avatar{background:linear-gradient(150deg,#ff5a5a,#c0392b);color:#fff;border-color:rgba(255,255,255,.55);box-shadow:0 0 8px rgba(192,57,43,.8);}
+.seat.teamB .avatar{background:linear-gradient(150deg,#5aa7e8,#2f6fb5);color:#fff;border-color:rgba(255,255,255,.55);box-shadow:0 0 8px rgba(47,111,181,.75);}
+.seat.plain .avatar{background:#8a8a8a;color:#eee;box-shadow:none;}
 .nm{font-weight:bold;font-size:12px;}
 .tag{font-size:11px;color:var(--gold);display:inline-flex;align-items:center;gap:5px;}
 .calledMini{display:inline-flex;vertical-align:middle;}
@@ -83,8 +84,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .trickRow .card .tl{font-size:11px!important;} .trickRow .card .br{font-size:11px!important;}
 .trickRow .card .ctr{font-size:26px!important;}
 .trickRow + .trickRow{margin-top:6px;}
-/* 本家手牌中明鸡牌标记 */
-.hcard.calledMark{outline:2px solid var(--gold);box-shadow:0 0 10px rgba(232,193,90,.8);}
+/* 本家手牌中明鸡牌标记：牌底色变黄 */
+.hcard.calledMark{background:#ffd24a !important;}
 /* 滚笼番数徽标（出牌区最后一张牌右下角） */
 .fanBadge{position:absolute;right:1px;bottom:1px;background:#d4a017;color:#fff;font-size:9px;font-weight:bold;padding:0 3px;border-radius:3px;z-index:3;}
 
@@ -234,7 +235,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .lobbyRow hr{border:none;border-top:1px solid rgba(255,255,255,.15);margin:14px 0;}
 
 /* 明鸡牌打出桌面：金框高亮 */
-.card.calledOnDesk{outline:2px solid var(--gold);box-shadow:0 0 10px rgba(232,193,90,.9);}
+.card.calledOnDesk{background:#ffd24a !important;}
 
 /* ===== 牌局设置栏 ===== */
 .settingsBar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px auto 2px;max-width:1180px;font-size:13px;color:#d9e8e0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 12px;}

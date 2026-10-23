@@ -79,6 +79,8 @@ const cards=(P)=>P.map(([r,s])=>mk(r,s)); // [['A','S'],...]
   T('五十K大炸 5级>4级（同硬）', canBeat(analyzePlay(f50(4)), analyzePlay(f50(5)))===true);
   T('王炸4=4番', (p=>p.type==='kingBomb'&&p.fan===4)(analyzePlay([mkj(),mkj(),mkj(),mkj()])));
   T('王炸8=12番', (p=>p.type==='kingBomb'&&p.fan===12)(analyzePlay([mkj(),mkj(),mkj(),mkj(),mkj(),mkj(),mkj(),mkj()])));
+  T('王炸同张数先出为大', canBeat(analyzePlay(Array(4).fill(mkj())), analyzePlay(Array(4).fill(mkj())))===false);
+  T('王炸张数多者胜', canBeat(analyzePlay(Array(4).fill(mkj())), analyzePlay(Array(5).fill(mkj())))===true);
   T('滚笼4+4硬=2番', (p=>p.type==='rollcage'&&!p.soft&&p.fan===2)(analyzePlay(cards([['A','S'],['A','H'],['A','C'],['A','D'],['K','S'],['K','H'],['K','C'],['K','D']]))));
   T('滚笼4+4软=1番', (p=>p.type==='rollcage'&&p.soft&&p.fan===1)(analyzePlay([...cards([['A','S'],['A','H'],['A','C'],['A','D'],['K','S'],['K','H'],['K','C']]),mkj()])));
   T('滚笼5+5硬=4番', (p=>p.type==='rollcage'&&!p.soft&&p.fan===4)(analyzePlay(cards([['A','S'],['A','H'],['A','C'],['A','D'],['A','S'],['K','S'],['K','H'],['K','C'],['K','D'],['K','S']]))));

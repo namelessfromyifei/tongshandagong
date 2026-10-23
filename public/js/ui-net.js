@@ -54,12 +54,47 @@ function buildKindMap(hand){
   }
   return {cnt, kind, bombSize};
 }
+// 按牌型大类给每张牌分组（供"牌型"排序 sortMode=2）：0炸 1五十K 2三个 3对子 4单个 5王
+function buildGroupMap(hand){
+  const cnt=new Array(TS.RANKS.length).fill(0);
+  for(const c of hand){ if(!c.j) cnt[c.r]++; }
+  const groups=Math.min(cnt[R5],cnt[R10],cnt[RK]); // 最多能配几组五十K
+  // 前 groups 张 5/10/K 打上"五十K"标记（三类同步各取其一）
+  const isFifty=new Set();
+  const gUsed={[R5]:0,[R10]:0,[RK]:0};
+  for(const c of hand){
+    if(!c.j && (c.r===R5||c.r===R10||c.r===RK) && gUsed[c.r]<groups){
+      isFifty.add(c.id); gUsed[c.r]++;
+    }
+  }
+  const g=new Map();
+  for(const c of hand){
+    if(c.j){ g.set(c.id,5); continue; }                    // 王
+    if(isFifty.has(c.id)){ g.set(c.id,1); continue; }      // 五十K 组
+    const remain=cnt[c.r]-(gUsed[c.r]||0);                 // 此点其余分组剩余张数
+    if(remain>=4){ g.set(c.id,0); continue; }              // 炸
+    g.set(c.id, remain>=3?2:(remain>=2?3:4));              // 三个/对子/单个
+  }
+  return g;
+}
 function sortHandCards(){
   const hand = G ? G.seats[mySeat].hand : [];
   const {kind, bombSize}=buildKindMap(hand);
   const idx=hand.map((c,i)=>i);
   if(sortMode===0){
     idx.sort((a,b)=>{ const ka=handKey(hand[a]), kb=handKey(hand[b]); return ka-kb || (hand[a].id<hand[b].id?-1:1); });
+    return idx;
+  }
+  if(sortMode===2){
+    // 按牌型大类归拢：炸 → 五十K → 三个 → 对子 → 单个 → 王；同类内从大到小
+    const groupMap=buildGroupMap(hand);
+    idx.sort((a,b)=>{
+      const ca=hand[a], cb=hand[b];
+      const ga=groupMap.get(ca.id), gb=groupMap.get(cb.id);
+      if(ga!==gb) return ga-gb;
+      if(ga===5) return ca.id<cb.id?-1:1; // 王之间稳定排序
+      return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+    });
     return idx;
   }
   idx.sort((a,b)=>{
@@ -180,7 +215,7 @@ function playerHint(){
   render();
   flashMsg(describeShort(cand.play));
 }
-function toggleSort(){ sortMode=1-sortMode; render(); }
+function toggleSort(){ sortMode=(sortMode+1)%3; render(); }
 
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
 // 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
@@ -643,7 +678,7 @@ function renderSeatNames(){
         nm.textContent = '';
       }
     }
-    const av=$('av'+v); if(av) av.innerHTML=['南','东','北','西'][v];
+    const av=$('av'+v); if(av) av.innerHTML=''; // 圆圈不显示东南西北字（庄家/明鸡标记在开局渲染中处理）
     const pEl=$('p'+v); if(pEl) pEl.textContent = '';
   }
 }
@@ -669,8 +704,8 @@ function updateSeriesInfo(){
 }
 function seatTag(i){
   if(G.mode==='hard') return i===G.hardSeat?'<span class="teamMark hard">硬</span>':'';
-  // 老板标记始终显示（明鸡已公开时也保留，队伍靠头像圆圈颜色区分）
-  return i===G.landlord ? '<span class="teamMark host">老板</span>' : '';
+  // 庄家标记已放到头像圆圈里（"庄"字），信息框 tag 不再显示"老板"
+  return '';
 }
 function renderSeats(){
   // 视图重排：自己的座位(real=mySeat)显示在下方(南位 view0)
@@ -685,22 +720,26 @@ function renderSeats(){
     if(seatTypes[i]==='ai' && !s.out) nm.textContent += ' 🤖';
     // 掉线：在名字框显示"掉线·等待重连"
     if(seatTypes[i]==='human' && snapSeatOffline(i)) nm.textContent += ' ⚠️掉线·等待重连';
-    // 4+ 王信息：仅当该家已打出至少一张王（kingPlayed）且开局 ≥4 王，才在头像上标注“>4王”
+    // 4+ 王信息显示在头像上；头像圆圈不显示东南西北字，庄家（老板）圆圈里显示"庄"
     const av=$('av'+v);
     if(av){
-      av.innerHTML = ['南','东','北','西'][v];
+      av.innerHTML = (i===G.landlord && G.mode!=='hard') ? '庄' : '';
       if(s.kingPlayed && s.kings>=4) av.innerHTML += `<span class="kingBadge">&gt;4王</span>`;
     }
-    // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上，让大家知道叫的是什么牌；队友 tag 不显示
-    const calledMiniHtml = (G.mode!=='hard' && G.called && !s.out && i===G.landlord)
+    // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示
+    const calledMiniHtml = (G.mode!=='hard' && G.called && i===G.landlord)
       ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini') + '</span>' : '';
     if(G.mode!=='hard' && G.revealed){
-      // 明鸡已出：同队用相同标记（◆/◇ + 座位底色），不用“同队/主/明”文字
-      $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
+      // 头像圆圈颜色：庄家红 + 出明鸡牌的也红 → teamA；其余两家蓝 → teamB
       el.classList.toggle('teamA', (i===G.landlord||i===G.partner));
       el.classList.toggle('teamB', (i!==G.landlord&&i!==G.partner));
+      el.classList.remove('plain');
+      $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
     } else {
-      el.classList.remove('teamA'); el.classList.remove('teamB');
+      // 明鸡未出（或是硬牌局）：庄家红（teamA），其他三家灰（plain）
+      el.classList.toggle('teamA', i===G.landlord);
+      el.classList.toggle('teamB', false);
+      el.classList.toggle('plain', G.mode!=='hard' && i!==G.landlord);
       $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
     }
     const pEl=$('p'+v); if(!pEl) continue;
@@ -780,7 +819,7 @@ function renderSeats(){
       if(!hintEl) return;
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
-      d.style.cssText='color:#ffe9b0;font-size:13px;font-weight:bold;';
+      d.style.cssText='color:#e8392e;font-size:13px;font-weight:bold;';
       hintEl.appendChild(d);
     };
     if(i===G.turn && !G.ended){
@@ -913,7 +952,7 @@ function renderHand(){
     };
     handEl.appendChild(el);
   });
-  const btn=$('btnSort'); if(btn) btn.textContent = sortMode===0?'排序：点数':'排序：炸前置';
+  const btn=$('btnSort'); if(btn) btn.textContent = sortMode===0?'排序：点数':(sortMode===1?'排序：炸前置':'排序：牌型');
 }
 function renderCardFan(handEl, cards, forSeat){
   const order=[...cards].sort((a,b)=>handKey(a)-handKey(b));
@@ -952,6 +991,18 @@ function teamDotHtml(i){
   const green = G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord||i===G.partner);
   return `<span class="teamDot ${green?'g':'r'}"></span>`;
 }
+// 奖金净额（王奖/硬炸奖，单位=笼）：我是获奖者从三家各收 → +奖×3；每有他人获奖我付一份 → −奖。
+// 不依赖 perSeatNoBonus 减法，旧版/新版 engine 都正确（修复旧缓存下奖金恒 0 的问题）
+function bonusNetOf(s,i){
+  let net=0;
+  for(let k=0;k<4;k++){
+    const total=(s.kingBonus&&s.kingBonus[k]||0)+(s.bombBonus&&s.bombBonus[k]||0);
+    if(!total) continue;
+    if(k===i) net += total*3;
+    else net -= total;
+  }
+  return net;
+}
 function finishLocal(){
   try{
     const s=TS.settleRound(G);
@@ -968,7 +1019,7 @@ function finishLocal(){
       const i=(mySeat+v)%4, fv=s.perFen[i];
       const bs=baseCageOf(s,i);              // 牌面笼数（番，带符号，半笼=0.5）
       const cageC = (s.perSeatNoBonus?.[i]??s.perSeat[i])-bs; // 滚笼（不含奖金的差额）
-      const bonusC = s.perSeat[i] - (s.perSeatNoBonus?.[i]??s.perSeat[i]); // 奖金（王奖/硬炸奖）＝加奖金前后差值
+      const bonusC = bonusNetOf(s,i); // 奖金净额（王奖/硬炸奖），单位=笼
       const gs=G.seats[i];
       const place = gs.out ? ['一','二','三','四'][gs.outOrder-1]+'游' : '—';
       const kb = s.kingBonus&&s.kingBonus[i] ? `（王奖${s.kingBonus[i]}笼×3）` : '';

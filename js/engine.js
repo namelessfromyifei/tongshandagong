@@ -195,6 +195,7 @@
     if(pb===1){ if(next.size!==prev.size) return next.size>prev.size; return next.rank>prev.rank; }
     // tier2：先比番；同番王炸最大
     if(next.fan!==prev.fan) return next.fan>prev.fan;
+    if(next.type==='kingBomb' && prev.type==='kingBomb') return next.size>prev.size; // 王炸同番：张数多者胜，同张数（先出为大）不可压
     if(next.type==='kingBomb'||prev.type==='kingBomb') return next.type==='kingBomb';
     // 五十K大炸同番间：张数多者（t 大）胜；同 t 先出为大
     if(next.type==='fiftyCage' && prev.type==='fiftyCage'){

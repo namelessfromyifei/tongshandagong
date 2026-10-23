@@ -51,9 +51,9 @@ function createRoom(code){
     aiTimer: null,
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     settings: {         // 牌局设置（房主可调）
-      rounds: 1,        // 一轮打多少局
+      rounds: 3,        // 一轮打多少局
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
-      showCorner: true,  // 是否显示牌桌信息框（叫牌/局数/半番等），默认显示
+      showCorner: false, // 是否显示牌桌信息框（叫牌/局数/半番等），默认不显示
       showLog: false,    // 是否显示出牌记录框（右上角日志），默认不显示
       kings: 8,         // 王总数 8/10/12
       jokerValue: 3,    // 王单出算 3 或 2

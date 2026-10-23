@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=154">
+<link rel="stylesheet" href="css/style.css?v=162">
 </head>
 <body>
 <div id="app">
@@ -189,14 +189,14 @@
         <div class="modalBox">
           <h2>牌局设置</h2>
           <div class="setGrid">
-            <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="10">10</option></select></label>
+            <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="3" selected>3</option><option value="5">5</option><option value="10">10</option></select></label>
             <label>王总数 <select id="setKings"><option value="8">8</option><option value="10">10</option><option value="12">12</option></select></label>
             <label>王单出 <select id="setJoker"><option value="3">算3</option><option value="2">算2</option></select></label>
             <label>半边分数 <input id="setHalfFan" type="number" min="1" max="50" step="1" value="1" style="width:56px"></label>
             <label>笼数封顶 <select id="setFanCap"><option value="32">32</option><option value="64">64</option><option value="128">128</option><option value="0">不封顶</option></select></label>
             <label class="chk"><input type="checkbox" id="setTailBonus"> 尾游也可拿王奖金</label>
             <label class="chk"><input type="checkbox" id="setShowRemain"> 显示剩余张数</label>
-            <label class="chk"><input type="checkbox" id="setShowCorner" checked> 显示牌局信息框（左上角）</label>
+            <label class="chk"><input type="checkbox" id="setShowCorner"> 显示牌局信息框（左上角）</label>
             <label class="chk"><input type="checkbox" id="setShowLog"> 显示出牌记录框（右上角）</label>
             <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
           </div>
@@ -224,10 +224,10 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=154"></script>
-<script src="js/ai.js?v=154"></script>
-<script src="js/ui-net.js?v=154"></script>
-<script src="js/screen.js?v=154"></script>
-<script src="js/net.js?v=154"></script>
+<script src="js/engine.js?v=162"></script>
+<script src="js/ai.js?v=162"></script>
+<script src="js/ui-net.js?v=162"></script>
+<script src="js/screen.js?v=162"></script>
+<script src="js/net.js?v=162"></script>
 </body>
 </html>
