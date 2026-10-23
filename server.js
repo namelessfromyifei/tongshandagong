@@ -168,10 +168,10 @@ function scheduleOfflineKick(room, seatIdx){
     if(room.G) return;
     const s=room.seats[seatIdx];
     if(!s || s.type!=='human' || !s.offline) return; // 已重连/已离开则作罢
-    // 未开局掉线超时：踢出座位还原为 AI
+    // 未开局掉线超时：直接踢出（座位恢复为空位，可被新玩家加入；不当作 AI 处理）
     logLine(room, `${s.name} 未开局掉线超时，已移出房间`);
     const wasHost = (seatIdx===0);
-    room.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx]};
+    room.seats[seatIdx]={type:'ai', name:'空位'}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
     // 房主掉线被踢：移交房主给剩余真人中座位号最小者
@@ -180,7 +180,7 @@ function scheduleOfflineKick(room, seatIdx){
         if(room.seats[j].type==='human'){
           const moved=room.seats[j];
           room.seats[0]=moved;
-          room.seats[j]={type:'ai', name:['A家','B家','C家','D家'][j]};
+          room.seats[j]={type:'ai', name:'空位'};
           room.ready[0]=room.ready[j]; room.ready[j]=false;
           const s2=io.sockets.sockets.get(moved.socketId);
           if(s2){ s2.emit('promotedHost'); }
