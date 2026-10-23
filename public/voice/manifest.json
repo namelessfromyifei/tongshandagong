@@ -1,0 +1,14 @@
+{
+  "default": "default",
+  "packs": {
+    "default": {
+      "label": "临时测试包（待替换为真人录音）",
+      "base": "voice/default/",
+      "files": {
+        "8": "8.wav",
+        "对": "dui.wav",
+        "过": "guo.m4a"
+      }
+    }
+  }
+}

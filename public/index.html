@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=86">
+<link rel="stylesheet" href="css/style.css?v=103">
 </head>
 <body>
 <div id="app">
@@ -137,13 +137,7 @@
       <div class="south">
         <div class="southMain">
           <div class="actions">
-            <button id="btnPlay" class="btn gold" disabled>出牌</button>
-            <button id="btnPass" class="btn" disabled>不明独</button>
-            <button id="btnHint" class="btn">提示</button>
             <button id="btnHe" class="btn danger">毁牌（重发）</button>
-            <button id="btnHard" class="btn danger">明独</button>
-            <button id="btnReady" class="btn gold" style="display:none">准备</button>
-            <div class="southHint" id="hint0"></div>
             <button id="btnNext" class="btn gold" style="display:none">下一局</button>
           </div>
           <!-- 手牌行：信息框（左）、手牌（中）、排序按钮（右）；左右两列等宽以保证手牌居中 -->
@@ -160,8 +154,19 @@
             <div class="handTools">
               <button id="btnVoiceTone" class="btn small" style="display:none">音色</button>
               <button id="btnSort" class="btn small">排序：点数</button>
-              <button id="btnSize" class="btn small">牌大小：特大</button>
+              <button id="btnSize" class="btn small">牌大小</button>
               <button id="btnVoice" class="btn small">语音：开</button>
+            </div>
+            <!-- 出牌/不要/提示：牌的右上角；明独/不明独：牌的中间（初始轮用） -->
+            <div class="playBtns" id="playBtns">
+              <button id="btnPlay" class="btn gold" disabled>出牌</button>
+              <button id="btnPass" class="btn" disabled>不要</button>
+              <button id="btnHint" class="btn">提示</button>
+              <button id="btnReady" class="btn gold" style="display:none">准备</button>
+              <div class="southHint" id="hint0"></div>
+            </div>
+            <div class="midBtns" id="midBtns">
+              <button id="btnHard" class="btn danger">明独</button>
             </div>
           </div>
         </div>
@@ -206,10 +211,10 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=86"></script>
-<script src="js/ai.js?v=86"></script>
-<script src="js/ui-net.js?v=86"></script>
-<script src="js/screen.js?v=86"></script>
-<script src="js/net.js?v=86"></script>
+<script src="js/engine.js?v=103"></script>
+<script src="js/ai.js?v=103"></script>
+<script src="js/ui-net.js?v=103"></script>
+<script src="js/screen.js?v=103"></script>
+<script src="js/net.js?v=103"></script>
 </body>
 </html>

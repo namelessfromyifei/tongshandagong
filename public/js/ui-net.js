@@ -146,11 +146,12 @@ function playerHint(){
 function toggleSort(){ sortMode=1-sortMode; render(); }
 
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
-const CARD_SCALES=[1,1.12,1.24,1.4], CARD_LABELS=['标准','大','特大','巨无霸'];
+// 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
+const CARD_SCALES=[1.24,1.4,1.6,1.8];
 let cardSizeIdx=2; // 默认「特大」
 function applyCardSize(){
   document.documentElement.style.setProperty('--card-zoom', String(CARD_SCALES[cardSizeIdx]));
-  const b=$('btnSize'); if(b) b.textContent='牌大小：'+CARD_LABELS[cardSizeIdx];
+  if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>syncHandLayout());
 }
 function initCardSize(){
   try{
@@ -171,6 +172,8 @@ function cycleCardSize(){
 /* ---------- 语音提示（每一手出牌朗读） ---------- */
 let voiceOn=true, zhVoices=[], voiceIdx=0, lastSpokenKey='';
 let voiceBusy=false, voiceSeq=0; // 正在播报时暂不允许本地出牌
+let voicePack=null, audioCtx=null; // 本地语音包
+const clipCache=new Map();        // url -> Promise<AudioBuffer>
 let voiceInit=true; // 首帧只记录状态，不播报历史事件
 let prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
                    {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
@@ -226,7 +229,61 @@ function releaseVoice(){
   voiceBusy=false;
   voiceGate();
 }
-function speak(text){
+/* ---------- 本地语音包 ----------
+ * public/voice/manifest.json（可从 manifest.example.json 复制）
+ * 结构：{ default, packs: { name: { label, base, files: { 词条: 文件名 } } } }
+ * 词条按顺序拼接播放；任一词条缺失则整句回退系统 TTS。 */
+function initVoicePack(){
+  try{
+    fetch('voice/manifest.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(m=>{
+      if(!m||!m.packs) return;
+      let key=null; try{ key=localStorage.getItem('tsVoicePack'); }catch(e){}
+      if(!key||!m.packs[key]) key=m.default;
+      const p=m.packs[key]; if(!p||!p.files) return;
+      voicePack={key,base:p.base||('voice/'+key+'/'),files:p.files,label:p.label||key};
+    }).catch(()=>{});
+  }catch(e){}
+}
+function ensureAudio(){
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC) return null;
+  if(!audioCtx){ try{ audioCtx=new AC(); }catch(e){ return null; } }
+  if(audioCtx.state==='suspended'){ try{ audioCtx.resume(); }catch(e){} }
+  return audioCtx;
+}
+// 首次触摸时解锁音频（部分 WebView 需要用户手势）
+document.addEventListener('pointerdown', ()=>{ if(voicePack) ensureAudio(); }, {passive:true});
+function getClip(ctx,t){
+  const url=voicePack.base+voicePack.files[t];
+  if(clipCache.has(url)) return clipCache.get(url);
+  const p=fetch(url).then(r=>{ if(!r.ok) throw new Error('clip missing: '+url); return r.arrayBuffer(); })
+    .then(ab=>ctx.decodeAudioData(ab)).then(buf=>{ clipCache.set(url,buf); return buf; });
+  clipCache.set(url,p);
+  return p;
+}
+async function playPack(tokens, seq){
+  if(!voicePack) return false;
+  for(const t of tokens){ if(t!=='|' && !voicePack.files[t]) return false; }
+  const ctx=ensureAudio(); if(!ctx) return false;
+  try{
+    const bufs=await Promise.all(tokens.map(t=> t==='|' ? null : getClip(ctx,t)));
+    if(seq!==voiceSeq) return true; // 已被更新的播报取代
+    let at=ctx.currentTime+0.04, last=null;
+    voiceBusy=true; voiceGate();
+    for(let i=0;i<tokens.length;i++){
+      if(tokens[i]==='|'){ at+=0.16; continue; }
+      const b=bufs[i]; if(!b) continue;
+      const src=ctx.createBufferSource(); src.buffer=b; src.connect(ctx.destination);
+      src.start(at); at+=b.duration; last=src;
+    }
+    const done=()=>{ if(seq!==voiceSeq) return; voiceBusy=false; voiceGate(); };
+    if(last) last.onended=done;
+    setTimeout(done, Math.ceil((at-ctx.currentTime)*1000)+600);
+    return true;
+  }catch(e){ clipCache.clear(); return false; }
+}
+function speakTTS(text, seq){
+  seq = (seq==null) ? ++voiceSeq : seq;
   if(!voiceOn||!text){ releaseVoice(); return; }
   if(!('speechSynthesis' in window)){ releaseVoice(); return; }
   try{
@@ -235,7 +292,6 @@ function speak(text){
     const u=new SpeechSynthesisUtterance(text);
     u.lang='zh-CN'; u.rate=1.3; u.pitch=1.0;
     if(zhVoices[voiceIdx]) u.voice=zhVoices[voiceIdx];
-    const seq=++voiceSeq;
     const done=()=>{ if(seq!==voiceSeq) return; voiceBusy=false; voiceGate(); };
     u.onend=done; u.onerror=done;
     voiceBusy=true;
@@ -245,11 +301,24 @@ function speak(text){
     setTimeout(done, Math.max(1500, text.length*300)+1000);
   }catch(e){ releaseVoice(); }
 }
+function speak(text, tokens){
+  if(!voiceOn || (!text && !(tokens&&tokens.length))){ releaseVoice(); return; }
+  if(voicePack && tokens && tokens.length){
+    const seq=++voiceSeq;
+    playPack(tokens, seq).then(ok=>{
+      if(ok || seq!==voiceSeq) return;
+      speakTTS(text, seq); // 语音包缺词条/加载失败 → 系统 TTS 兜底
+    });
+    return;
+  }
+  speakTTS(text);
+}
 function applyVoiceBtn(){ const b=$('btnVoice'); if(b) b.textContent='语音：'+(voiceOn?'开':'关'); }
 function initVoice(){
   try{ const v=localStorage.getItem('tsVoice'); if(v!==null) voiceOn=(v==='1'); }catch(e){}
   applyVoiceBtn();
   refreshVoices();
+  initVoicePack();
   if('speechSynthesis' in window){ try{ window.speechSynthesis.onvoiceschanged=refreshVoices; }catch(e){} }
 }
 function toggleVoice(){
@@ -259,36 +328,35 @@ function toggleVoice(){
   if(!voiceOn && 'speechSynthesis' in window){ try{ speechSynthesis.cancel(); }catch(e){} }
   if(voiceOn) speak('语音提示已开启');
 }
+// 返回语音词条数组（供语音包逐段拼接；TTS 时直接拼成文本）
 function playSpeech(cards){
   const p=TS.analyzePlay(cards, G&&G.cfg);
-  if(!p) return '';
+  if(!p) return [];
   // 语音读法：J 读“沟”、Q 读“圈”、A 读“兼”
-  const rn=r=>{ const s=TS.RANKS[r]; return s==='J'?'沟':(s==='Q'?'圈':(s==='A'?'兼':s)); };
-  let d='';
+  const rt=r=>{ const s=TS.RANKS[r]; return s==='J'?'沟':(s==='Q'?'圈':(s==='A'?'兼':s)); };
   switch(p.type){
-    case 'single': d=(cards[0]&&cards[0].j)?'王':rn(cards[0].r); break;
-    case 'pair': d=cards.every(c=>c.j)?'对王':('对'+rn(p.val)); break;
-    case 'triple': d=cards.every(c=>c.j)?'三个王':('三个'+rn(p.val)); break;
-    case 'seqPair': d='连对'; break;
-    case 'airplane': d='飞机'; break;
-    case 'fiftyK': d='五十K'; break;
-    case 'bomb': d=`${p.size}张${rn(p.rank)}`; break;
-    case 'rollcage': d='滚笼'; break;
-    case 'kingBomb': d=`${p.size}个王`; break;
-    default: d='出牌';
+    case 'single': return [(cards[0]&&cards[0].j)?'王':rt(cards[0].r)];
+    case 'pair': return cards.every(c=>c.j)?['对','王']:['对',rt(p.val)];
+    case 'triple': return cards.every(c=>c.j)?['三个','王']:['三个',rt(p.val)];
+    case 'seqPair': return ['连对'];
+    case 'airplane': return ['飞机'];
+    case 'fiftyK': return ['五十K'];
+    case 'bomb': return [String(p.size),'张',rt(p.rank)];
+    case 'rollcage': return ['滚笼'];
+    case 'kingBomb': return [String(p.size),'个','王'];
+    default: return [];
   }
-  return d;
 }
 // 出牌 / 不要 / 明独 / 不明独 / 插底：同一帧的事件合并成一句播报
 function announceState(){
   if(!G) return;
-  const msgs=[];
+  const msgs=[]; // 每条消息是一组词条
   if(G.lastSeat>=0 && G.lastCards && G.lastCards.length){
     const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
     if(key!==lastSpokenKey){
       lastSpokenKey=key;
-      const txt=playSpeech(G.lastCards);
-      if(txt) msgs.push(txt);
+      const toks=playSpeech(G.lastCards);
+      if(toks.length) msgs.push(toks);
     }
   }
   for(let i=0;i<4;i++){
@@ -296,14 +364,17 @@ function announceState(){
     const cur={ passed:!!s.passed, choice:s.choice||null, dizhi:!s.out && !!s.hand && s.hand.length===1 };
     const prev=prevSeatState[i]||{passed:false,choice:null,dizhi:false};
     if(!voiceInit){
-      if(cur.passed && !prev.passed) msgs.push('过');
-      if(cur.choice && cur.choice!==prev.choice) msgs.push(cur.choice==='mingdu'?'明独':'不独');
-      if(cur.dizhi && !prev.dizhi) msgs.push('插底');
+      if(cur.passed && !prev.passed) msgs.push(['过']);
+      if(cur.choice && cur.choice!==prev.choice) msgs.push([cur.choice==='mingdu'?'明独':'不独']);
+      if(cur.dizhi && !prev.dizhi) msgs.push(['插底']);
     }
     prevSeatState[i]=cur;
   }
   voiceInit=false;
-  if(msgs.length) speak(msgs.join('，'));
+  if(!msgs.length) return;
+  const tokens=[];
+  msgs.forEach((m,i)=>{ if(i) tokens.push('|'); tokens.push(...m); });
+  speak(msgs.map(m=>m.join('')).join('，'), tokens);
 }
 
 /* ---------- 状态接收 ---------- */
@@ -366,6 +437,7 @@ function applyState(snap){
     if($('btnNext')) $('btnNext').style.display='none';
     for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
     renderSeatNames();
+    renderReadyIndicators();
     setBtn(false);
     return;
   }
@@ -388,6 +460,7 @@ function applyState(snap){
   if(G.confirming){ setBtn(false); if(G.turn===mySeat) enableConfirm(); }
   else { setBtn(false); if(G.turn===mySeat) enablePlayer(); }
   voiceGate(); // 语音播报未结束时保持按钮禁用
+  syncHandLayout(); // 按钮显隐/换容器后重新定位（明独/不明独居中）
 }
 
 /* ---------- 渲染 ---------- */
@@ -397,6 +470,7 @@ function render(){
   if(G.ended && (G.seq||G.roundNo)!==lastSettleSeq){ lastSettleSeq=G.seq||G.roundNo; try{ lastSettle=TS.settleRound(G); }catch(e){ lastSettle=null; } }
   else if(!G.ended){ lastSettle=null; }
   renderSeats(); renderHand(); renderCenter(); renderTop();
+  syncHandLayout();
 }
 function renderTop(){
   $('lblMode').textContent = G.mode==='hard'?('硬牌 · '+seatNames[G.hardSeat]):'2V2';
@@ -415,11 +489,9 @@ function renderSeatNames(){
     if(nm){
       const isHuman = seatTypes[i]==='human';
       if(isHuman){
-        // 真人座位：显示昵称 + 准备/掉线状态
+        // 真人座位：信息框只显示昵称/掉线；准备状态显示在各自牌桌上
         nm.textContent = (seatNames[i]||(''));
         if(snapSeatOffline(i)) nm.textContent += ' ⚠️掉线';
-        else if(seatReady[i]) nm.textContent += ' 🟢已准备';
-        else nm.textContent += ' 未准备';
       } else {
         // AI 空位：玩家进入前不显示 A/B/C/D 家
         nm.textContent = '';
@@ -427,6 +499,21 @@ function renderSeatNames(){
     }
     const av=$('av'+v); if(av) av.innerHTML=['南','东','北','西'][v];
     const pEl=$('p'+v); if(pEl) pEl.textContent = '';
+  }
+}
+// 把「已准备 / 未准备」显示在各家自己的出牌区（牌桌上），绿色/红色圆点
+function renderReadyIndicators(){
+  const realOf = v => (mySeat + v) % 4;
+  for(let v=0;v<4;v++){
+    const tr=$('t'+v); if(!tr) continue;
+    tr.innerHTML='';
+    const i=realOf(v);
+    if(seatTypes[i]!=='human') continue; // AI 空位不显示
+    const ready=!!seatReady[i];
+    const d=document.createElement('div');
+    d.className='readyHint';
+    d.innerHTML=`<span class="readyDot ${ready?'on':'off'}"></span><span>${ready?'已准备':'未准备'}</span>`;
+    tr.appendChild(d);
   }
 }
 // 显示本场累计分数：改显示在每人 tag 右上侧（局数>1），不再放牌桌上方
@@ -554,8 +641,7 @@ function renderSeats(){
       hintEl.appendChild(d);
     };
     if(i===G.turn && !G.ended){
-      // 轮到：插底提示统一在末尾追加，这里只处理"…"
-      if(!isDizhi){ const d=document.createElement('div'); d.textContent='…'; d.style.cssText='color:#9db8aa;font-size:13px;padding:10px 0;'; tr.appendChild(d); }
+      // 轮到该家：不显示任何占位符（插底提示在末尾统一追加）
     } else if(s.choice){
       const d=document.createElement('div');
       d.textContent = s.choice==='mingdu' ? '明独' : '不明独';
@@ -746,18 +832,140 @@ window.GameUI = {
   addLog,
 };
 
-/* ---------- 手牌行宽度自适应 ----------
- * 宽度足够：信息框固定最左、按钮固定最右；
- * 太窄（<780px）：退回贴近手牌，避免信息框被压扁/按钮压住手牌。 */
+/* ---------- 北家出牌区：始终贴在北家信息框下方 10px（随信息框高度自适应） ---------- */
+function positionNorthTrick(){
+  const seat=document.querySelector('.seatN');
+  const tr=document.getElementById('t2');
+  if(!seat||!tr) return;
+  const top=seat.offsetTop + seat.offsetHeight + 10;
+  tr.style.top=top+'px';
+}
+
+/* ---------- 本家信息框：始终悬在手牌上方（随牌面高度自适应上移） ---------- */
+function positionSeatS(){
+  const row=document.querySelector('.handRow');
+  const info=document.querySelector('.handRow .seatS');
+  const area=document.querySelector('.handArea');
+  const hand=document.getElementById('hand');
+  if(!row||!info||!area||!hand) return;
+  // 累加 offsetTop 到 handRow（offset* 为布局坐标，旋转兜底不受 transform 影响）
+  const topWithin=(el, stop)=>{ let y=0; for(let n=el; n && n!==stop; n=n.offsetParent) y+=n.offsetTop; return y; };
+  const first=hand.querySelector('.hcard');
+  let cardsTopInRow;
+  if(first){
+    cardsTopInRow = topWithin(first, row);
+  } else {
+    const pad=parseFloat(getComputedStyle(hand).paddingTop)||0;
+    cardsTopInRow = topWithin(hand, row) + pad;
+  }
+  const bottom = Math.round(row.offsetHeight - cardsTopInRow + 6);
+  info.style.bottom = bottom + 'px';
+}
+
+/* ---------- 明独/不明独：确认轮放在牌的中间 ---------- */
+function layoutActionButtons(){
+  if(!G) return;
+  const mid=$('midBtns'), right=$('playBtns');
+  const pass=$('btnPass'), hard=$('btnHard'), hint=$('btnHint');
+  if(!mid||!right||!pass||!hard||!hint) return;
+  if(G.confirming){
+    // 初始确认轮：明独 + 不明独 放在牌的中间
+    if(hard.parentElement!==mid) mid.appendChild(hard);
+    if(pass.parentElement!==mid) mid.appendChild(pass);
+  } else {
+    // 出牌轮：出牌 + 不要 + 提示 放在牌的右上角
+    if(pass.parentElement!==right) right.insertBefore(pass, hint);
+    if(hint.parentElement!==right) right.appendChild(hint);
+    if(hard.parentElement!==mid) mid.appendChild(hard);
+  }
+}
+function positionMidBtns(){
+  const row=document.querySelector('.handRow');
+  const box=$('midBtns');
+  const hand=document.getElementById('hand');
+  if(!row||!box||!hand) return;
+  const leftWithin=(el,stop)=>{ let x=0; for(let n=el; n && n!==stop; n=n.offsetParent) x+=n.offsetLeft; return x; };
+  const topWithin=(el,stop)=>{ let y=0; for(let n=el; n && n!==stop; n=n.offsetParent) y+=n.offsetTop; return y; };
+  const first=hand.querySelector('.hcard');
+  const hasCards = !!first && hand.offsetWidth>0;
+  const center = hasCards ? (leftWithin(hand,row)+hand.offsetWidth/2) : (row.offsetWidth/2);
+  box.style.left = Math.max(0, Math.round(center - box.offsetWidth/2)) + 'px';
+  const cardsTop = hasCards ? topWithin(first,row) : 0;
+  box.style.bottom = Math.round(row.offsetHeight - cardsTop + 6) + 'px';
+}
+
+/* ---------- 手牌满 28 张时的宽度（用于固定按钮位置，不随剩牌减少左移） ---------- */
+let handMetric=null; // {cardW, step} —— 未缩放尺寸（offset* 不含 zoom）
+function fullHandWidth(){
+  const hand=document.getElementById('hand');
+  if(!hand) return 0;
+  const cards=hand.querySelectorAll('.hcard');
+  const zoom=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
+  if(cards.length>=2){
+    handMetric={ cardW:cards[0].offsetWidth, step:cards[1].offsetLeft-cards[0].offsetLeft };
+  }
+  if(!handMetric) return 0;
+  return (handMetric.cardW + 27*handMetric.step) * zoom; // 28 张（27 个叠放步进）
+}
+
+/* ---------- 出牌/不要/提示：钉在手牌右上方 ---------- */
+function positionPlayBtns(){
+  const row=document.querySelector('.handRow');
+  const box=$('playBtns');
+  const area=document.querySelector('.handArea');
+  const hand=document.getElementById('hand');
+  if(!row||!box||!area||!hand) return;
+  const leftWithin=(el,stop)=>{ let x=0; for(let n=el; n && n!==stop; n=n.offsetParent) x+=n.offsetLeft; return x; };
+  const topWithin=(el,stop)=>{ let y=0; for(let n=el; n && n!==stop; n=n.offsetParent) y+=n.offsetTop; return y; };
+  const first=hand.querySelector('.hcard');
+  const hasCards = !!first && hand.offsetWidth>0;
+  let rightEdge;
+  if(!hasCards && !handMetric){
+    // 等待开局（从未发牌）：贴手牌行最右上方
+    rightEdge = row.offsetWidth;
+  } else if(row.classList.contains('handRowCompact')){
+    // 紧凑：固定在手牌可视区右端（不随剩牌变化）
+    rightEdge = leftWithin(area,row) + area.offsetWidth;
+  } else {
+    // 常规：按发牌时 28 张的右端固定，不随剩牌减少左移
+    rightEdge = leftWithin(area,row) + area.offsetWidth/2 + fullHandWidth()/2;
+  }
+  rightEdge = Math.min(rightEdge, row.offsetWidth);
+  box.style.right = Math.max(0, Math.round(row.offsetWidth - rightEdge)) + 'px';
+  const cardsTop = hasCards ? topWithin(first,row) : 0;
+  box.style.bottom = Math.round(row.offsetHeight - cardsTop + 6) + 'px';
+}
+
+/* ---------- 手牌行布局同步 ----------
+ * 1) 窄屏或手牌+工具列放不下 → 紧凑模式（手牌横向滚动）
+ * 2) 信息框、出牌按钮组随牌面位置/大小重新定位 */
+function syncHandLayout(){
+  const row=document.querySelector('.handRow');
+  if(!row) return;
+  layoutActionButtons();
+  const hand=document.getElementById('hand');
+  const tools=document.querySelector('.handTools');
+  const w=row.clientWidth;
+  const tw=tools?tools.offsetWidth:0;
+  const fullW=fullHandWidth(); // 用发牌满手宽度判断，避免剩牌减少时布局跳动
+  const compact = w>0 && (w<780 || (fullW>0 && fullW + 2*tw + 18 > w));
+  row.classList.toggle('handRowCompact', compact);
+  positionNorthTrick();
+  positionSeatS();
+  positionPlayBtns();
+  positionMidBtns();
+}
 (function(){
   const row=document.querySelector('.handRow');
-  if(!row || !window.ResizeObserver) return;
-  const update=()=>{
-    const w=row.clientWidth;
-    row.classList.toggle('handRowCompact', w>0 && w<780);
-  };
-  new ResizeObserver(update).observe(row);
-  update();
+  const hand=document.getElementById('hand');
+  if(window.ResizeObserver){
+    const ro=new ResizeObserver(()=>syncHandLayout());
+    if(row) ro.observe(row);
+    if(hand) ro.observe(hand);
+  }
+  window.addEventListener('resize', ()=>setTimeout(syncHandLayout,120));
+  window.addEventListener('orientationchange', ()=>setTimeout(syncHandLayout,350));
+  setTimeout(syncHandLayout, 200);
 })();
 
 /* ---------- 按钮绑定 ---------- */
