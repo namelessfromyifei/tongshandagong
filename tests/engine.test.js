@@ -56,9 +56,27 @@ const cards=(P)=>P.map(([r,s])=>mk(r,s)); // [['A','S'],...]
   T('11张软炸(8张8+3王)=16番', (p=>p.type==='bomb'&&p.size===11&&p.soft&&p.fan===16)(analyzePlay([...cards(eight8),mkj(),mkj(),mkj()])));
   T('9个王炸=14番', (p=>p.type==='kingBomb'&&p.size===9&&p.fan===14)(analyzePlay([...Array(9)].map(()=>mkj()))));
   T('候选包含9张软炸', genCandidates([...cards(eight8),mkj()], null).some(c=>c.play.type==='bomb'&&c.play.size===9));
+  // 笼数封顶
+  const sixteen=[...cards(eight8),...Array.from({length:8},()=>mkj())]; // 8 张真牌 + 8 王
+  T('无封顶：16张软炸=512番', analyzePlay(sixteen).fan===512);
+  T('封顶32：16张软炸按32番', analyzePlay(sixteen,{fanCap:32}).fan===32);
+  T('封顶64：16张软炸按64番', analyzePlay(sixteen,{fanCap:64}).fan===64);
+  const q7=[['Q','S'],['Q','H'],['Q','C'],['Q','D'],['Q','S'],['Q','H'],['Q','C']];
+  const j7=[['J','S'],['J','H'],['J','C'],['J','D'],['J','S'],['J','H'],['J','C']];
+  T('7+7硬滚笼=16番', analyzePlay(cards([...q7,...j7])).fan===16);
+  T('封顶8：7+7硬滚笼按8番', analyzePlay(cards([...q7,...j7]),{fanCap:8}).fan===8);
+  T('封顶8：8王炸12番→8番', analyzePlay([...Array(8)].map(()=>mkj()),{fanCap:8}).fan===8);
   T('五十K同花', (p=>p.type==='fiftyK'&&p.tonghua&&p.suit===0)(analyzePlay([mk('5','S'),mk('10','S'),mk('K','S')])));
   T('杂五十K', (p=>p.type==='fiftyK'&&!p.tonghua)(analyzePlay([mk('5','S'),mk('10','H'),mk('K','C')])));
   T('五十K用王凑同花', (p=>p.type==='fiftyK'&&p.tonghua)(analyzePlay([mk('5','S'),mk('10','S'),mkj()])));
+  // 五十K大炸：5/10/K 三类各 t 张，软2硬4，每升一级翻番
+  const f50 = (t,soft)=>[ ...Array.from({length:t},()=>mk('5','S')).concat(Array.from({length:t},()=>mk('10','H'))).concat(Array.from({length:t},()=>mk('K','C'))) ];
+  T('五十K大炸 4+4+4硬=4番', (p=>p.type==='fiftyCage'&&!p.soft&&p.fan===4)(analyzePlay(f50(4))));
+  T('五十K大炸 5+5+5硬=8番', (p=>p.type==='fiftyCage'&&p.t===5&&p.fan===8)(analyzePlay(f50(5))));
+  T('五十K大炸 4+4+4+1王=软2番', (p=>p.type==='fiftyCage'&&p.soft&&p.fan===2)(analyzePlay([...f50(4).slice(0,3),mkj(),...f50(4).slice(3)]
+    .slice(0,12))));
+  T('候选包含五十K大炸', genCandidates(f50(4), null).some(c=>c.play.type==='fiftyCage'));
+  T('五十K大炸 5级>4级（同硬）', canBeat(analyzePlay(f50(4)), analyzePlay(f50(5)))===true);
   T('王炸4=4番', (p=>p.type==='kingBomb'&&p.fan===4)(analyzePlay([mkj(),mkj(),mkj(),mkj()])));
   T('王炸8=12番', (p=>p.type==='kingBomb'&&p.fan===12)(analyzePlay([mkj(),mkj(),mkj(),mkj(),mkj(),mkj(),mkj(),mkj()])));
   T('滚笼4+4硬=2番', (p=>p.type==='rollcage'&&!p.soft&&p.fan===2)(analyzePlay(cards([['A','S'],['A','H'],['A','C'],['A','D'],['K','S'],['K','H'],['K','C'],['K','D']]))));
@@ -312,6 +330,18 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   }
   T('模拟 30局全结束', allEnded);
   T('模拟 30局结算和均归零', sum0);
+}
+/* ===== passSeq：每次"不要"递增（播报用，不改流程） ===== */
+{
+  const G=newGame(889);
+  passConfirm(G);
+  const seq0=G.passSeq||0;
+  G.lastPlay={type:'single',val:1}; G.lastSeat=0; G.leader=0; G.turn=1; G.passes=0;
+  for(const s of G.seats) s.out=false;
+  TS.handlePass(G,1);
+  T('passSeq：一次不要 +1', (G.passSeq||0)===seq0+1);
+  TS.handlePass(G,2);
+  T('passSeq：同一轮再次不要也 +1', (G.passSeq||0)===seq0+2);
 }
 /* ===== 确认轮 & 硬牌轮 ===== */
 {

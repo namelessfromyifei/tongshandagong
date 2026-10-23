@@ -57,6 +57,19 @@
     if(has(r5)&&wilds>=2) mk50([pick(r5),jokers[0],jokers[1]]);
     if(has(r10)&&wilds>=2) mk50([jokers[0],pick(r10),jokers[1]]);
     if(has(rK)&&wilds>=2) mk50([jokers[0],jokers[1],pick(rK)]);
+    // 五十K大炸：5/10/K 三类各 t 张（t≥4），每类缺的用王补（三类同步）
+    for(let t=4; t*3<=hand.length; t++){
+      const need5=t-(cnt[r5]||0), need10=t-(cnt[r10]||0), needK=t-(cnt[rK]||0);
+      if(need5<0||need10<0||needK<0) continue; // 某一类真牌已超 t，无法同步
+      if(need5+need10+needK>wilds) continue;    // 王不够补缺
+      const cs=byRank[r5].slice(0,Math.min(t,cnt[r5]||0))
+        .concat(byRank[r10].slice(0,Math.min(t,cnt[r10]||0)))
+        .concat(byRank[rK].slice(0,Math.min(t,cnt[rK]||0)));
+      let taken=0;
+      const needA=[need5,need10,needK];
+      for(const nw of needA){ for(let i=0;i<nw;i++) cs.push(jokers[taken++]); }
+      tryAdd(cs);
+    }
     // 同牌炸 4 张起（含王补，可超过 8 张）—— 无番(4-6)不能领出，但压牌可用
     for(let r=0;r<TS.RANKS.length;r++){
       for(let sz=4;sz<=cnt[r]+wilds;sz++){
@@ -139,6 +152,7 @@
     if(p.type==='airplane') return 500+p.top;
     if(p.type==='fiftyK') return 10000;
     if(p.type==='bomb') return p.size<=6 ? 20000+p.size*10 : 30000+p.fan*100;
+    if(p.type==='fiftyCage') return 30000+p.fan*100;
     if(p.type==='rollcage') return 30000+p.fan*100;
     if(p.type==='kingBomb') return 40000+p.fan*100;
     return 0;

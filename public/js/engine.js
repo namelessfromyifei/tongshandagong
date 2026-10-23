@@ -47,6 +47,9 @@
     const n=cards.length;
     if(n===0) return null;
     cfg = cfg||{};
+    // 笼数封顶：大于 cap 的炸弹番数按 cap 计算（cap=0 表示不封顶）
+    const cap=Number(cfg.fanCap)||0;
+    const capFan=f=>(cap>0 && f>cap)?cap:f;
     let W=0; const cnt=new Array(RANKS.length).fill(0);
     for(const c of cards){ if(c.j) W++; else cnt[c.r]++; }
 
@@ -58,7 +61,7 @@
       if(n===2) return {type:'pair',val:soloVal};
       if(n===3) return {type:'triple',val:soloVal};
       // 王炸不设 8 张上限：房间可设 10/12 王
-      if(n>=4) return {type:'kingBomb',size:n,fan:2*n-4};
+      if(n>=4) return {type:'kingBomb',size:n,fan:capFan(2*n-4)};
       return null;
     }
 
@@ -76,6 +79,24 @@
       }
     }
 
+    // 五十K大炸：5/10/K 三类各 t 张（t≥4，三类同步加），王可代任一类
+    // 软=2 笼、硬=4 笼；每升一级（t+1）番数翻倍
+    if(n>=12 && n%3===0){
+      const t=n/3, r5=2, r10=7, rK=10;
+      if(cnt[r5]>t||cnt[r10]>t||cnt[rK]>t){
+        // 某类真牌超过 t：不构成（无法同步）
+      } else {
+        const deficit=(t-cnt[r5])+(t-cnt[r10])+(t-cnt[rK]);
+        // 除三类外不得有真牌；缺口必须正好由王补齐
+        const other=cnt.reduce((a,v,ri)=>(ri===r5||ri===r10||ri===rK)?a:a+v,0);
+        if(other===0 && W===deficit){
+          const soft=W>0;
+          const fan=capFan((soft?2:4)*Math.pow(2,t-4));
+          return {type:'fiftyCage',t:t,size:n,soft:soft,fan:fan,top:rK};
+        }
+      }
+    }
+
     // 同点数（含癞子）：单/对/三条/同牌炸
     let nr=0, r0=-1;
     for(let i=0;i<RANKS.length;i++) if(cnt[i]>0){ nr++; r0=i; }
@@ -85,7 +106,7 @@
       if(n===3) return {type:'triple',val:r0};
       // 同点数炸不设 8 张上限：8 张真牌 + 癞子可凑成 9 张以上（9 张起必为软炸）
       // 番数：4-6 张无番；7 张起每多一张翻倍（7→1/2、8→2/4、9→4/8…，软/硬）
-      if(n>=4) return {type:'bomb',size:n,rank:r0,soft:W>0,fan:(n<=6?0:Math.pow(2,n-7)*(W>0?1:2))};
+      if(n>=4) return {type:'bomb',size:n,rank:r0,soft:W>0,fan:capFan(n<=6?0:Math.pow(2,n-7)*(W>0?1:2))};
       return null;
     }
 
@@ -97,7 +118,7 @@
       for(let st=0; st<RANKS.length; st++){
         if(checkChainRing(cnt,W,st,k,s)){
           const soft=W>0;
-          return {type:'rollcage',s:s,k:k,start:st,len:k,top:(st+k-1)%RANKS.length,soft:soft,fan:soft?Math.pow(2,(s-4)+(k-2)):2*Math.pow(2,(s-4)+(k-2))};
+          return {type:'rollcage',s:s,k:k,start:st,len:k,top:(st+k-1)%RANKS.length,soft:soft,fan:capFan(soft?Math.pow(2,(s-4)+(k-2)):2*Math.pow(2,(s-4)+(k-2)))};
         }
       }
     }
@@ -144,13 +165,14 @@
   function bombTier(p){
     if(p.type==='fiftyK') return 0;
     if(p.type==='bomb'&&p.size<=6) return 1;
-    if(p.type==='bomb'||p.type==='rollcage'||p.type==='kingBomb') return 2;
+    if(p.type==='bomb'||p.type==='rollcage'||p.type==='kingBomb'||p.type==='fiftyCage') return 2;
     return -1;
   }
   function isBomb(p){ return bombTier(p)>=0; }
   function groupsOf(p){
     if(p.type==='rollcage'){ const a=[]; for(let i=0;i<p.k;i++) a.push((p.start+i)%RANKS.length); return a; }
     if(p.type==='bomb') return [p.rank];
+    if(p.type==='fiftyCage') return [p.top]; // 五十K大炸：按张数/番比，参与同番比较用点数兜底
     return [];
   }
 
@@ -174,6 +196,10 @@
     // tier2：先比番；同番王炸最大
     if(next.fan!==prev.fan) return next.fan>prev.fan;
     if(next.type==='kingBomb'||prev.type==='kingBomb') return next.type==='kingBomb';
+    // 五十K大炸同番间：张数多者（t 大）胜；同 t 先出为大
+    if(next.type==='fiftyCage' && prev.type==='fiftyCage'){
+      return next.t!==prev.t ? next.t>prev.t : false;
+    }
     const ga=groupsOf(next), gb=groupsOf(prev);
     const m=Math.min(ga.length,gb.length);
     for(let i=0;i<m;i++){ if(ga[i]!==gb[i]) return ga[i]>gb[i]; }
@@ -204,7 +230,7 @@
     const G={ seats, rnd, seed, cfg, mode:'2v2', hardSeat:-1,
       landlord:-1, partner:-1, called:null, revealed:false,
       turn:-1, leader:-1, lastPlay:null, lastCards:[], lastSeat:-1,
-      passes:0, trickPoints:0, roundNo:1,
+      passes:0, passSeq:0, trickPoints:0, roundNo:1,
       firstOut:-1, ended:false, started:false, log:[], playNo:0,
       confirming:true, mingduSeat:-1, confirms:[],
     };
@@ -340,7 +366,7 @@ function handHasBomb(hand){
     if(!G.started) G.started=true; // 第一手打出：牌局真正开始
     for(const c of cards) G.trickPoints+=pointOf(c); // 本轮分数累计，圈末由最大者收走
     // 所有有番数的炸都计入 rollcages 统计（滚笼/王炸/7-8张番炸），结算归属同规则
-    if(p.type==='rollcage' || p.type==='kingBomb' || (p.type==='bomb' && p.fan>0)) S.rollcages.push({fan:p.fan});
+    if(p.type==='rollcage' || p.type==='kingBomb' || (p.type==='bomb' && p.fan>0) || p.type==='fiftyCage') S.rollcages.push({fan:p.fan});
     if(!G.revealed && seatIdx===G.partner && cards.some(c=>!c.j&&c.r===G.called.r&&c.s===G.called.s)) G.revealed=true;
     if(S.hand.length===0 && !S.out){
       S.out=true;
@@ -382,6 +408,7 @@ function handHasBomb(hand){
     if(G.ended) return false;
     G.seats[seatIdx].passed=true; // 该家本轮不要
     G.passes++;
+    G.passSeq=(G.passSeq||0)+1; // 播报计数：每次"不要"递增（前端据此每次点击都播报）
     const act=activeSeats(G);
     // 一圈结束阈值：最后出牌者若已跑完（不在 act 中），则 act 里所有剩余玩家都要 pass；
     //   否则（最后出牌者仍在场）其余 act.length-1 人 pass 即结束。
@@ -420,6 +447,7 @@ function handHasBomb(hand){
    *   即：硬牌者 ±(6+3Δ)，三家各 ∓(2+Δ)
    */
   function settleRound(G){
+    const halfFan=Math.max(1,Math.min(50,Number(G.cfg&&G.cfg.halfFan)||1)); // 半番=几分
     const out=i=>G.seats[i].out;
     let winnerSeats, loserSeats;
     if(G.mode==='hard'){
@@ -463,7 +491,8 @@ function handHasBomb(hand){
       if(loserCaught===0) basePer*=2;
       for(let i=0;i<4;i++) perSeat[i]= winSet.has(i) ? (basePer+delta) : -(basePer+delta);
     }
-    for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2);
+    for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2*halfFan);
+    const perSeatNoBonus=Object.assign({}, perSeat); // 加奖金前的每座值（用于计分板拆"奖金"列）
 
     // 王奖金：抓 ≥4 王，非四游（cfg.tailBonus=true 时尾游也可拿）→ 从其他三人各收 (王数-3) 番
     const kingBonus={};
@@ -494,11 +523,11 @@ function handHasBomb(hand){
         }
       }
     }
-    for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2);
+    for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2*halfFan);
 
     return {
       mode:G.mode, hardSeat:G.hardSeat, basePer, delta, W, L,
-      winnerSeats, loserSeats, perSeat, perFen, kingBonus, bombBonus,
+      winnerSeats, loserSeats, perSeat, perSeatNoBonus, perFen, kingBonus, bombBonus,
     };
   }
 

@@ -9,6 +9,7 @@ let socket=null;
 let mySeat=-1, myName='';
 let roomCode='';
 let inGame=false; // 是否已在对局中（用于退出时判断保留重连）
+let roomCache=[]; // 最近一次服务器房间列表（加入/重连弹窗复用）
 
 const $=id=>document.getElementById(id);
 
@@ -42,11 +43,14 @@ function connect(){
     if(socket) socket.emit('listRooms');
   });
 
-  socket.on('rooms', (list)=>{ renderRoomList(list); });
+  socket.on('rooms', (list)=>{ roomCache=list||[]; renderRoomList(roomCache); renderJoinPick(); renderRejoinPick(); });
 
   // 创建房间成功 → 直接进桌（joined 处理）
   socket.on('joined', (d)=>{
     mySeat=d.seat; myName=d.name; roomCode=d.code;
+    // 加入/重连成功：关闭加入、重连弹窗
+    const jm=$('joinModal'); if(jm) jm.hidden=true;
+    const rm=$('rejoinModal'); if(rm) rm.hidden=true;
     // 记住房间+姓名，刷新后自动重连
     try{ localStorage.setItem('tsRoom', JSON.stringify({code:d.code, name:d.name})); }catch(e){}
     $('roomCode').textContent = '房间号：'+d.code;
@@ -156,8 +160,8 @@ function renderRoomList(list){
     } else {
       item.title = r.started?'对局已开始':'房间已满';
     }
-    // 删除按钮：未开局房间任意玩家可删（LOVE 常驻房除外）
-    if(!r.started && r.code!=='LOVE'){
+    // 删除按钮：未开局房间任意玩家可删（常驻房 LOVE/HOME 除外，不显示删除按钮）
+    if(!r.started && r.code!=='LOVE' && r.code!=='HOME'){
       const del=document.createElement('button');
       del.className='btn small roomDel';
       del.textContent='删除';
@@ -171,11 +175,50 @@ function renderRoomList(list){
     box.appendChild(item);
   });
 }
+// 加入房间弹窗列表：非对局中、有空的房间
+function renderJoinPick(){
+  const box=$('joinRoomList'); if(!box) return;
+  const list=roomCache.filter(r=>!r.started && r.humans<4);
+  if(!list.length){ box.innerHTML='<div class="roomPick none">暂无可加入的房间</div>'; return; }
+  box.innerHTML='';
+  list.forEach(r=>{
+    const d=document.createElement('div');
+    d.className='roomPick';
+    d.innerHTML=`<b>${r.code}</b> <span class="rpStatus">${r.humans}/4人</span>`;
+    d.onclick=()=>{
+      const n=requireName(); if(!n) return;
+      myName=n; connect();
+      socket.emit('join', {code:r.code, name:n});
+    };
+    box.appendChild(d);
+  });
+}
+// 重连弹窗列表：已创建对局的房间（含确认轮，用 hasGame 而非 started）
+function renderRejoinPick(){
+  const box=$('rejoinRoomList'); if(!box) return;
+  const list=roomCache.filter(r=>r.hasGame);
+  if(!list.length){ box.innerHTML='<div class="roomPick none">暂无可重连的对局</div>'; return; }
+  box.innerHTML='';
+  list.forEach(r=>{
+    const d=document.createElement('div');
+    d.className='roomPick';
+    d.innerHTML=`<b>${r.code}</b> <span class="rpStatus">对局中</span>`;
+    d.onclick=()=>{
+      const n=requireName(); if(!n) return;
+      myName=n; connect();
+      socket.emit('rejoin', {code:r.code, name:n});
+    };
+    box.appendChild(d);
+  });
+}
 function bindLobby(){
   $('btnSetName').onclick=()=>{
     const n=$('nameInput').value.trim();
     if(!n){ toast('请输入昵称'); return; }
-    myName=n; toast(`昵称已设为「${n}」`);
+    myName=n;
+    // 昵称持久化：刷新页面后自动填回
+    try{ localStorage.setItem('tsName', n); }catch(e){}
+    toast(`昵称已设为「${n}」`);
   };
   $('btnCreate').onclick=()=>{
     const n=requireName(); if(!n) return;
@@ -195,6 +238,10 @@ function bindLobby(){
     const n=requireName(); if(!n) return;
     myName=n;
     const m=$('joinModal'); if(m) m.hidden=false;
+    // 打开时拉最新房间列表并渲染"可加入"房间
+    connect();
+    if(socket) socket.emit('listRooms');
+    renderJoinPick();
   };
   $('btnJoinGo').onclick=()=>{
     const code=($('joinInput').value||'').trim().toUpperCase();
@@ -204,8 +251,14 @@ function bindLobby(){
   };
   $('btnJoinBack').onclick=()=>{ const m=$('joinModal'); if(m) m.hidden=true; };
   $('btnRejoin').onclick=()=>{
+    const n=requireName(); if(!n) return;
+    myName=n;
     const m=$('rejoinModal'); if(m){ m.hidden=false; }
     const hint=$('rejoinNameHint'); if(hint) hint.textContent='将使用昵称：'+(myName||'（未设置）');
+    // 打开时拉最新房间列表并渲染"对局中"房间
+    connect();
+    if(socket) socket.emit('listRooms');
+    renderRejoinPick();
   };
   $('btnRejoinGo').onclick=()=>{
     const n=requireName(); if(!n) return;
@@ -233,8 +286,12 @@ function bindLobby(){
   };
   $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };
+  // 刷新按钮（牌桌内）：等同浏览器刷新页面（重新加载游戏）
+  const rf=$('btnRefresh'); if(rf) rf.onclick=()=>{ location.reload(); };
+  // 刷新列表按钮（大厅右上角）：重新拉取房间列表（非整页刷新）
+  const rl=$('btnRefreshList'); if(rl) rl.onclick=()=>{ if(socket) socket.emit('listRooms'); };
   // 设置变更 → 发服务器（开局前生效）
-  ['setRounds','setKings','setJoker','setTailBonus','setShowRemain','setShowCorner','setShowLog','setAIFill'].forEach(id=>{
+  ['setRounds','setKings','setJoker','setHalfFan','setFanCap','setTailBonus','setShowRemain','setShowCorner','setShowLog','setAIFill'].forEach(id=>{
     const el=$(id);
     if(el) el.onchange=()=>{ if(socket) socket.emit('setSettings', collectSettings()); };
   });
@@ -243,11 +300,20 @@ function bindLobby(){
   if(appEl) appEl.classList.add('inLobby');
   // 页面加载即连接服务器（房间列表实时加载，无需先操作）
   connect();
+  // 设置过的昵称自动填回输入框（缓存还在则生效），并作为默认昵称
+  try{
+    const savedName=localStorage.getItem('tsName')||'';
+    if(savedName){
+      myName=savedName;
+      const ni=$('nameInput'); if(ni) ni.value=savedName;
+    }
+  }catch(e){}
   // 刷新后自动重连（localStorage 有记录）
   try{
     const saved=JSON.parse(localStorage.getItem('tsRoom')||'null');
     if(saved && saved.code && saved.name){
       myName=saved.name;
+      const ni=$('nameInput'); if(ni) ni.value=saved.name;
       socket.emit('rejoin', {code:saved.code, name:saved.name});
     }
   }catch(e){}
@@ -261,6 +327,8 @@ function collectSettings(){
     rounds: Number($('setRounds')?.value||1),
     kings: Number($('setKings')?.value||8),
     jokerValue: Number($('setJoker')?.value||3),
+    halfFan: Math.min(50, Math.max(1, Number($('setHalfFan')?.value||1))),
+    fanCap: Number($('setFanCap')?.value ?? 32),
     tailBonus: !!$('setTailBonus')?.checked,
     showRemain: !!$('setShowRemain')?.checked,
     showCorner: !!$('setShowCorner')?.checked,
@@ -274,6 +342,8 @@ function applySettings(s){
   if($('setRounds')) $('setRounds').value=s.rounds||1;
   if($('setKings')) $('setKings').value=s.kings||8;
   if($('setJoker')) $('setJoker').value=s.jokerValue||3;
+  if($('setHalfFan')) $('setHalfFan').value=String(Math.min(50,Math.max(1,Number(s.halfFan||1))));
+  if($('setFanCap')) $('setFanCap').value=String(s.fanCap ?? 32);
   if($('setTailBonus')) $('setTailBonus').checked=!!s.tailBonus;
   if($('setShowRemain')) $('setShowRemain').checked=!!s.showRemain;
   if($('setShowCorner')) $('setShowCorner').checked = s.showCorner === true;

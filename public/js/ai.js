@@ -57,6 +57,19 @@
     if(has(r5)&&wilds>=2) mk50([pick(r5),jokers[0],jokers[1]]);
     if(has(r10)&&wilds>=2) mk50([jokers[0],pick(r10),jokers[1]]);
     if(has(rK)&&wilds>=2) mk50([jokers[0],jokers[1],pick(rK)]);
+    // 五十K大炸：5/10/K 三类各 t 张（t≥4），每类缺的用王补（三类同步）
+    for(let t=4; t*3<=hand.length; t++){
+      const need5=t-(cnt[r5]||0), need10=t-(cnt[r10]||0), needK=t-(cnt[rK]||0);
+      if(need5<0||need10<0||needK<0) continue; // 某一类真牌已超 t，无法同步
+      if(need5+need10+needK>wilds) continue;    // 王不够补缺
+      const cs=byRank[r5].slice(0,Math.min(t,cnt[r5]||0))
+        .concat(byRank[r10].slice(0,Math.min(t,cnt[r10]||0)))
+        .concat(byRank[rK].slice(0,Math.min(t,cnt[rK]||0)));
+      let taken=0;
+      const needA=[need5,need10,needK];
+      for(const nw of needA){ for(let i=0;i<nw;i++) cs.push(jokers[taken++]); }
+      tryAdd(cs);
+    }
     // 同牌炸 4 张起（含王补，可超过 8 张）—— 无番(4-6)不能领出，但压牌可用
     for(let r=0;r<TS.RANKS.length;r++){
       for(let sz=4;sz<=cnt[r]+wilds;sz++){
@@ -67,7 +80,7 @@
           for(let i=0;i<need;i++) cs.push(jokers[i]);
           if(cs.length===sz){
             const p=TS.analyzePlay(cs);
-            if(p && (mustBeat || TS.bombTier(p)!==1)) tryAdd(cs); // 领出时排除无番炸
+            if(p) tryAdd(cs); // 无番炸按现行规则也可领出
           }
         }
       }
@@ -139,72 +152,166 @@
     if(p.type==='airplane') return 500+p.top;
     if(p.type==='fiftyK') return 10000;
     if(p.type==='bomb') return p.size<=6 ? 20000+p.size*10 : 30000+p.fan*100;
+    if(p.type==='fiftyCage') return 30000+p.fan*100;
     if(p.type==='rollcage') return 30000+p.fan*100;
     if(p.type==='kingBomb') return 40000+p.fan*100;
     return 0;
   }
 
-  /* ---------- AI 决策 ---------- */
-  // 手牌价值排序用（点数越大越关键）
-  function handCount(hand, r){ let n=0; for(const c of hand) if(!c.j&&c.r===r) n++; return n; }
+  /* ---------- AI 决策 ----------
+   * 更聪明的打法：
+   *   1) 王（癞子）不乱出 —— 优先留作 王炸/五十K/滚笼，凑对/凑三条/软炸
+   *      只在王充裕（>4 张）或快跑完时才动用
+   *   2) 快速跑掉 —— 整手能出完直接出；手少时优先一次性大甩
+   *   3) 辅助队友 —— 队友出的牌不跟、不上炸，让它控场/带风；队友将跑完时送低牌
+   *   4) 不炸队友 —— 队友最后出的牌一律不压；对手要跑完才舍得用炸拦 */
+  function handJokers(hand){ let n=0; for(const c of hand) if(c.j) n++; return n; }
+  const wildsOf=it=>{ let n=0; for(const c of it.cards) if(c.j) n++; return n; };
+  // 王用在当口的牌算不算浪费：五十K/王炸/滚笼 是正当用途；凑对/凑三条/软炸 算浪费
+  function wildWaste(play, wildsUsed, jokers){
+    if(wildsUsed===0) return false;
+    if(play.type==='kingBomb'||play.type==='fiftyK'||play.type==='rollcage') return false;
+    return jokers - 4 < wildsUsed; // 王不充裕（不足"王炸+富余"）时动用就算浪费
+  }
+  // 普通跟牌挑选：王耗少的优先，其次出最小能压的
+  function pickBest(list, wildsFirst){
+    if(!list.length) return null;
+    list.sort((a,b)=>{
+      const wa=wildsOf(a), wb=wildsOf(b);
+      if(wa!==wb) return wa-wb;
+      return playStrength(a.play)-playStrength(b.play);
+    });
+    return list[0];
+  }
 
   // 领出：主动出击或甩牌
   function chooseLead(G, seat, cands){
-    const S=G.seats[seat];
-    const hand=S.hand;
-    // 1) 能一手清空就直接出（跑得快）
+    const S=G.seats[seat], hand=S.hand;
+    const jokers=handJokers(hand);
+    const team=TS.teamOf(G,seat);
+    const partner=team.length>1?team.find(i=>i!==seat):-1;
+    const pOut = partner>=0 ? G.seats[partner].out : true;
+
+    // 0) 整手一次出完（跑牌最终步）
     const whole=TS.analyzePlay(hand);
-    if(whole) return {cards:hand,play:whole};
-    // 2) 跟牌顺序考虑队友势力：无
-    // 3) 普通倾向：先出「冗余组合」（连对/飞机），把单张小牌留作跟牌弹药
-    const norm=cands.filter(c=>!TS.isBomb(c.play));
-    if(norm.length){
-      // 分类：组合（连对/飞机）优先甩，其次单/对/三条按点数升
-      const combo=norm.filter(c=>c.play.type==='seqPair'||c.play.type==='airplane');
-      const pool=combo.length?combo:norm;
-      pool.sort((a,b)=>playStrength(a.play)-playStrength(b.play));
-      return pool[0];
+    if(whole) return {cards:hand, play:whole};
+
+    // 1) 手牌少：优先一次大甩、接近跑完（省王优先）；不给对手拖的机会
+    if(hand.length<=8){
+      let best=null, bestKey=null;
+      for(const it of cands){
+        const rest=hand.length-it.cards.length;
+        const wu=wildsOf(it);
+        if(rest>2 && !(rest<=4 && wu===0)) continue; // 只考虑剩≤2或 0 王的大甩
+        const key=rest*1000+wu;
+        if(bestKey===null||key<bestKey){ bestKey=key; best=it; }
+      }
+      if(best) return {cards:best.cards, play:best.play};
     }
-    // 4) 只有炸能出：小炸（无番/50K）先出，王炸滚笼留最后
-    const bombs=cands.filter(c=>TS.isBomb(c.play));
+
+    // 2) 队友（即将跑完）送权：队友手越少，越该出小而稳的牌让队友接
+    //    这里简化：队友快跑完时优先出非王的最小普通牌（甩低牌也顺手）
+    if(!pOut && partner>=0 && G.seats[partner].hand.length<=3 && hand.length>4){
+      const low=cands.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
+      const picked=pickBest(low);
+      if(picked) return {cards:picked.cards, play:picked.play};
+    }
+
+    // 3) 组合优先（甩得最多）：连对/飞机/五十K/滚笼（王炸一般留作跟牌杀器）
+    //    费王的组合只有当甩得多/是滚笼才上，否则留王（王不乱出）
+    const combo=cands.filter(it=>{
+      const p=it.play, wu=wildsOf(it);
+      if(p.type!=='seqPair'&&p.type!=='airplane'&&p.type!=='fiftyK'&&p.type!=='rollcage') return false;
+      if(wu===0) return true;
+      if(p.type==='airplane'&&wu<=2) return true;
+      if(p.type==='rollcage') return true;
+      return false;
+    });
+    if(combo.length){
+      combo.sort((a,b)=>{
+        const wa=wildsOf(a), wb=wildsOf(b);
+        if(wa!==wb) return wa-wb;
+        const la=a.cards.length, lb=b.cards.length;
+        if(la!==lb) return lb-la;              // 先甩多张的
+        return playStrength(a.play)-playStrength(b.play);
+      });
+      return {cards:combo[0].cards, play:combo[0].play};
+    }
+
+    // 4) 普通单/对/三条：最小的真实小牌（不用王）
+    const norm=cands.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
+    const n0=pickBest(norm);
+    if(n0) return {cards:n0.cards, play:n0.play};
+
+    // 5) 只剩炸：小炸先动（无番/五十K），王炸/滚笼留着
+    const bombs=cands.filter(it=>TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
     if(bombs.length){
       bombs.sort((a,b)=>playStrength(a.play)-playStrength(b.play));
-      return bombs[0];
+      return {cards:bombs[0].cards, play:bombs[0].play};
     }
-    return null;
+
+    // 6) 兜底：最小强度的出法（罕见）
+    const it=cands.slice().sort((a,b)=>playStrength(a.play)-playStrength(b.play))[0];
+    return {cards:it.cards, play:it.play};
   }
 
-  // 跟牌：选刚好能压过的最小牌，倾向不浪费大牌、不主动上炸
+  // 跟牌：能压则压，但绝不炸队友、不浪费王
   function chooseFollow(G, seat, mustBeat, cands){
-    const S=G.seats[seat];
-    const hand=S.hand;
-    const beats=cands.filter(c=>TS.canBeat(mustBeat,c.play));
-    if(beats.length===0) return null;
-    // 队友如果是最后出牌者（接风视角），让队友继续掌控
-    if(G.mode==='2v2' && G.revealed && G.lastSeat===G.partner && seat!==G.partner){
-      // 队友领先且我们跟不上好牌 → 倾向不要乱跟（除非能直接出完）
-    }
-    // 同样类型优先：选「最小能压的普通牌」
-    const norm=beats.filter(c=>!TS.isBomb(c.play));
-    if(norm.length){
-      norm.sort((a,b)=>playStrength(a.play)-playStrength(b.play));
-      return norm[0];
-    }
-    // 只能上炸：判断值不值得
-    //   - 对方已上炸（mustBeat 是炸）→ 必须压，用最小能压的炸
-    //   - 对方只是普通牌 → 只在「自己能一波带完或手牌很少」时上小炸
-    const mustIsBomb=TS.isBomb(mustBeat);
-    if(mustIsBomb){
-      const bombs=beats.filter(c=>TS.isBomb(c.play));
-      if(bombs.length){ bombs.sort((a,b)=>playStrength(a.play)-playStrength(b.play)); return bombs[0]; }
+    const S=G.seats[seat], hand=S.hand;
+    const jokers=handJokers(hand);
+    const team=TS.teamOf(G,seat);
+    const lastIsTeammate = G.lastSeat>=0 && team.includes(G.lastSeat);
+    const beats=cands.filter(it=>TS.canBeat(mustBeat,it.play));
+
+    // A) 队友刚出的牌：不跟、不上炸，让队友控场（带风/顺风由引擎处理）；
+    //    除非我能一手跑完（跑牌优先于让权）
+    if(lastIsTeammate){
+      const run=beats.filter(it=>it.cards.length===hand.length);
+      const r0=pickBest(run);
+      if(r0) return {cards:r0.cards, play:r0.play};
       return null;
     }
-    // 普通牌对方，考虑用无番炸压牌（压牌工具），但别浪费
+    if(beats.length===0) return null;
+
+    // B) 自己能一手跑完：直接出（少耗王优先）
+    const goOut=beats.filter(it=>it.cards.length===hand.length);
+    const g0=pickBest(goOut);
+    if(g0) return {cards:g0.cards, play:g0.play};
+
+    // C) 自己也快跑完（剩≤2）：大甩清仓
     if(hand.length<=6){
-      const press=beats.filter(c=>TS.bombTier(c.play)===1);
-      if(press.length){ press.sort((a,b)=>playStrength(a.play)-playStrength(b.play)); return press[0]; }
+      const near=beats.filter(it=>hand.length-it.cards.length<=2);
+      const n0=pickBest(near);
+      if(n0) return {cards:n0.cards, play:n0.play};
     }
-    // 手牌多：忍住，别为小牌上大炸
+
+    // D) 对手马上要跑完（手≤2）：用炸拦（优先小炸、不浪费王）
+    const oppHand = G.lastSeat>=0 ? G.seats[G.lastSeat].hand.length : 999;
+    if(oppHand<=2){
+      const stop=beats.filter(it=>TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
+      const s0=pickBest(stop);
+      if(s0) return {cards:s0.cards, play:s0.play};
+    }
+
+    // E) 普通跟：最小能压的普通牌，优先不用王
+    const norm=beats.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
+    const n0=pickBest(norm);
+    if(n0) return {cards:n0.cards, play:n0.play};
+
+    // F) 对方上炸：必须回炸，用最小能压的炸（优先真实炸）
+    if(TS.isBomb(mustBeat)){
+      const bombs=beats.filter(it=>TS.isBomb(it.play));
+      const b0=pickBest(bombs);
+      if(b0) return {cards:b0.cards, play:b0.play};
+      return null;
+    }
+
+    // G) 对方普通大牌，只能靠炸/费王去压：手牌少快跑时才舍得用
+    if(hand.length<=6){
+      const press=beats.filter(it=>TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
+      const p0=pickBest(press);
+      if(p0) return {cards:p0.cards, play:p0.play};
+    }
     return null;
   }
 

@@ -53,11 +53,13 @@ function createRoom(code){
     settings: {         // 牌局设置（房主可调）
       rounds: 1,        // 一轮打多少局
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
-      showCorner: false, // 是否显示牌桌信息框（叫牌/明鸡/庄家），默认不显示
+      showCorner: true,  // 是否显示牌桌信息框（叫牌/局数/半番等），默认显示
       showLog: false,    // 是否显示出牌记录框（右上角日志），默认不显示
       kings: 8,         // 王总数 8/10/12
       jokerValue: 3,    // 王单出算 3 或 2
       tailBonus: false, // 4+王 尾游能否拿奖金
+      fanCap: 32,       // 笼数封顶：32/64/128，0=不封顶（超过按封顶值计）
+      halfFan: 1,       // 半番=几分（1~50，默认 1）
     },
     series: {           // 一轮（多局）累计
       active: false, roundCount: 0, totals: [0,0,0,0],
@@ -80,6 +82,8 @@ function makeCfg(room){
     kings: room.settings.kings,
     jokerValue: room.settings.jokerValue,
     tailBonus: room.settings.tailBonus,
+    fanCap: room.settings.fanCap,
+    halfFan: room.settings.halfFan,
   };
 }
 // 标记"刚结束的这局是否为一场的最后一局"，随快照带给客户端（避免客户端猜错）
@@ -102,6 +106,10 @@ function snapshot(room){
 function broadcast(room){
   io.to(room.code).emit('state', snapshot(room));
 }
+/* ---------- 应变：本地房间码列表（LOVE/HOME 等常驻房不可删除、不闲置解散） ---------- */
+const PRESERVE_ROOMS = new Set(['LOVE','HOME']);
+function isPreserve(code){ return PRESERVE_ROOMS.has(code); }
+
 /* ---------- 牌局结束后房间闲置超时自动解散 ---------- */
 function clearIdleKick(room){
   if(room && room.idleTimer){ clearTimeout(room.idleTimer); room.idleTimer=null; }
@@ -109,12 +117,16 @@ function clearIdleKick(room){
 function scheduleIdleKick(room){
   if(!(IDLE_KICK_MS>0)) return;
   clearIdleKick(room);
+  // 常驻房（LOVE/HOME）不设闲置解散
+  if(isPreserve(room.code)) return;
   room.idleTimer=setTimeout(()=>{ kickIdleRoom(room); }, IDLE_KICK_MS);
 }
 function kickIdleRoom(room){
   room.idleTimer=null;
   // 房间已被删除，或同号房间已被新房间替换 → 忽略
   if(rooms.get(room.code)!==room) return;
+  // 常驻房（LOVE/HOME）即使闲置也不解散
+  if(isPreserve(room.code)){ clearIdleKick(room); return; }
   // 只有牌局已结束（本局已结束或本场已无当前局）才解散
   if(room.G && !room.G.ended) return;
   const socks=[];
@@ -280,6 +292,8 @@ io.on('connection', (socket)=>{
 
   // 房间列表（大厅显示）
   socket.on('listRooms', ()=>{
+    // 兜底：常驻房（LOVE/HOME）若缺失（异常删除/旧版本残留）则立即重建
+    for(const code of PRESERVE_ROOMS) if(!rooms.has(code)) createRoom(code);
     const list=[];
     rooms.forEach(r=>{
       list.push({
@@ -287,6 +301,7 @@ io.on('connection', (socket)=>{
         humans:r.humanCount,
         aiFill:r.aiFill,
         started: !!(r.G && r.G.started),
+        hasGame: !!r.G,   // 房间已创建对局（含确认轮），供重连列表判断
         rounds:r.settings.rounds,
         host: r.seats[0].type==='human' ? r.seats[0].name : null,
       });
@@ -327,6 +342,8 @@ io.on('connection', (socket)=>{
     if(data.kings!=null) s.kings=[8,10,12].includes(Number(data.kings))?Number(data.kings):8;
     if(data.jokerValue!=null) s.jokerValue=Number(data.jokerValue)===2?2:3;
     if(data.tailBonus!=null) s.tailBonus=!!data.tailBonus;
+    if(data.fanCap!=null){ const n=Number(data.fanCap); s.fanCap=[32,64,128,0].includes(n)?n:32; }
+    if(data.halfFan!=null){ const n=Math.round(Number(data.halfFan)); s.halfFan=Math.min(50,Math.max(1,n||1)); }
     if(data.aiFill!=null) room.aiFill=!!data.aiFill;
     // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
     const wantStart = (data.start===true);
@@ -515,8 +532,8 @@ io.on('connection', (socket)=>{
         }
       }
     }
-    // 房间无人时自动删除（LOVE 常驻房除外）
-    if(r.humanCount===0 && r.code!=='LOVE'){ clearIdleKick(r); rooms.delete(r.code); }
+    // 房间无人时自动删除（常驻房 LOVE/HOME 除外）
+    if(r.humanCount===0 && !isPreserve(r.code)){ clearIdleKick(r); rooms.delete(r.code); }
     else broadcast(r);
   });
 
@@ -524,7 +541,7 @@ io.on('connection', (socket)=>{
   // 删除房间：未开局房间任意可删；已开局仅房主可删
   socket.on('deleteRoom', (data)=>{
     const code=(data&&data.code||'').toUpperCase();
-    if(code==='LOVE'){ socket.emit('toast','LOVE 是常驻房间，不能删除'); return; }
+    if(isPreserve(code)){ socket.emit('toast', `${code} 是常驻房间，不能删除`); return; }
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
     if(r.G && r.G.started){
@@ -549,6 +566,8 @@ io.on('connection', (socket)=>{
 
 // 常驻房 LOVE：作为常用房间，固定存在，即使无人也不删除
 createRoom('LOVE');
+// 常驻房 HOME：第二个固定房间（供群友联机/测试用），同样不删除
+createRoom('HOME');
 
 server.listen(PORT, ()=>{
   console.log(`通山打拱服务器已启动：http://0.0.0.0:${PORT}`);

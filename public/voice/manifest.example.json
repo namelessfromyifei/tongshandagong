@@ -54,12 +54,31 @@
         "不要": "buyao.m4a",
         "插底": "chadi.m4a",
         "滚笼": "gunlong.m4a",
-        "过": "guo.m4a",
         "继续继续": "jixujixu.m4a",
         "快点": "kuaidian.m4a",
         "明独": "mingdu.m4a",
         "明鸡": "mingji.m4a",
-        "炸弹": "zhadan.m4a"
+        "炸弹": "zhadan.m4a",
+        "2-W": "2-W.m4a",
+        "3-W": "3-W.m4a",
+        "五十K": "510k.m4a",
+        "飞机": "feiji.m4a",
+        "连对": "liandui.m4a",
+        "软滚": "ruangun.m4a",
+        "硬滚": "yinggun.m4a",
+        "带风": "daifeng.m4a",
+        "不要2": "buyao2.m4a",
+        "不要3": "buyao3.m4a",
+        "4long": "4long.m4a",
+        "6long": "6long.m4a",
+        "8long": "8long.m4a",
+        "10long": "10long.m4a",
+        "16long": "16long.m4a",
+        "32long": "32long.m4a",
+        "64long": "64long.m4a",
+        "128long": "128long.m4a",
+        "256long": "256long.m4a",
+        "报王": "baowang.m4a"
       }
     }
   }

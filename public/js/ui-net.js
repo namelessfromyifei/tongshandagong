@@ -29,6 +29,7 @@ let lastSettle=null, lastSettleSeq=0; // 局末结算（信息框外得分徽标
 let cumTotals=[0,0,0,0];    // 客户端按局累计（规避服务器快照时序导致的"累计=0"）
 let cumEndedSeq=0, resetPending=false;
 let pendingPlay=false;      // 本次"出牌"是否已发送（成功后清空预选，失败保留）
+let hintDblIdx=-1, hintDblAt=0; // 双击单牌快捷出牌的最近点击记录
 // 拖动选牌：按下记录、移动判定、抬起后抑制随后的 click（避免拖动再切换）
 let downInfo=null, clickSuppress=false;
 function snapSeatOffline(i){ return !!seatOffline[i]; }
@@ -42,17 +43,20 @@ function buildKindMap(hand){
   const groups = Math.min(cnt[R5], cnt[R10], cnt[RK]);
   const used={[R5]:0,[R10]:0,[RK]:0};
   const kind=new Map();
+  const bombSize=new Map(); // 归入炸弹时的实际张数（扣除已作五十K的）
   for(const c of hand){
     if(c.j){ kind.set(c.id, 2); continue; }
     if((c.r===R5||c.r===R10||c.r===RK) && used[c.r]<groups){ used[c.r]++; kind.set(c.id, 0); continue; }
-    if(cnt[c.r]>=4){ kind.set(c.id, 1); continue; }
+    // 炸判定：用剩余张数（总张数 − 已被五十K 占用），而非总计数
+    const remain=cnt[c.r]-(used[c.r]||0);
+    if(remain>=4){ kind.set(c.id, 1); bombSize.set(c.id, remain); continue; }
     kind.set(c.id, 3);
   }
-  return {cnt, kind};
+  return {cnt, kind, bombSize};
 }
 function sortHandCards(){
   const hand = G ? G.seats[mySeat].hand : [];
-  const {cnt, kind}=buildKindMap(hand);
+  const {kind, bombSize}=buildKindMap(hand);
   const idx=hand.map((c,i)=>i);
   if(sortMode===0){
     idx.sort((a,b)=>{ const ka=handKey(hand[a]), kb=handKey(hand[b]); return ka-kb || (hand[a].id<hand[b].id?-1:1); });
@@ -65,7 +69,7 @@ function sortHandCards(){
     if(ka===2) return ca.id<cb.id?-1:1;
     if(ka===0||ka===1){
       if(ka===0) return handKey(ca)-handKey(cb);
-      const sa=cnt[ca.r], sb=cnt[cb.r];
+      const sa=bombSize.get(ca.id), sb=bombSize.get(cb.id);
       if(sa!==sb) return sb-sa;
       return handKey(ca)-handKey(cb);
     }
@@ -78,25 +82,37 @@ function sortHandCards(){
 /* ---------- 按钮控制 ---------- */
 function setBtn(on){
   $('btnPlay').disabled=!on; $('btnPass').disabled=!on;
+  $('btnHint').disabled=!on; // 提示按钮：不隐藏，仅禁用（出牌轮一直可见）
   $('btnHard').style.display='none';
   $('btnHe').style.display='none';
-  $('btnHint').style.display='none';
 }
 function enablePlayer(){
   const mine = G && !G.ended && G.turn===mySeat;
   $('btnPlay').disabled = !mine;
+  $('btnPass').style.display='inline-block'; // 确认轮隐藏过（表态后）则恢复
   $('btnPass').disabled = !mine || !G.lastPlay;
   $('btnPass').textContent = '不要';
   $('btnHard').disabled=false;
   $('btnHard').style.display='none';
   $('btnHe').style.display='none';
   $('btnHint').style.display='inline-block';
+  $('btnHint').disabled = !mine;
 }
 function enableConfirm(){
   const seat=mySeat;
+  // 已表态（明独/不明独）：操作按钮不再显示
+  if(G.seats[seat] && G.seats[seat].choice){
+    $('btnHe').style.display='none';
+    $('btnHard').style.display='none';
+    $('btnPass').style.display='none';
+    $('btnHint').style.display='none';
+    $('btnPlay').disabled=true;
+    return;
+  }
   $('btnHe').style.display = TS.handHasBomb(G.seats[seat].hand) ? 'none' : 'inline-block';
+  $('btnHard').style.display='inline-block';
   $('btnHard').disabled=false;
-  $('btnHard').style.display = 'inline-block';
+  $('btnPass').style.display='inline-block';
   $('btnPass').disabled=false; $('btnPass').textContent='不明独';
   $('btnHint').style.display='none';
   $('btnPlay').disabled=true;
@@ -108,13 +124,17 @@ function playerPlay(){
   if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   const cards=[...G.seats[mySeat].hand].filter((c,i)=>selected.has(i));
   if(cards.length===0){ flashMsg('请先选牌'); return; }
+  // 本地校验所选牌是否符合出牌规则；非法则中央提示，不发送
+  const p=TS.analyzePlay(cards, G.cfg);
+  if(!p) return flashMsg('所选的牌不合规则');
+  if(G.lastPlay && !TS.canBeat(G.lastPlay,p)) return flashMsg('所选的牌不合规则');
   // 先发送，待成功后（广播轮到我下家）再清空预选；失败时保留选择便于调整
   pendingPlay=true;
   getNET().act({type:'play', seat:mySeat, cards});
 }
-function playerPass(){
+function playerPass(force){
   if(!G) return;
-  if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
+  if(!force && voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   if(G.confirming){ getNET().act({type:'confirm', seat:mySeat, choice:'pass'}); return; }
   if(!G.lastPlay||G.turn!==mySeat) return;
   getNET().act({type:'pass', seat:mySeat});
@@ -134,7 +154,24 @@ function playerHint(){
   hintList=TSAI ? [] : [];
   // 用本地引擎生成候选（仅供提示，不执行）
   if(window.TSAI) hintList=TSAI.genCandidates(G.seats[mySeat].hand, G.lastPlay||null);
-  if(hintList.length===0){ flashMsg('没有能压的牌'); return; }
+  if(hintList.length===0){
+    flashMsg('没有能压的牌');
+    // 已无牌可压：直接点击"不要"（无出牌权时提示也保持当前）——仅当能过牌时自动不要
+    // force=true：过牌是被动动作，语音播放中也不阻塞（避免误报"语音播放中，请稍候"）
+    if(G.lastPlay && G.turn===mySeat) playerPass(true);
+    return;
+  }
+  // 提示优先级：同类型牌优先（同类中最小恰能压的在前），没有同类才用炸里最小的
+  // kindOf = 牌型大类：普通牌按 type；炸按 tier（五十K/无番炸/番炸类），确保"同类"判断准确
+  const kindOf = p => TS.isBomb(p) ? ('b'+TS.bombTier(p)) : p.type;
+  const lb=G.lastPlay;
+  hintList.sort((a,b)=>{
+    const pa=a.play, pb=b.play;
+    const sameA = lb ? kindOf(pa)===kindOf(lb) : true;
+    const sameB = lb ? kindOf(pb)===kindOf(lb) : true;
+    if(sameA!==sameB) return sameA?-1:1;
+    return TSAI.playStrength(pa)-TSAI.playStrength(pb);
+  });
   hintCursor=(hintCursor+1)%hintList.length;
   const cand=hintList[hintCursor];
   const ids=new Set(cand.cards.map(c=>c.id));
@@ -177,6 +214,11 @@ const clipCache=new Map();        // url -> Promise<AudioBuffer>
 let voiceInit=true; // 首帧只记录状态，不播报历史事件
 let lastEndedKey=null; // 已播报过「继续继续」的局
 let prevRevealed=false; // 明鸡（对家打出叫牌）状态
+let prevPlaySeat=-1;    // 上一帧最后出牌的座位（用于接风判定）
+let lastRoundKey=null;  // 当前局标识（换局时重置接风判定）
+const PASS_TAKES=['不要','不要2','不要3']; // 三种「不要」随机播
+let lastPassSeq=0; // 上次播报的 passSeq（engine 每次"不要"递增，用于每次点击都播）
+let prevKingPlayed=[false,false,false,false]; // 各家"已打出第一张王"上升沿（≥4王触发"报王"播报）
 let prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
                    {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
 // 音色排序：zh-CN 优先，常见高质量女声/网络音色优先
@@ -351,6 +393,17 @@ function toggleVoice(){
   if(!voiceOn && 'speechSynthesis' in window){ try{ speechSynthesis.cancel(); }catch(e){} }
   if(voiceOn && TTS_FALLBACK) speak('语音提示已开启');
 }
+// 有番炸的播报：番数有笼数语音（Xlong）→ 直接报"N笼"；否则回退软滚/硬滚/滚笼
+// 现有笼数语音：4/6/8/10/16/32/64/128/256
+const FAN_LONG_TOKENS={4:true,6:true,8:true,10:true,16:true,32:true,64:true,128:true,256:true};
+function fanBombSpeech(p){
+  if(p.fan>0 && FAN_LONG_TOKENS[p.fan]){
+    return {text:`${p.fan}笼`, tokens:[`${p.fan}long`]};
+  }
+  if(p.fan===1) return {text:'软滚', tokens:['软滚']};
+  if(p.fan===2) return {text:'硬滚', tokens:['硬滚']};
+  return {text:'滚笼', tokens:['滚笼']};
+}
 // 返回 {text, tokens}：text 供 TTS 兜底；tokens 为语音包词条（可整句拼接）
 function playSpeech(cards){
   const p=TS.analyzePlay(cards, G&&G.cfg);
@@ -374,11 +427,13 @@ function playSpeech(cards){
     case 'seqPair': return {text:'连对', tokens:['连对']};
     case 'airplane': return {text:'飞机', tokens:['飞机']};
     case 'fiftyK': return {text:'五十K', tokens:['五十K']};
+    case 'fiftyCage': return fanBombSpeech(p); // 五十K大炸：带番播报（软/硬/滚笼按番数）
     case 'bomb':
-      // 4/5/6 张无番炸 → 「炸弹」；7 张以上 → 按「滚笼」播报
+      // 4/5/6 张无番炸 → 「炸弹」；有番炸按番数/软硬选词
       if(p.fan===0) return {text:'炸弹', tokens:['炸弹']};
-      return {text:'滚笼', tokens:['滚笼']};
-    case 'rollcage': return {text:'滚笼', tokens:['滚笼']};
+      return fanBombSpeech(p);
+    case 'rollcage':
+      return fanBombSpeech(p);
     case 'kingBomb': return {text:`${p.size}个王`, tokens:[`${p.size}-W`]};
     default: return null;
   }
@@ -386,6 +441,8 @@ function playSpeech(cards){
 // 出牌 / 不要 / 明独 / 不明独 / 插底：同一帧的事件合并成一句播报
 function announceState(){
   if(!G) return;
+  const rkey=G.seq||G.roundNo||0;
+  if(rkey!==lastRoundKey){ lastRoundKey=rkey; prevPlaySeat=-1; lastPassSeq=0; }
   const msgs=[]; // {text, tokens}
   if(G.lastSeat>=0 && G.lastCards && G.lastCards.length){
     const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
@@ -400,12 +457,40 @@ function announceState(){
     const cur={ passed:!!s.passed, choice:s.choice||null, dizhi:!s.out && !!s.hand && s.hand.length===1 };
     const prev=prevSeatState[i]||{passed:false,choice:null,dizhi:false};
     if(!voiceInit){
-      if(cur.passed && !prev.passed) msgs.push({text:'不要',tokens:['不要']});
       if(cur.choice && cur.choice!==prev.choice){ const c=cur.choice==='mingdu'?'明独':'不独'; msgs.push({text:c,tokens:[c]}); }
       if(cur.dizhi && !prev.dizhi) msgs.push({text:'插底',tokens:['插底']});
+      // 起到了 ≥4 王：该家第一次打出王时播报"报王"
+      const kp = !!s.kingPlayed && (s.kings||0)>=4;
+      if(kp && !prevKingPlayed[i]) msgs.push({text:'报王', tokens:['报王']});
     }
+    // 首帧（voiceInit=true）也要同步记录报王状态，避免刷新重连后误判为"新报王"
+    prevKingPlayed[i] = !!(s.kingPlayed && (s.kings||0)>=4);
     prevSeatState[i]=cur;
   }
+  // 出牌轮"不要"：按 passSeq 计数差值播报（同一圈再次轮到点"不要"也必播）
+  const ps=Number(G.passSeq)||0;
+  if(!voiceInit && ps>lastPassSeq){
+    const n=ps-lastPassSeq;
+    for(let k=0;k<n;k++){
+      const take=PASS_TAKES[Math.floor(Math.random()*PASS_TAKES.length)];
+      msgs.push({text:'不要',tokens:[take]});
+    }
+  }
+  lastPassSeq=ps;
+  // 已明鸡：出完牌的玩家由队友接风（带风）时播报「带风」
+  if(G.lastPlay==null && prevPlaySeat>=0 && !voiceInit){
+    const win=prevPlaySeat, ws=G.seats[win];
+    if(!G.ended && G.revealed && ws && ws.out){
+      const team=TS.teamOf(G,win);
+      const mate=team.find(i=>i!==win);
+      if(mate!=null && G.seats[mate] && !G.seats[mate].out && G.turn===mate){
+        msgs.push({text:'带风',tokens:['带风']});
+      }
+    }
+    prevPlaySeat=-1;
+  }
+  if(G.lastSeat>=0) prevPlaySeat=G.lastSeat;
+
   // 非叫牌家打出明鸡牌（身份公开）时播报「明鸡」
   const rv=!!G.revealed;
   if(!voiceInit && rv && !prevRevealed) msgs.push({text:'明鸡',tokens:['明鸡']});
@@ -442,6 +527,10 @@ function applyState(snap){
     lastSpokenKey=''; // 换房间后允许重新播报
     lastEndedKey=null;
     prevRevealed=false;
+    prevPlaySeat=-1;
+    lastRoundKey=null;
+    lastPassSeq=0;
+    prevKingPlayed=[false,false,false,false];
     voiceInit=true;
     prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
                    {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
@@ -488,6 +577,9 @@ function applyState(snap){
     renderSeatNames();
     renderReadyIndicators();
     setBtn(false);
+    // 准备按钮居中（此时 G 为空，btnReady 挪到中间位置）
+    layoutActionButtons();
+    positionMidBtns();
     return;
   }
   if($('btnSort')) $('btnSort').style.display='inline-block'; // 开局后显示排序按钮
@@ -506,7 +598,12 @@ function applyState(snap){
   if($('btnNext')) $('btnNext').style.display = (G && G.ended) ? 'inline-block' : 'none';
   // 按钮：确认轮 / 出牌轮
   if(G.ended){ setBtn(false); return; }
-  if(G.confirming){ setBtn(false); if(G.turn===mySeat) enableConfirm(); }
+  if(G.confirming){
+    setBtn(false);
+    // 仅轮到我且未表态时才显示表态按钮（"不要"不会在中间出现）
+    if(G.turn===mySeat && !(G.seats[mySeat] && G.seats[mySeat].choice)) enableConfirm();
+    else { $('btnPass').style.display='none'; $('btnHard').style.display='none'; }
+  }
   else { setBtn(false); if(G.turn===mySeat) enablePlayer(); }
   voiceGate(); // 语音播报未结束时保持按钮禁用
   syncHandLayout(); // 按钮显隐/换容器后重新定位（明独/不明独居中）
@@ -572,11 +669,8 @@ function updateSeriesInfo(){
 }
 function seatTag(i){
   if(G.mode==='hard') return i===G.hardSeat?'<span class="teamMark hard">硬</span>':'';
-  // 明鸡已出：庄队(叫牌方+明鸡)统一金色◆，客队统一红色◆ —— 同队同标记
-  if(G.revealed) return (i===G.landlord||i===G.partner)
-    ? '<span class="teamMark ta">◆</span>'
-    : '<span class="teamMark tb">◆</span>';
-  return i===G.landlord ? '<span class="teamMark host">主</span>' : '';
+  // 老板标记始终显示（明鸡已公开时也保留，队伍靠头像圆圈颜色区分）
+  return i===G.landlord ? '<span class="teamMark host">老板</span>' : '';
 }
 function renderSeats(){
   // 视图重排：自己的座位(real=mySeat)显示在下方(南位 view0)
@@ -697,17 +791,24 @@ function renderSeats(){
       d.style.cssText = s.choice==='mingdu' ? 'color:#ff9d8a;font-size:15px;font-weight:bold;padding:8px 0;' : 'color:#d9e8e0;font-size:14px;padding:8px 0;';
       tr.appendChild(d);
     } else if(s.passed){
-      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffb39a;font-size:17px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
+      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffffff;font-size:17px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
     } else if(s.lastCards&&s.lastCards.length){
+      // 出到桌面的牌按点数理顺展示（不改变实际牌，仅排列顺序）：王放最后，其余按 3->2 升序
+      const deskCards=[...s.lastCards].sort((a,b)=>{
+        if(a.j&&b.j) return a.id-b.id;
+        if(a.j) return 1;
+        if(b.j) return -1;
+        return a.r-b.r || a.id-b.id;
+      });
       // 南/北在桌面上下方，横向空间足够：所有牌叠放在同一排，不换行；
       // 东/西在两侧，仍按每排 7 张分行。
-      const ROW = (v===0 || v===2) ? s.lastCards.length : 7;
-      const rows=Math.ceil(s.lastCards.length/ROW);
+      const ROW = (v===0 || v===2) ? deskCards.length : 7;
+      const rows=Math.ceil(deskCards.length/ROW);
       const pPlay=TS.analyzePlay(s.lastCards);
-      const showFan = pPlay && (pPlay.type==='rollcage'||pPlay.type==='kingBomb'||(pPlay.type==='bomb'&&pPlay.fan>0));
+      const showFan = pPlay && (pPlay.type==='rollcage'||pPlay.type==='kingBomb'||(pPlay.type==='bomb'&&pPlay.fan>0)||pPlay.type==='fiftyCage');
       for(let ri=0;ri<rows;ri++){
         const row=document.createElement('div'); row.className='trickRow';
-        s.lastCards.slice(ri*ROW,(ri+1)*ROW).forEach(c=>{
+        deskCards.slice(ri*ROW,(ri+1)*ROW).forEach(c=>{
           // 明鸡牌出桌面：只有"明鸡/队友"打出叫牌的那张才加高亮，庄家自己出的不标
           const isCalledCard = (G.mode!=='hard' && i===G.partner && G.called && !c.j && c.r===G.called.r && c.s===G.called.s);
           row.insertAdjacentHTML('beforeend', cardHTML(c, isCalledCard ? 'calledOnDesk' : 'mini'));
@@ -740,16 +841,16 @@ function renderSeats(){
 }
 function renderCorner(){
   const c=$('corner'); if(!c) return;
-  // 房主可在「对局配置」里开启该信息框（默认不显示）
+  // 房主可在「对局配置」里开启该信息框（默认不显示）；显示当前牌局设置
   c.style.display = settings.showCorner === true ? '' : 'none';
   c.innerHTML='';
   const mkChip=(label,val)=>`<div class="cornerRow"><span style="color:#a8c8b8">${label}</span><b>${val||'—'}</b></div>`;
-  c.innerHTML += mkChip('叫牌', G.mode==='hard'?'硬牌':(G.called?TS.cardName(G.called):'—'));
-  if(G.mode!=='hard' && G.called){
-    c.innerHTML+=`<div class="cornerRow">${cardHTML({j:false,r:G.called.r,s:G.called.s},'mini')}<span>${seatNames[G.landlord]} 叫</span></div>`;
-  }
-  c.innerHTML += mkChip('明鸡', G.mode==='hard'?'—':(G.revealed?`已出 · ${seatNames[G.partner]}`:'未出'));
-  c.innerHTML += mkChip('庄家', G.mode==='hard'?seatNames[G.hardSeat]:seatNames[G.landlord]);
+  c.innerHTML += mkChip('局数', `${settings.rounds||1} 局`);
+  c.innerHTML += mkChip('王总数', `${settings.kings||8} 个`);
+  c.innerHTML += mkChip('王单出', settings.jokerValue===2 ? '算 2' : '算 3');
+  c.innerHTML += mkChip('半边', `${settings.halfFan||1} 分`);
+  c.innerHTML += mkChip('笼数封顶', settings.fanCap ? `${settings.fanCap} 笼` : '不封顶');
+  c.innerHTML += mkChip('尾游', settings.tailBonus ? '有奖金' : '无奖金');
 }
 function cardHTML(c,cls){
   if(c.j) return `<div class="card jk ${cls||''}"><span class="tl">王</span><span class="br">王</span><span class="ctr">王</span></div>`;
@@ -769,9 +870,10 @@ function renderHand(){
     if(show!=null && !G.seats[show].out){
       const hs=G.seats[show];
       // 先渲染队友牌，文字放在牌的右侧（避免被第一张牌的负边距遮住）
-      renderCardFan(handEl, hs.hand);
+      renderCardFan(handEl, hs.hand, show);
       const cap=document.createElement('div');
-      cap.textContent=`队友牌`;
+      // 明鸡已出 → 明确显示队友是谁；未明 → 保持"队友牌"
+      cap.textContent = G.revealed ? `队友 ${seatNames[show]} 的手牌` : '队友牌';
       cap.style.cssText='color:#a8c8b8;font-size:12px;align-self:center;margin-left:8px;flex:0 0 auto;white-space:nowrap;';
       handEl.appendChild(cap);
     } else {
@@ -784,13 +886,28 @@ function renderHand(){
     const c=s.hand[idx];
     const el=document.createElement('div');
     let cls='hcard'+(selected.has(idx)?' sel':'');
-    if(G.mode!=='hard' && G.called && !c.j && c.r===G.called.r && c.s===G.called.s) cls+=' calledMark';
+    // 仅明鸡（队友）手里那张叫牌才标记；庄家（叫牌人）自己的不标
+    if(G.mode!=='hard' && G.called && mySeat===G.partner && !c.j && c.r===G.called.r && c.s===G.called.s) cls+=' calledMark';
     el.className=cls;
     el.dataset.i=idx;
     el.innerHTML=cardHTML(c);
+    // 双击同一张单牌且能压过上家 → 直接出牌作为快捷方式
+    const now=Date.now();
+    const dbl = (hintDblIdx===idx) && (now-hintDblAt>0) && (now-hintDblAt<350);
+    hintDblIdx=idx; hintDblAt=now;
     el.onclick=()=>{
       if(G.ended) return;
       if(clickSuppress){ clickSuppress=false; return; } // 拖动手势后的 click 不再切换
+      if(dbl && G.turn===mySeat && !G.out && !G.confirming){
+        // 双击单张：仅当是合法单牌且能压过上家时直接出
+        const p=TS.analyzePlay([c], G.cfg);
+        if(p && p.type==='single' && (!G.lastPlay || TS.canBeat(G.lastPlay,p))){
+          selected.clear();
+          G.seats[mySeat].hand.forEach((x,i)=>{ if(x.id===c.id) selected.add(i); });
+          playerPlay();
+          return;
+        }
+      }
       if(selected.has(idx)) selected.delete(idx); else selected.add(idx);
       el.classList.toggle('sel',selected.has(idx));
     };
@@ -798,12 +915,13 @@ function renderHand(){
   });
   const btn=$('btnSort'); if(btn) btn.textContent = sortMode===0?'排序：点数':'排序：炸前置';
 }
-function renderCardFan(handEl, cards){
+function renderCardFan(handEl, cards, forSeat){
   const order=[...cards].sort((a,b)=>handKey(a)-handKey(b));
   order.forEach(c=>{
     const el=document.createElement('div');
     let cls='hcard';
-    if(G.mode!=='hard' && G.called && !c.j && c.r===G.called.r && c.s===G.called.s) cls+=' calledMark';
+    // 仅明鸡（队友）拿着的那张叫牌才标记；庄家自己的叫牌不标
+    if(G.mode!=='hard' && G.called && forSeat===G.partner && !c.j && c.r===G.called.r && c.s===G.called.s) cls+=' calledMark';
     el.className=cls;
     el.innerHTML=cardHTML(c);
     handEl.appendChild(el);
@@ -816,16 +934,23 @@ function describeShort(p){
   if(p.type==='rollcage') return `滚笼 ${p.s}×${p.k}（${p.soft?'软':'硬'} ${p.fan} 笼）`;
   if(p.type==='bomb') return `${p.size} 张炸（${p.fan} 笼）`;
   if(p.type==='fiftyK') return p.tonghua?'五十K（同花）':'杂五十K';
+  if(p.type==='fiftyCage') return `五十K大炸 ${p.t}张×3（${p.soft?'软':'硬'} ${p.fan} 笼）`;
   if(p.type==='kingBomb') return `王炸（${p.fan} 笼）`;
   return p.type;
 }
 
 /* ---------- 结算（服务器已算出结果，仅本地展示） ---------- */
-// 基础分（牌面分，不含炸番/王奖）：与炸番相加 = 本局分（队内同值）
-function baseFenOf(st,i){
+// 牌面笼数（基础笼，单位=番）：半笼=0.5；带符号（赢队+，输队-）
+function baseCageOf(st,i){
   const sign=st.winnerSeats.includes(i)?1:-1;
+  // 硬牌：硬牌者收三家各 2 番＝6 番，三家各输 2 番
   if(st.mode==='hard') return (i===st.hardSeat?6:2)*sign;
-  return Math.round(st.basePer*2)*sign;
+  return st.basePer*sign; // 半番×输方没跑人数
+}
+function teamDotHtml(i){
+  // 身份列：红/绿圆圈标识队伍（庄队绿、客队红；硬牌＝硬牌者绿、三家红）
+  const green = G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord||i===G.partner);
+  return `<span class="teamDot ${green?'g':'r'}"></span>`;
 }
 function finishLocal(){
   try{
@@ -838,26 +963,28 @@ function finishLocal(){
     lastRoundWasLast = !!G.lastSeries;
     const close=$('btnClose');
     if(close) close.textContent = lastRoundWasLast ? '本场结束' : '下一局';
-    tb.innerHTML=`<tr><th>座位</th><th>名次</th><th>身份</th><th>牌面笼数</th><th>炸笼</th><th>本局(分)</th><th>累计(分)</th></tr>`;
+    tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>牌面笼数</th><th>滚笼</th><th>奖金</th><th>本局(分)</th><th>本场(分)</th></tr>`;
     for(let v=0;v<4;v++){
       const i=(mySeat+v)%4, fv=s.perFen[i];
-      const bs=baseFenOf(s,i);           // 基础分（牌面笼数，不含炸笼/王奖）
-      const bombF=fv-bs;                  // 炸笼（含王奖后的差额）
+      const bs=baseCageOf(s,i);              // 牌面笼数（番，带符号，半笼=0.5）
+      const cageC = (s.perSeatNoBonus?.[i]??s.perSeat[i])-bs; // 滚笼（不含奖金的差额）
+      const bonusC = s.perSeat[i] - (s.perSeatNoBonus?.[i]??s.perSeat[i]); // 奖金（王奖/硬炸奖）＝加奖金前后差值
       const gs=G.seats[i];
       const place = gs.out ? ['一','二','三','四'][gs.outOrder-1]+'游' : '—';
-      const kb = s.kingBonus&&s.kingBonus[i] ? `（含王奖${s.kingBonus[i]}笼×3）` : '';
-      const bb = s.bombBonus&&s.bombBonus[i] ? `（含硬炸奖${s.bombBonus[i]}笼×3）` : '';
+      const kb = s.kingBonus&&s.kingBonus[i] ? `（王奖${s.kingBonus[i]}笼×3）` : '';
+      const bb = s.bombBonus&&s.bombBonus[i] ? `（硬炸奖${s.bombBonus[i]}笼×3）` : '';
       tb.innerHTML+=`<tr><td>${seatNames[i]}</td>`+
-        `<td>${place}</td><td>${seatTag(i)}</td><td>${bs>0?'+':''}${bs}</td>`+
-        `<td>${bombF>0?'+':''}${bombF}${kb}${bb}</td>`+
+        `<td>${place}</td><td>${teamDotHtml(i)}</td><td>${bs>0?'+':''}${bs}</td>`+
+        `<td>${cageC>0?'+':''}${cageC}</td>`+
+        `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
         `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
     }
     // 说明 + 轮累计
-    const noteTxt = `牌面笼数 + 炸笼 = 本局分`;
+    const noteTxt = `牌面笼数 + 滚笼 + 奖金 = 本局分`;
     if(series && series.active && settings.rounds>1){
-      tb.innerHTML+=`<tr><td colspan="7" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${seatNames[i]} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
+      tb.innerHTML+=`<tr><td colspan="8" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${seatNames[i]} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
     } else {
-      tb.innerHTML+=`<tr><td colspan="7" class="note">${noteTxt}</td></tr>`;
+      tb.innerHTML+=`<tr><td colspan="8" class="note">${noteTxt}</td></tr>`;
     }
     $('modal').hidden=false;
   }catch(e){}
@@ -880,6 +1007,28 @@ window.GameUI = {
   },
   addLog,
 };
+
+/* ---------- 东/西家出牌区：始终贴着各自信息框（随信息框宽度自适应） ---------- */
+function positionSideTricks(){
+  const table=document.querySelector('.table');
+  const w=document.querySelector('.seatW'), e=document.querySelector('.seatE');
+  const tw=document.getElementById('t3'), te=document.getElementById('t1');
+  if(!table||!w||!e||!tw||!te) return;
+  // 旋转兜底（竖屏被翻转）下桌面整体翻转，offsetLeft/offsetWidth 不可靠，
+  // 且有写死的 .trickW{left:180px}/.trickE{right:180px} 兜底距离 → 交给 CSS：
+  // 先清掉 JS 此前写入的内联定位，让 CSS 生效
+  if(document.body.classList.contains('landscapeCompat')){
+    tw.style.left=''; tw.style.right=''; te.style.left=''; te.style.right='';
+    return;
+  }
+  const gap=6, tableW=table.clientWidth;
+  // 西家：紧贴信息框右侧
+  tw.style.left=(w.offsetLeft + w.offsetWidth + gap)+'px';
+  tw.style.right='auto';
+  // 东家：紧贴信息框左侧
+  te.style.left='auto';
+  te.style.right=(tableW - e.offsetLeft + gap)+'px';
+}
 
 /* ---------- 北家出牌区：始终贴在北家信息框下方 10px（随信息框高度自适应） ---------- */
 function positionNorthTrick(){
@@ -911,20 +1060,32 @@ function positionSeatS(){
   info.style.bottom = bottom + 'px';
 }
 
-/* ---------- 明独/不明独：确认轮放在牌的中间 ---------- */
+/* ---------- 明独/不明独：确认轮放在牌的中间；未开局准备按钮也居中 ---------- */
 function layoutActionButtons(){
-  if(!G) return;
-  const mid=$('midBtns'), right=$('playBtns');
+  const mid=$('midBtns'), right=$('playBtns'), ready=$('btnReady');
   const pass=$('btnPass'), hard=$('btnHard'), hint=$('btnHint');
-  if(!mid||!right||!pass||!hard||!hint) return;
+  if(!mid||!right||!pass||!hard||!hint||!ready) return;
+  if(!G){
+    // 未开局：准备按钮放中间，出牌/表态按钮隐藏
+    if(ready.parentElement!==mid) mid.appendChild(ready);
+    return;
+  }
   if(G.confirming){
-    // 初始确认轮：明独 + 不明独 放在牌的中间
-    if(hard.parentElement!==mid) mid.appendChild(hard);
-    if(pass.parentElement!==mid) mid.appendChild(pass);
+    // 初始确认轮：仅当轮到我且未表态时，明独 + 不明独 放中间；否则不在中间显示
+    const mayAct = G.turn===mySeat && !(G.seats[mySeat] && G.seats[mySeat].choice);
+    if(mayAct){
+      if(hard.parentElement!==mid) mid.appendChild(hard);
+      if(pass.parentElement!==mid) mid.appendChild(pass);
+    } else {
+      if(hard.parentElement!==right) right.appendChild(hard);
+      if(pass.parentElement!==right) right.appendChild(pass);
+      hard.style.display='none';
+      pass.style.display='none';
+    }
   } else {
-    // 出牌轮：出牌 + 不要 + 提示 放在牌的右上角
-    if(pass.parentElement!==right) right.insertBefore(pass, hint);
-    if(hint.parentElement!==right) right.appendChild(hint);
+    // 出牌轮：出牌 + 提示 + 不要 放在牌的右上角（证明提示在前、不要在最后）
+    if(hint.parentElement!==right) right.insertBefore(hint, pass);
+    if(pass.parentElement!==right) right.appendChild(pass);
     if(hard.parentElement!==mid) mid.appendChild(hard);
   }
 }
@@ -999,6 +1160,7 @@ function syncHandLayout(){
   const fullW=fullHandWidth(); // 用发牌满手宽度判断，避免剩牌减少时布局跳动
   const compact = w>0 && (w<780 || (fullW>0 && fullW + 2*tw + 18 > w));
   row.classList.toggle('handRowCompact', compact);
+  positionSideTricks();
   positionNorthTrick();
   positionSeatS();
   positionPlayBtns();
@@ -1041,15 +1203,20 @@ $('btnClose').onclick=()=>{
   const nx=$('btnNext'); if(nx) nx.onclick=()=>{ $('modal').hidden=true; if(!lastRoundWasLast) getNET().nextRound(); };
 })();
 
-/* ---------- 长按拖动一次选多张 + 点击桌面空白收回已选 ---------- */
+/* ---------- 长按拖动一次选多张 / 取消选中 + 点击桌面空白收回已选 ---------- */
 (function(){
   const handEl=$('hand'); if(!handEl) return;
   const cardAt=(x,y)=>{ const el=document.elementFromPoint(x,y); return (el&&el.closest)?el.closest('.hcard'):null; };
+  // 切换一张牌的选中状态（滑动经过时，选中 ↔ 取消）
+  const toggleSel=(idx, el)=>{
+    if(selected.has(idx)){ selected.delete(idx); el.classList.remove('sel'); }
+    else { selected.add(idx); el.classList.add('sel'); }
+  };
   handEl.addEventListener('pointerdown',(e)=>{
     if(!G || mySeat<0 || G.seats[mySeat].out || G.ended) return;
     const cardEl = (e.target && e.target.closest) ? e.target.closest('.hcard') : null;
     if(!cardEl || !cardEl.dataset || cardEl.dataset.i===undefined) return;
-    downInfo={idx:Number(cardEl.dataset.i), x:e.clientX, y:e.clientY, moved:false};
+    downInfo={idx:Number(cardEl.dataset.i), x:e.clientX, y:e.clientY, moved:false, seen:new Set()};
     try{ handEl.setPointerCapture(e.pointerId); }catch(_){}
   });
   handEl.addEventListener('pointermove',(e)=>{
@@ -1057,21 +1224,26 @@ $('btnClose').onclick=()=>{
     const dx=e.clientX-downInfo.x, dy=e.clientY-downInfo.y;
     if(!downInfo.moved && (Math.abs(dx)>6||Math.abs(dy)>6)){
       downInfo.moved=true;
-      // 拖动开始：把按下的那张牌也纳入选中
+      // 拖动开始：把按下的那张牌也纳入本次拖动（已选中的→取消）
       const sc=document.querySelector('.hcard[data-i="'+downInfo.idx+'"]');
-      if(sc && !selected.has(downInfo.idx)){ selected.add(downInfo.idx); sc.classList.add('sel'); }
+      downInfo.seen.add(downInfo.idx);
+      if(sc) toggleSel(downInfo.idx, sc);
     }
     if(!downInfo.moved) return;
     const c=cardAt(e.clientX,e.clientY);
     if(c && c.dataset && c.dataset.i!==undefined){
       const idx=Number(c.dataset.i);
-      if(!selected.has(idx)){ selected.add(idx); c.classList.add('sel'); }
+      if(downInfo.seen.has(idx)) return;
+      downInfo.seen.add(idx);
+      toggleSel(idx, c);
     }
   });
   const endDrag=()=>{
     if(downInfo && downInfo.moved){
-      clickSuppress=true; // 抑制随后的 click，避免拖完又切换选中
-      setTimeout(()=>{ clickSuppress=false; }, 500);
+      // 抑制紧接着的那一次 click（浏览器会在 pointerup 后自动补发，需吞掉避免误切换/误双击）
+      // 时间尽量短：click 在抬起后几毫秒即派发，150ms 足够覆盖，又不阻塞随后的正常点击
+      clickSuppress=true;
+      setTimeout(()=>{ clickSuppress=false; }, 150);
     }
     downInfo=null;
   };

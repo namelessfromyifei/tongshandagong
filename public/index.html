@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=115">
+<link rel="stylesheet" href="css/style.css?v=154">
 </head>
 <body>
 <div id="app">
@@ -16,7 +16,7 @@
       <h1>通山打拱·拱神杨子版</h1>
       <p class="lobbySub">先设置昵称，然后创建房间或加入已有房间</p>
       <!-- 昵称 -->
-      <div class="lobbyRow">
+      <div class="lobbyRow nameRow">
         <label>昵称</label>
         <input id="nameInput" type="text" placeholder="我的昵称" maxlength="12">
         <button id="btnSetName" class="btn">设置昵称</button>
@@ -29,7 +29,10 @@
       </div>
       <!-- 房间列表 -->
       <div id="roomListWrap" class="roomListWrap">
-        <div class="rlTitle">已创建的房间</div>
+        <div class="rlTitle">
+          <span>已创建的房间</span>
+          <button id="btnRefreshList" class="btn small">刷新</button>
+        </div>
         <div id="roomList">（连接服务器中…）</div>
       </div>
       <div id="status"></div>
@@ -51,9 +54,12 @@
 
   <!-- 加入房间弹窗 -->
   <div id="joinModal" class="overlay" hidden>
-    <div class="modalBox">
+    <div class="modalBox narrowBox">
       <h2>加入房间</h2>
-      <div class="lobbyRow"><input id="joinInput" type="text" placeholder="4 位房间号" maxlength="4"></div>
+      <div class="pickBox" id="joinRoomList">
+        <div class="lobbySub">等待服务器房间列表…</div>
+      </div>
+      <div class="lobbyRow"><input id="joinInput" type="text" placeholder="或输入房间号" maxlength="4"></div>
       <div class="mBtn">
         <button id="btnJoinGo" class="btn gold">加入</button>
         <button id="btnJoinBack" class="btn">返回</button>
@@ -63,10 +69,13 @@
 
   <!-- 重连弹窗 -->
   <div id="rejoinModal" class="overlay" hidden>
-    <div class="modalBox">
+    <div class="modalBox narrowBox">
       <h2>重新连接</h2>
       <p class="lobbySub" id="rejoinNameHint">将使用昵称：—</p>
-      <div class="lobbyRow"><input id="rejoinCode" type="text" placeholder="房间号" maxlength="4"></div>
+      <div class="pickBox" id="rejoinRoomList">
+        <div class="lobbySub">等待服务器房间列表…</div>
+      </div>
+      <div class="lobbyRow"><input id="rejoinCode" type="text" placeholder="或输入房间号" maxlength="4"></div>
       <div class="mBtn">
         <button id="btnRejoinGo" class="btn gold">重连</button>
         <button id="btnRejoinBack" class="btn">返回</button>
@@ -92,6 +101,7 @@
         <span class="chip" id="lblMode">2V2</span>
         <button id="btnStart" class="btn gold">对局配置</button>
         <button id="btnLeave" class="btn danger">退出房间</button>
+        <button id="btnRefresh" class="btn">刷新</button>
       </div>
       <!-- 牌桌左上角（标题下方）：叫牌 + 明鸡状态 -->
       <div class="corner" id="corner"></div>
@@ -159,11 +169,11 @@
               <button id="btnSize" class="btn small">牌大小</button>
               <button id="btnVoice" class="btn small">语音：开</button>
             </div>
-            <!-- 出牌/不要/提示：牌的右上角；明独/不明独：牌的中间（初始轮用） -->
+            <!-- 出牌/提示/不要：牌的右上角；明独/不明独：牌的中间（初始轮用） -->
             <div class="playBtns" id="playBtns">
               <button id="btnPlay" class="btn gold" disabled>出牌</button>
-              <button id="btnPass" class="btn" disabled>不要</button>
               <button id="btnHint" class="btn">提示</button>
+              <button id="btnPass" class="btn" disabled>不要</button>
               <button id="btnReady" class="btn gold" style="display:none">准备</button>
             </div>
             <div class="midBtns" id="midBtns">
@@ -182,9 +192,11 @@
             <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="10">10</option></select></label>
             <label>王总数 <select id="setKings"><option value="8">8</option><option value="10">10</option><option value="12">12</option></select></label>
             <label>王单出 <select id="setJoker"><option value="3">算3</option><option value="2">算2</option></select></label>
+            <label>半边分数 <input id="setHalfFan" type="number" min="1" max="50" step="1" value="1" style="width:56px"></label>
+            <label>笼数封顶 <select id="setFanCap"><option value="32">32</option><option value="64">64</option><option value="128">128</option><option value="0">不封顶</option></select></label>
             <label class="chk"><input type="checkbox" id="setTailBonus"> 尾游也可拿王奖金</label>
             <label class="chk"><input type="checkbox" id="setShowRemain"> 显示剩余张数</label>
-            <label class="chk"><input type="checkbox" id="setShowCorner"> 显示信息框（叫牌/明鸡/庄家）</label>
+            <label class="chk"><input type="checkbox" id="setShowCorner" checked> 显示牌局信息框（左上角）</label>
             <label class="chk"><input type="checkbox" id="setShowLog"> 显示出牌记录框（右上角）</label>
             <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
           </div>
@@ -212,10 +224,10 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=115"></script>
-<script src="js/ai.js?v=115"></script>
-<script src="js/ui-net.js?v=115"></script>
-<script src="js/screen.js?v=115"></script>
-<script src="js/net.js?v=115"></script>
+<script src="js/engine.js?v=154"></script>
+<script src="js/ai.js?v=154"></script>
+<script src="js/ui-net.js?v=154"></script>
+<script src="js/screen.js?v=154"></script>
+<script src="js/net.js?v=154"></script>
 </body>
 </html>
