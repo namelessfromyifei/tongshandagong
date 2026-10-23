@@ -16,6 +16,8 @@ const TSAI = require('./js/ai.js');
 const PORT = process.env.PORT || 8080;
 // 牌局结束后房间闲置超时自动解散（毫秒）；设为 0 可关闭。默认 5 分钟。
 const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 5*60*1000);
+// 未开局时真人掉线超过该时长（毫秒）→ 踢出座位还原为 AI；默认 3 分钟。
+const OFFLINE_KICK_MS = Number(process.env.OFFLINE_KICK_MS || 3*60*1000);
 // AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
 const AI_TURN_MS = Number(process.env.AI_TURN_MS || 1500);
 const app = express();
@@ -50,6 +52,7 @@ function createRoom(code){
     G: null,            // 当前局（null = 等待开局）
     aiTimer: null,
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
+    offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
     settings: {         // 牌局设置（房主可调）
       rounds: 3,        // 一轮打多少局
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
@@ -137,6 +140,59 @@ function kickIdleRoom(room){
   rooms.delete(room.code);
   // 断开连接，避免服务端闭包仍指向已删除的房间（客户端会自动重连回大厅）
   for(const so of socks){ try{ so.disconnect(true); }catch(e){} }
+}
+
+/* ---------- 未开局掉线踢出：真人掉线超过时长（默认3分钟）且牌局未开始 → 座位还原 AI ---------- */
+function clearAllOfflineKicks(room){
+  if(!room || !room.offlineTimers) return;
+  for(const k of Object.keys(room.offlineTimers)){
+    const t=room.offlineTimers[k];
+    if(t){ clearTimeout(t); delete room.offlineTimers[k]; }
+  }
+}
+function clearOfflineKick(room, seatIdx){
+  if(!room || !room.offlineTimers) return;
+  const t=room.offlineTimers[seatIdx];
+  if(t){ clearTimeout(t); delete room.offlineTimers[seatIdx]; }
+}
+function scheduleOfflineKick(room, seatIdx){
+  if(!room || !room.offlineTimers || !(OFFLINE_KICK_MS>0)) return;
+  clearOfflineKick(room, seatIdx);
+  // 已开局：对局中掉线保留座位等重连（不踢出）
+  if(room.G) return;
+  room.offlineTimers[seatIdx]=setTimeout(()=>{
+    delete room.offlineTimers[seatIdx];
+    // 房间已删/同号被替换 → 忽略
+    if(rooms.get(room.code)!==room) return;
+    // 已开局 → 不再踢（转为对局中掉线等待）
+    if(room.G) return;
+    const s=room.seats[seatIdx];
+    if(!s || s.type!=='human' || !s.offline) return; // 已重连/已离开则作罢
+    // 未开局掉线超时：踢出座位还原为 AI
+    logLine(room, `${s.name} 未开局掉线超时，已移出房间`);
+    const wasHost = (seatIdx===0);
+    room.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx]};
+    room.humanCount=Math.max(0, room.humanCount-1);
+    room.ready[seatIdx]=false;
+    // 房主掉线被踢：移交房主给剩余真人中座位号最小者
+    if(wasHost && room.humanCount>0){
+      for(let j=1;j<4;j++){
+        if(room.seats[j].type==='human'){
+          const moved=room.seats[j];
+          room.seats[0]=moved;
+          room.seats[j]={type:'ai', name:['A家','B家','C家','D家'][j]};
+          room.ready[0]=room.ready[j]; room.ready[j]=false;
+          const s2=io.sockets.sockets.get(moved.socketId);
+          if(s2){ s2.emit('promotedHost'); }
+          logLine(room, `${moved.name} 成为房主`);
+          break;
+        }
+      }
+    }
+    // 房间无人时自动删除（常驻房除外）
+    if(room.humanCount===0 && !isPreserve(room.code)){ clearIdleKick(room); rooms.delete(room.code); }
+    else broadcast(room);
+  }, OFFLINE_KICK_MS);
 }
 
 // 服务器日志：存入房间并推给所有人
@@ -228,6 +284,7 @@ function checkAllReady(room){
 }
 
 function startRound(room){
+  clearAllOfflineKicks(room); // 开局后掉线一律保留座位，不再踢出
   clearIdleKick(room);
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   room.G.rollcages = room.G.seats.map(()=>[]);
@@ -241,6 +298,7 @@ function startRound(room){
 
 // 开下一局：按上一局一游当庄
 function startNext(room){
+  clearAllOfflineKicks(room); // 开局后掉线一律保留座位，不再踢出
   clearIdleKick(room);
   const nextLandlord = (room.G && room.G.firstOut!=null) ? room.G.firstOut : null;
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
@@ -403,6 +461,7 @@ io.on('connection', (socket)=>{
     r.seats[seatIdx].socketId=socket.id;
     r.seats[seatIdx].offline=false;
     r.seats[seatIdx].name=name;
+    clearOfflineKick(r, seatIdx); // 重连成功：取消未开局掉线踢出计时器
     room=r; mySeat=seatIdx;
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name:r.seats[seatIdx].name});
@@ -561,6 +620,8 @@ io.on('connection', (socket)=>{
     room.seats[mySeat].offline=true;
     logLine(room, `${room.seats[mySeat].name} 掉线，等待重连`);
     broadcast(room);
+    // 未开局：超时（默认3分钟）后踢出座位；已开局则由掉线保留逻辑处理
+    scheduleOfflineKick(room, mySeat);
   });
 });
 
