@@ -175,6 +175,8 @@ let voiceBusy=false, voiceSeq=0; // 正在播报时暂不允许本地出牌
 let voicePack=null, audioCtx=null; // 本地语音包
 const clipCache=new Map();        // url -> Promise<AudioBuffer>
 let voiceInit=true; // 首帧只记录状态，不播报历史事件
+let lastEndedKey=null; // 已播报过「继续继续」的局
+let prevRevealed=false; // 明鸡（对家打出叫牌）状态
 let prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
                    {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
 // 音色排序：zh-CN 优先，常见高质量女声/网络音色优先
@@ -200,7 +202,7 @@ function refreshVoices(){
   } else voiceIdx=0;
   const b=$('btnVoiceTone');
   if(b){
-    b.style.display = zhVoices.length>1 ? 'inline-block' : 'none';
+    b.style.display = (TTS_FALLBACK && zhVoices.length>1) ? 'inline-block' : 'none';
     b.textContent = zhVoices.length ? `音色 ${voiceIdx+1}/${zhVoices.length}` : '音色';
   }
 }
@@ -230,9 +232,9 @@ function releaseVoice(){
   voiceGate();
 }
 /* ---------- 本地语音包 ----------
- * public/voice/manifest.json（可从 manifest.example.json 复制）
- * 结构：{ default, packs: { name: { label, base, files: { 词条: 文件名 } } } }
- * 词条按顺序拼接播放；任一词条缺失则整句回退系统 TTS。 */
+ * 已接入真人语音包：不再使用系统 TTS；缺词条时静默。
+ * 如需恢复「缺词条回退系统 TTS」，把 TTS_FALLBACK 改成 true。 */
+const TTS_FALLBACK=false;
 function initVoicePack(){
   try{
     fetch('voice/manifest.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(m=>{
@@ -261,30 +263,40 @@ function getClip(ctx,t){
   clipCache.set(url,p);
   return p;
 }
-async function playPack(tokens, seq){
+let packSources=[];
+function stopPackSources(){
+  for(const s of packSources){ try{ s.stop(); }catch(e){} }
+  packSources=[];
+}
+async function playPack(tokens, seq, noGate){
   if(!voicePack) return false;
   for(const t of tokens){ if(t!=='|' && !voicePack.files[t]) return false; }
   const ctx=ensureAudio(); if(!ctx) return false;
   try{
     const bufs=await Promise.all(tokens.map(t=> t==='|' ? null : getClip(ctx,t)));
     if(seq!==voiceSeq) return true; // 已被更新的播报取代
-    let at=ctx.currentTime+0.04, last=null;
-    voiceBusy=true; voiceGate();
+    stopPackSources(); // 新的播报打断上一段
+    let at=ctx.currentTime+0.04;
+    if(!noGate){ voiceBusy=true; voiceGate(); }
     for(let i=0;i<tokens.length;i++){
       if(tokens[i]==='|'){ at+=0.16; continue; }
       const b=bufs[i]; if(!b) continue;
       const src=ctx.createBufferSource(); src.buffer=b; src.connect(ctx.destination);
-      src.start(at); at+=b.duration; last=src;
+      src.onended=()=>{ const k=packSources.indexOf(src); if(k>=0) packSources.splice(k,1); };
+      packSources.push(src);
+      src.start(at); at+=b.duration;
     }
-    const done=()=>{ if(seq!==voiceSeq) return; voiceBusy=false; voiceGate(); };
-    if(last) last.onended=done;
-    setTimeout(done, Math.ceil((at-ctx.currentTime)*1000)+600);
+    if(!noGate){
+      const done=()=>{ if(seq!==voiceSeq) return; voiceBusy=false; voiceGate(); };
+      setTimeout(done, Math.ceil((at-ctx.currentTime)*1000)+600);
+    }
     return true;
   }catch(e){ clipCache.clear(); return false; }
 }
-function speakTTS(text, seq){
+function speakTTS(text, seq, force){
   seq = (seq==null) ? ++voiceSeq : seq;
-  if(!voiceOn||!text){ releaseVoice(); return; }
+  if(!text) return;
+  if(!force && !voiceOn){ releaseVoice(); return; }
   if(!('speechSynthesis' in window)){ releaseVoice(); return; }
   try{
     const synth=window.speechSynthesis;
@@ -307,11 +319,22 @@ function speak(text, tokens){
     const seq=++voiceSeq;
     playPack(tokens, seq).then(ok=>{
       if(ok || seq!==voiceSeq) return;
-      speakTTS(text, seq); // 语音包缺词条/加载失败 → 系统 TTS 兜底
+      if(TTS_FALLBACK) speakTTS(text, seq); // 可选：缺词条回退系统 TTS
+      else releaseVoice();                  // 否则静默
     });
     return;
   }
-  speakTTS(text);
+  if(TTS_FALLBACK) speakTTS(text);
+  else releaseVoice();
+}
+// 手动「快点」：强制播放语音包里的 快点.m4a（不受语音开关/播报门控限制）
+function playQuick(){
+  const text='快点', tokens=['快点'];
+  if(voicePack && voicePack.files && tokens.every(t=>voicePack.files[t])){
+    const ctx=ensureAudio();
+    if(ctx){ playPack(tokens, voiceSeq, true); return; }
+  }
+  if(TTS_FALLBACK) speakTTS(text, voiceSeq, true);
 }
 function applyVoiceBtn(){ const b=$('btnVoice'); if(b) b.textContent='语音：'+(voiceOn?'开':'关'); }
 function initVoice(){
@@ -326,37 +349,50 @@ function toggleVoice(){
   try{ localStorage.setItem('tsVoice', voiceOn?'1':'0'); }catch(e){}
   applyVoiceBtn();
   if(!voiceOn && 'speechSynthesis' in window){ try{ speechSynthesis.cancel(); }catch(e){} }
-  if(voiceOn) speak('语音提示已开启');
+  if(voiceOn && TTS_FALLBACK) speak('语音提示已开启');
 }
-// 返回语音词条数组（供语音包逐段拼接；TTS 时直接拼成文本）
+// 返回 {text, tokens}：text 供 TTS 兜底；tokens 为语音包词条（可整句拼接）
 function playSpeech(cards){
   const p=TS.analyzePlay(cards, G&&G.cfg);
-  if(!p) return [];
-  // 语音读法：J 读“沟”、Q 读“圈”、A 读“兼”
+  if(!p) return null;
+  // TTS 读法：J 读“沟”、Q 读“圈”、A 读“兼”；语音包按 1-J/2-Q/3-A 取文件
   const rt=r=>{ const s=TS.RANKS[r]; return s==='J'?'沟':(s==='Q'?'圈':(s==='A'?'兼':s)); };
+  const rk=r=>TS.RANKS[r];
   switch(p.type){
-    case 'single': return [(cards[0]&&cards[0].j)?'王':rt(cards[0].r)];
-    case 'pair': return cards.every(c=>c.j)?['对','王']:['对',rt(p.val)];
-    case 'triple': return cards.every(c=>c.j)?['三个','王']:['三个',rt(p.val)];
-    case 'seqPair': return ['连对'];
-    case 'airplane': return ['飞机'];
-    case 'fiftyK': return ['五十K'];
-    case 'bomb': return [String(p.size),'张',rt(p.rank)];
-    case 'rollcage': return ['滚笼'];
-    case 'kingBomb': return [String(p.size),'个','王'];
-    default: return [];
+    case 'single': {
+      const c=cards[0];
+      return (c&&c.j) ? {text:'王', tokens:['1-W']} : {text:rt(c.r), tokens:['1-'+rk(c.r)]};
+    }
+    case 'pair': {
+      const allJ=cards.every(c=>c.j);
+      return allJ ? {text:'对王', tokens:['2-W']} : {text:'对'+rt(p.val), tokens:['2-'+rk(p.val)]};
+    }
+    case 'triple': {
+      const allJ=cards.every(c=>c.j);
+      return allJ ? {text:'三个王', tokens:['3-W']} : {text:'三个'+rt(p.val), tokens:['3-'+rk(p.val)]};
+    }
+    case 'seqPair': return {text:'连对', tokens:['连对']};
+    case 'airplane': return {text:'飞机', tokens:['飞机']};
+    case 'fiftyK': return {text:'五十K', tokens:['五十K']};
+    case 'bomb':
+      // 4/5/6 张无番炸 → 「炸弹」；7 张以上 → 按「滚笼」播报
+      if(p.fan===0) return {text:'炸弹', tokens:['炸弹']};
+      return {text:'滚笼', tokens:['滚笼']};
+    case 'rollcage': return {text:'滚笼', tokens:['滚笼']};
+    case 'kingBomb': return {text:`${p.size}个王`, tokens:[`${p.size}-W`]};
+    default: return null;
   }
 }
 // 出牌 / 不要 / 明独 / 不明独 / 插底：同一帧的事件合并成一句播报
 function announceState(){
   if(!G) return;
-  const msgs=[]; // 每条消息是一组词条
+  const msgs=[]; // {text, tokens}
   if(G.lastSeat>=0 && G.lastCards && G.lastCards.length){
     const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
     if(key!==lastSpokenKey){
       lastSpokenKey=key;
-      const toks=playSpeech(G.lastCards);
-      if(toks.length) msgs.push(toks);
+      const sp=playSpeech(G.lastCards);
+      if(sp) msgs.push(sp);
     }
   }
   for(let i=0;i<4;i++){
@@ -364,17 +400,28 @@ function announceState(){
     const cur={ passed:!!s.passed, choice:s.choice||null, dizhi:!s.out && !!s.hand && s.hand.length===1 };
     const prev=prevSeatState[i]||{passed:false,choice:null,dizhi:false};
     if(!voiceInit){
-      if(cur.passed && !prev.passed) msgs.push(['过']);
-      if(cur.choice && cur.choice!==prev.choice) msgs.push([cur.choice==='mingdu'?'明独':'不独']);
-      if(cur.dizhi && !prev.dizhi) msgs.push(['插底']);
+      if(cur.passed && !prev.passed) msgs.push({text:'不要',tokens:['不要']});
+      if(cur.choice && cur.choice!==prev.choice){ const c=cur.choice==='mingdu'?'明独':'不独'; msgs.push({text:c,tokens:[c]}); }
+      if(cur.dizhi && !prev.dizhi) msgs.push({text:'插底',tokens:['插底']});
     }
     prevSeatState[i]=cur;
+  }
+  // 非叫牌家打出明鸡牌（身份公开）时播报「明鸡」
+  const rv=!!G.revealed;
+  if(!voiceInit && rv && !prevRevealed) msgs.push({text:'明鸡',tokens:['明鸡']});
+  prevRevealed=rv;
+  // 每局结束：播报「继续继续」
+  if(G.ended){
+    const rk=G.seq||G.roundNo||0;
+    if(rk!==lastEndedKey){ lastEndedKey=rk; msgs.push({text:'继续继续',tokens:['继续继续']}); }
+  } else {
+    lastEndedKey=null;
   }
   voiceInit=false;
   if(!msgs.length) return;
   const tokens=[];
-  msgs.forEach((m,i)=>{ if(i) tokens.push('|'); tokens.push(...m); });
-  speak(msgs.map(m=>m.join('')).join('，'), tokens);
+  msgs.forEach((m,i)=>{ if(i) tokens.push('|'); tokens.push(...m.tokens); });
+  speak(msgs.map(m=>m.text).join('，'), tokens);
 }
 
 /* ---------- 状态接收 ---------- */
@@ -393,6 +440,8 @@ function applyState(snap){
     selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
     cumTotals=[0,0,0,0]; cumEndedSeq=0; resetPending=false; pendingPlay=false;
     lastSpokenKey=''; // 换房间后允许重新播报
+    lastEndedKey=null;
+    prevRevealed=false;
     voiceInit=true;
     prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
                    {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
@@ -595,8 +644,8 @@ function renderSeats(){
         }
       } else {
         h.classList.remove('remainStack');
-        // 不显示剩余张数时：背面牌堆固定显示 10 张（隐藏真实数量）
-        const shown = settings.showRemain ? s.hand.length : 10;
+        // 不显示剩余张数时：背面牌堆固定显示 5 张（隐藏真实数量，减小占地）
+        const shown = settings.showRemain ? s.hand.length : 5;
         const n=Math.min(shown,15);
         for(let k=0;k<n;k++){ const d=document.createElement('div'); d.className='backCard'; h.appendChild(d); }
         if(settings.showRemain && s.hand.length>15){ const sp=document.createElement('span'); sp.textContent='+'+(s.hand.length-15); h.appendChild(sp); }
@@ -630,7 +679,7 @@ function renderSeats(){
     const addAlert=()=>{
       if(!hintEl) return;
       const d=document.createElement('div');
-      d.innerHTML='<span class="warnDizhi"><span class="icon">!</span>插底</span>';
+      d.innerHTML='<span class="warnDizhi"><span class="icon">!</span></span>';
       hintEl.appendChild(d);
     };
     const addPlace=()=>{
@@ -975,6 +1024,7 @@ $('btnHint').onclick=playerHint;
 $('btnSort').onclick=toggleSort;
 $('btnSize').onclick=cycleCardSize;
 $('btnVoice').onclick=toggleVoice;
+if($('btnQuick')) $('btnQuick').onclick=playQuick;
 if($('btnVoiceTone')) $('btnVoiceTone').onclick=cycleVoiceTone;
 $('btnHard').onclick=playerHard;
 initCardSize();
