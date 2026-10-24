@@ -4,3 +4,6 @@ npm-debug.log*
 *.log
 tests/*.json
 .DS_Store
+
+# 实际部署配置（含密钥，不提交）
+ecosystem.config.js
