@@ -10,6 +10,9 @@ let mySeat=-1, myName='';
 let roomCode='';
 let inGame=false; // 是否已在对局中（用于退出时判断保留重连）
 let roomCache=[]; // 最近一次服务器房间列表（加入/重连弹窗复用）
+let me=null;      // 微信授权身份 {nickname, avatar}
+let wxConfig={enabled:false, mock:false, wechat:false};
+let authReady=false;
 
 const $=id=>document.getElementById(id);
 
@@ -40,7 +43,11 @@ function connect(){
   socket = io();
   socket.on('connect', ()=>{
     toast('已连接服务器');
-    if(socket) socket.emit('listRooms');
+    if(socket){
+      // 断线重连：自动用当前身份归位（微信会话在 Cookie 中，服务端按 openid 匹配）
+      if(roomCode && myName) socket.emit('rejoin', {code:roomCode, name:myName});
+      socket.emit('listRooms');
+    }
   });
 
   socket.on('rooms', (list)=>{ roomCache=list||[]; renderRoomList(roomCache); renderJoinPick(); renderRejoinPick(); });
@@ -48,6 +55,7 @@ function connect(){
   // 创建房间成功 → 直接进桌（joined 处理）
   socket.on('joined', (d)=>{
     mySeat=d.seat; myName=d.name; roomCode=d.code;
+    if(d.avatar && me) me.avatar=d.avatar;
     // 加入/重连成功：关闭加入、重连弹窗
     const jm=$('joinModal'); if(jm) jm.hidden=true;
     const rm=$('rejoinModal'); if(rm) rm.hidden=true;
@@ -65,14 +73,16 @@ function connect(){
     if(snap.aiFill!=null && $('setAIFill')) $('setAIFill').checked=!!snap.aiFill;
     // 准备状态同步
     const readyArr = snap.ready || [];
-    UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr);
+    UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr, snap.seats.map(s=>s.avatar||''));
     // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置
     const canConfig = mySeat===0 && (!snap.G || snap.G.ended);
     if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
     // 准备按钮：对局进行中（含确认轮、出牌轮）隐藏；未开始或一局结束才显示
     if($('btnReady')){
       const isReady = !!readyArr[mySeat];
-      $('btnReady').style.display = (snap.G && !snap.G.ended) ? 'none' : 'inline-block';
+      // 只要还有当前局（含已结束、等待“下一局”），就不显示“准备”；
+      // 本场最后一局结束后服务端会把 G 清空，此时才显示“准备”开新场。
+      $('btnReady').style.display = snap.G ? 'none' : 'inline-block';
       $('btnReady').textContent = isReady ? '取消准备' : '准备';
       $('btnReady').classList.toggle('gold', isReady);
     }
@@ -128,10 +138,95 @@ function roomClosed(){
   enterLobby();
 }
 
+/* ---------- 微信授权 ---------- */
+// 授权回跳地址：去掉 wxerr/wxmanual，避免成功后仍反复提示错误
+function authNext(){
+  try{
+    const u=new URL(location.href);
+    u.searchParams.delete('wxerr');
+    u.searchParams.delete('wxmanual');
+    return u.pathname + (u.search || '');
+  }catch(e){
+    return location.pathname + location.search;
+  }
+}
+function applyWxProfile(profile){
+  me = (profile && profile.nickname) ? {nickname:profile.nickname, avatar:profile.avatar||''} : null;
+  const row=$('nameRow'), box=$('wxProfile');
+  if(me){
+    myName=me.nickname;
+    const ni=$('nameInput'); if(ni) ni.value=me.nickname;
+    if(row) row.hidden=true;
+    if(box) box.hidden=false;
+    const nm=$('wxName'); if(nm) nm.textContent=me.nickname;
+    const av=$('wxAvatar');
+    if(av){
+      if(me.avatar){ av.src=me.avatar; av.style.display=''; }
+      else { av.removeAttribute('src'); av.style.display='none'; }
+      av.onerror=()=>{ av.style.display='none'; };
+    }
+    const tip=$('lobbyTip'); if(tip) tip.textContent='已使用微信头像和昵称，选择创建或加入房间';
+    try{ sessionStorage.removeItem('tsWxTried'); sessionStorage.removeItem('tsWxManual'); }catch(e){}
+    try{
+      const u=new URL(location.href);
+      if(u.searchParams.has('wxerr') || u.searchParams.has('wxmanual')){
+        history.replaceState(null, '', authNext());
+      }
+    }catch(e){}
+  } else {
+    if(row) row.hidden=false;
+    if(box) box.hidden=true;
+    const tip=$('lobbyTip');
+    if(tip) tip.textContent = (wxConfig.enabled && wxConfig.wechat)
+      ? '授权微信后可直接使用头像和昵称；也可以手动输入昵称'
+      : '先设置昵称，然后创建房间或加入已有房间';
+  }
+  const wb=$('btnWxLogin');
+  if(wb){
+    wb.hidden = !(wxConfig.enabled && !me && (wxConfig.wechat || wxConfig.mock));
+    wb.onclick=()=>{
+      try{ sessionStorage.removeItem('tsWxTried'); sessionStorage.removeItem('tsWxManual'); }catch(e){}
+      location.href='/api/wx/start?next='+encodeURIComponent(authNext());
+    };
+  }
+}
+async function initAuth(){
+  try{
+    const r=await fetch('/api/wx/config',{cache:'no-store'});
+    if(r.ok) wxConfig=await r.json();
+  }catch(e){}
+  const q=new URLSearchParams(location.search);
+  const err=q.get('wxerr');
+  if(err){
+    const msgs={unconfigured:'微信授权未配置，请手动输入昵称', state:'授权已过期，请重试', oauth:'微信授权失败，请重试'};
+    setTimeout(()=>toast(msgs[err]||'微信授权失败'), 60);
+  }
+  if(q.get('wxmanual')==='1'){ try{ sessionStorage.setItem('tsWxManual','1'); }catch(e){} }
+  try{
+    const r=await fetch('/api/me',{cache:'no-store'});
+    const d=await r.json();
+    if(d && d.ok) applyWxProfile(d.profile);
+  }catch(e){}
+  // 微信内且已配置：自动发起一次授权；拒绝/失败后用按钮重试，不再自动跳转
+  let blocked=false;
+  try{ blocked=sessionStorage.getItem('tsWxManual')==='1' || sessionStorage.getItem('tsWxTried')==='1'; }catch(e){}
+  if(!me && wxConfig.enabled && wxConfig.wechat && !blocked){
+    try{ sessionStorage.setItem('tsWxTried','1'); }catch(e){}
+    authReady=true;
+    location.replace('/api/wx/start?next='+encodeURIComponent(authNext()));
+    return;
+  }
+  if(!me) applyWxProfile(null);
+  authReady=true;
+}
 /* ---------- 房间事件绑定 ---------- */
 function requireName(){
+  if(me && me.nickname) return me.nickname;
   const n=$('nameInput').value.trim();
-  if(!n){ toast('请先设置昵称'); return null; }
+  if(!n){
+    toast(!authReady ? '正在获取微信信息…' : ((wxConfig.enabled && wxConfig.wechat) ? '请先授权微信或输入昵称' : '请先设置昵称'));
+    return null;
+  }
   return n;
 }
 // 渲染大厅房间列表
@@ -212,6 +307,7 @@ function renderRejoinPick(){
   });
 }
 function bindLobby(){
+  initAuth();
   $('btnSetName').onclick=()=>{
     const n=$('nameInput').value.trim();
     if(!n){ toast('请输入昵称'); return; }

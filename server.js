@@ -9,6 +9,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 const TS = require('./js/engine.js');
 const TSAI = require('./js/ai.js');
@@ -20,12 +21,246 @@ const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 5*60*1000);
 const OFFLINE_KICK_MS = Number(process.env.OFFLINE_KICK_MS || 3*60*1000);
 // AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
 const AI_TURN_MS = Number(process.env.AI_TURN_MS || 1500);
+
+/* ---------- 微信网页授权 ----------
+ * 公众号 H5：OAuth2 scope=snsapi_userinfo，服务端换取昵称/头像/openid。
+ * 未配置 WX_APPID/WX_APPSECRET 时自动降级为手动昵称。
+ * WX_MOCK=1 仅供本地联调（production 下强制关闭）。
+ * 要求：已认证服务号 + 公众号后台配置的「网页授权域名」+ HTTPS。
+ */
+const WX_APPID = (process.env.WX_APPID || '').trim();
+const WX_SECRET = (process.env.WX_APPSECRET || '').trim();
+const WX_OAUTH_BASE = (process.env.WX_OAUTH_BASE || '').trim().replace(/\/+$/, '');
+const WX_MOCK = process.env.WX_MOCK === '1' && process.env.NODE_ENV !== 'production';
+const WX_ENABLED = !!(WX_APPID && WX_SECRET) || WX_MOCK;
+const WX_SCOPE = 'snsapi_userinfo';
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_AGE = 30 * 24 * 60 * 60; // 30 天（秒）
+if (!process.env.SESSION_SECRET) {
+  console.warn('[wx] 未设置 SESSION_SECRET，本次启动的微信登录态在重启后失效');
+}
+if (WX_ENABLED && !WX_MOCK && !WX_OAUTH_BASE) {
+  console.warn('[wx] 未设置 WX_OAUTH_BASE，将按请求 Host 推导回调地址；请确认与公众号「网页授权域名」一致');
+}
+
 const app = express();
+app.set('trust proxy', 1); // 反向代理（Nginx）下正确识别 https
 const server = http.createServer(app);
 // 缩短心跳，断线更快被发现（默认 ping 约 25s）
 const io = new Server(server, { pingInterval: 5000, pingTimeout: 5000, cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+/* ---------- 微信授权：Cookie / 会话 ---------- */
+function parseCookies(header){
+  const out = {};
+  if(!header) return out;
+  for(const part of String(header).split(';')){
+    const i = part.indexOf('=');
+    if(i < 0) continue;
+    const k = part.slice(0, i).trim();
+    if(!k) continue;
+    try{ out[k] = decodeURIComponent(part.slice(i + 1).trim()); }catch(e){ out[k] = ''; }
+  }
+  return out;
+}
+function signValue(payload){
+  return crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+}
+function encodeSession(profile){
+  const payload = Buffer.from(JSON.stringify({
+    openid: profile.openid,
+    nickname: profile.nickname,
+    avatar: profile.avatar || '',
+    exp: Date.now() + SESSION_AGE * 1000,
+  })).toString('base64url');
+  return payload + '.' + signValue(payload);
+}
+function decodeSession(value){
+  if(!value || value.indexOf('.') < 0) return null;
+  const i = value.lastIndexOf('.');
+  const payload = value.slice(0, i), sig = value.slice(i + 1);
+  const expected = signValue(payload);
+  if(sig.length !== expected.length) return null;
+  try{
+    if(!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  }catch(e){ return null; }
+  try{
+    const p = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if(!p || !p.openid || !p.exp || p.exp < Date.now()) return null;
+    return p;
+  }catch(e){ return null; }
+}
+function sessionFromRequest(req){
+  return decodeSession(parseCookies(req.headers && req.headers.cookie).ts_wx);
+}
+function sessionFromSocket(socket){
+  return decodeSession(parseCookies(socket.handshake && socket.handshake.headers && socket.handshake.headers.cookie).ts_wx);
+}
+function cookieHeader(name, value, opts){
+  opts = opts || {};
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/'];
+  if(opts.maxAge != null) parts.push(`Max-Age=${Math.floor(opts.maxAge)}`);
+  if(opts.httpOnly) parts.push('HttpOnly');
+  if(opts.sameSite) parts.push(`SameSite=${opts.sameSite}`);
+  if(opts.secure) parts.push('Secure');
+  return parts.join('; ');
+}
+function isSecureReq(req){
+  return !!(req.secure || req.headers['x-forwarded-proto'] === 'https');
+}
+function appendCookie(res, name, value, opts){
+  res.append('Set-Cookie', cookieHeader(name, value, Object.assign({httpOnly:true, sameSite:'Lax', secure:isSecureReq(res.req)}, opts)));
+}
+function clearCookie(res, name){
+  res.append('Set-Cookie', cookieHeader(name, '', {maxAge:0, httpOnly:true, sameSite:'Lax', secure:isSecureReq(res.req)}));
+}
+function safeNext(v){
+  if(typeof v !== 'string' || !v) return '/';
+  if(v[0] !== '/' || v[1] === '/' || v[1] === '\\') return '/';
+  return v.slice(0, 300);
+}
+function requestBaseUrl(req){
+  if(WX_OAUTH_BASE) return WX_OAUTH_BASE;
+  return `${isSecureReq(req) ? 'https' : req.protocol}://${req.get('host')}`;
+}
+function cleanNickname(raw){
+  let s = String(raw == null ? '' : raw).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  if(!s) return '玩家';
+  const chars = Array.from(s);
+  if(chars.length > 24) s = chars.slice(0, 24).join('');
+  return s;
+}
+function normalizeAvatar(url){
+  if(typeof url !== 'string') return '';
+  if(/^\/[^/]/.test(url)) return url; // 站内相对地址（WX_MOCK 头像）
+  if(!/^https?:\/\//i.test(url)) return '';
+  // 微信头像统一走 https，避免 HTTPS 页面混入 http 资源；取 132px 尺寸
+  return url.replace(/^http:\/\//i, 'https://').replace(/\/0$/, '/132');
+}
+// 页面/接口使用的身份：微信授权优先，未授权时才使用手动昵称
+function identityOf(data, session){
+  if(session){
+    return {
+      name: cleanNickname(session.nickname),
+      avatar: normalizeAvatar(session.avatar),
+      openid: String(session.openid || ''),
+    };
+  }
+  return {
+    name: cleanNickname(data && data.name),
+    avatar: '',
+    openid: '',
+  };
+}
+async function fetchJson(url, timeoutMs){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
+  try{
+    const r = await fetch(url, {signal: ctrl.signal, headers: {'Accept': 'application/json'}});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* ---------- 微信授权：路由 ---------- */
+app.get('/api/wx/config', (req, res) => {
+  res.set('Cache-Control', 'no-store').json({
+    enabled: WX_ENABLED,
+    mock: WX_MOCK,
+    wechat: /MicroMessenger/i.test(req.get('user-agent') || ''),
+  });
+});
+app.get('/api/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const s = sessionFromRequest(req);
+  if(!s) return res.json({ok:false});
+  res.json({ok:true, profile:{nickname: cleanNickname(s.nickname), avatar: normalizeAvatar(s.avatar)}});
+});
+app.get('/api/wx/logout', (req, res) => {
+  clearCookie(res, 'ts_wx');
+  const next = safeNext(req.query.next);
+  const sep = next.indexOf('?') >= 0 ? '&' : '?';
+  res.redirect(next + sep + 'wxmanual=1');
+});
+app.get('/api/wx/start', (req, res) => {
+  if(!WX_ENABLED) return res.redirect('/?wxerr=unconfigured');
+  const next = safeNext(req.query.next);
+  const state = crypto.randomBytes(16).toString('hex');
+  appendCookie(res, 'ts_wx_state', state, {maxAge: 600});
+  appendCookie(res, 'ts_wx_next', next, {maxAge: 600});
+  if(WX_MOCK){
+    return res.redirect('/api/wx/callback?code=mock&state=' + encodeURIComponent(state));
+  }
+  const redirectUri = requestBaseUrl(req) + '/api/wx/callback';
+  const url = 'https://open.weixin.qq.com/connect/oauth2/authorize?' + new URLSearchParams({
+    appid: WX_APPID,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: WX_SCOPE,
+    state,
+  }).toString() + '#wechat_redirect';
+  res.redirect(url);
+});
+app.get('/api/wx/callback', async (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const next = safeNext(cookies.ts_wx_next);
+  const expectedState = cookies.ts_wx_state;
+  const state = String(req.query.state || '');
+  clearCookie(res, 'ts_wx_state');
+  clearCookie(res, 'ts_wx_next');
+  if(!WX_ENABLED) return res.redirect('/?wxerr=unconfigured');
+  if(!req.query.code || !expectedState || state !== expectedState) return res.redirect('/?wxerr=state');
+  try{
+    let profile;
+    if(WX_MOCK){
+      profile = {
+        openid: 'mock-openid-' + (process.env.WX_MOCK_OPENID || 'dev'),
+        nickname: process.env.WX_MOCK_NAME || '微信测试用户',
+        avatar: '/api/wx/mock-avatar.svg',
+      };
+    } else {
+      const tokenUrl = 'https://api.weixin.qq.com/sns/oauth2/access_token?' + new URLSearchParams({
+        appid: WX_APPID,
+        secret: WX_SECRET,
+        code: String(req.query.code),
+        grant_type: 'authorization_code',
+      }).toString();
+      const token = await fetchJson(tokenUrl);
+      if(token.errcode) throw new Error(`access_token errcode=${token.errcode} ${token.errmsg || ''}`);
+      const infoUrl = 'https://api.weixin.qq.com/sns/userinfo?' + new URLSearchParams({
+        access_token: token.access_token,
+        openid: token.openid,
+        lang: 'zh_CN',
+      }).toString();
+      const info = await fetchJson(infoUrl);
+      if(info.errcode) throw new Error(`userinfo errcode=${info.errcode} ${info.errmsg || ''}`);
+      profile = {
+        openid: String(info.openid || token.openid || ''),
+        nickname: info.nickname || '微信用户',
+        avatar: info.headimgurl || '',
+      };
+    }
+    if(!profile.openid) throw new Error('empty openid');
+    appendCookie(res, 'ts_wx', encodeSession(profile), {maxAge: SESSION_AGE});
+    res.redirect(next);
+  }catch(e){
+    console.error('[wx] 网页授权失败：', e && e.message ? e.message : e);
+    res.redirect('/?wxerr=oauth');
+  }
+});
+// 本地联调用的占位头像（WX_MOCK=1 才会被引用）
+app.get('/api/wx/mock-avatar.svg', (req, res) => {
+  res.type('image/svg+xml').set('Cache-Control', 'public, max-age=3600').send(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="132" height="132" viewBox="0 0 132 132">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="#22c55e"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs>' +
+    '<rect width="132" height="132" rx="66" fill="url(#g)"/>' +
+    '<text x="66" y="86" font-size="64" text-anchor="middle" fill="#fff" font-family="sans-serif">微</text></svg>'
+  );
+});
 
 /* ---------- 房间管理 ---------- */
 const rooms = new Map(); // code -> room
@@ -102,7 +337,7 @@ function snapshot(room){
     ready: room.ready,
     settings: Object.assign({aiFill: room.aiFill}, room.settings),
     series: room.series,
-    seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, humanCount:room.humanCount})),
+    seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, avatar:s.avatar||'', humanCount:room.humanCount})),
     G: room.G,
   };
 }
@@ -171,7 +406,7 @@ function scheduleOfflineKick(room, seatIdx){
     // 未开局掉线超时：直接踢出（座位恢复为空位，可被新玩家加入；不当作 AI 处理）
     logLine(room, `${s.name} 未开局掉线超时，已移出房间`);
     const wasHost = (seatIdx===0);
-    room.seats[seatIdx]={type:'ai', name:'空位'}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
+    room.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
     // 房主掉线被踢：移交房主给剩余真人中座位号最小者
@@ -180,7 +415,7 @@ function scheduleOfflineKick(room, seatIdx){
         if(room.seats[j].type==='human'){
           const moved=room.seats[j];
           room.seats[0]=moved;
-          room.seats[j]={type:'ai', name:'空位'};
+          room.seats[j]={type:'ai', name:'空位', avatar:'', openid:''};
           room.ready[0]=room.ready[j]; room.ready[j]=false;
           const s2=io.sockets.sockets.get(moved.socketId);
           if(s2){ s2.emit('promotedHost'); }
@@ -347,6 +582,8 @@ function finishRoom(room){
 /* ---------- Socket.IO ---------- */
 io.on('connection', (socket)=>{
   let room=null, mySeat=-1;
+  // 同一浏览器携带签名 Cookie，服务端据此确认微信身份（不信任客户端传来的昵称/头像）
+  const wxSession = sessionFromSocket(socket);
 
   // 房间列表（大厅显示）
   socket.on('listRooms', ()=>{
@@ -375,15 +612,16 @@ io.on('connection', (socket)=>{
     if(custom && rooms.has(custom)){ socket.emit('toast','房间号已被占用'); return; }
     const r=createRoom(custom);
     const seatIdx=0;
-    const name=(data.name)||'玩家1';
-    r.seats[seatIdx]={type:'human', socketId:socket.id, name, offline:false};
+    const ident=identityOf(Object.assign({}, data, {name:(data&&data.name)||'玩家1'}), wxSession);
+    const name=ident.name;
+    r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
     r.humanCount++;
     // 房主可带初始设置
     if(data.settings) r.settings=Object.assign(r.settings, data.settings);
     room=r; mySeat=seatIdx;
     socket.join(r.code);
     // 创建后房主直接进牌桌（房间仍在列表，其他玩家可加入）
-    socket.emit('joined', {code:r.code, seat:seatIdx, name});
+    socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
     broadcast(r);
     socket.emit('toast', `已创建房间 ${r.code}，等待其他玩家加入`);
   });
@@ -418,21 +656,27 @@ io.on('connection', (socket)=>{
   socket.on('join', (data)=>{
     if(room){ socket.emit('toast','你已在房间中'); return; }
     const code=(data&&data.code||'').toUpperCase();
-    const name=(data&&data.name||'').trim();
-    if(!name){ socket.emit('toast','请输入昵称'); return; }
+    if(!wxSession && !String((data&&data.name)||'').trim()){ socket.emit('toast','请输入昵称'); return; }
+    const ident=identityOf(data, wxSession);
+    const name=ident.name;
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
     if(r.G){ socket.emit('toast','对局已开始，无法中途加入'); return; }
-    // 同名检查：真人座位里已有同名则拒绝
-    if(r.seats.some(s=>s.type==='human' && s.name===name)){ socket.emit('toast','该昵称已被占用，请换一个'); return; }
+    // 身份检查：微信按 openid 判重（允许不同 openid 的昵称重名）；手动昵称仍要求唯一
+    const sameHuman = r.seats.some(s=>{
+      if(s.type!=='human') return false;
+      if(ident.openid) return s.openid===ident.openid;
+      return s.name===name;
+    });
+    if(sameHuman){ socket.emit('toast','你已在该房间，可直接重连'); return; }
     // 找空座位（真人空位或 AI 位）
     let seatIdx=r.seats.findIndex(s=>s.type==='ai');
     if(seatIdx<0){ socket.emit('toast','房间已满'); return; }
-    r.seats[seatIdx]={type:'human', socketId:socket.id, name:name, offline:false};
+    r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
     r.humanCount++;
     room=r; mySeat=seatIdx;
     socket.join(r.code);
-    socket.emit('joined', {code:r.code, seat:seatIdx, name});
+    socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
     broadcast(r);
     socket.emit('toast', `已加入房间 ${r.code}，你是第 ${r.humanCount} 位玩家`);
   });
@@ -442,11 +686,12 @@ io.on('connection', (socket)=>{
     data=data||{};
     const code=(data.code||'').toUpperCase();
     const name=(data.name||'').trim();
-    if(!name){ socket.emit('toast','请输入昵称'); return; }
+    if(!wxSession && !name){ socket.emit('toast','请输入昵称'); return; }
     // 若本 socket 已绑定房间：直接确认进桌（创建后点自己的房间进入）
     if(room){
       if(room.code===code){
-        socket.emit('joined', {code:room.code, seat:mySeat, name:room.seats[mySeat].name});
+        const me=room.seats[mySeat];
+        socket.emit('joined', {code:room.code, seat:mySeat, name:me.name, avatar:me.avatar||''});
         broadcast(room);
         return;
       }
@@ -455,18 +700,32 @@ io.on('connection', (socket)=>{
     }
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
-    // 按姓名匹配真人座位
-    const seatIdx = r.seats.findIndex(s=>s.type==='human' && s.name===name);
-    if(seatIdx<0){ socket.emit('toast','该昵称不在房间内'); return; }
-    r.seats[seatIdx].socketId=socket.id;
-    r.seats[seatIdx].offline=false;
-    r.seats[seatIdx].name=name;
+    const ident=identityOf(data, wxSession);
+    // 微信身份按 openid 归位；未授权则按手动昵称归位（不匹配已有微信座位，避免冒用）
+    let seatIdx=-1;
+    if(ident.openid){
+      seatIdx=r.seats.findIndex(s=>s.type==='human' && s.openid===ident.openid);
+      if(seatIdx<0) seatIdx=r.seats.findIndex(s=>s.type==='human' && !s.openid && s.name===ident.name);
+    } else {
+      seatIdx=r.seats.findIndex(s=>s.type==='human' && !s.openid && s.name===ident.name);
+    }
+    if(seatIdx<0){
+      const wxSeat=r.seats.some(s=>s.type==='human' && s.openid && s.name===ident.name);
+      socket.emit('toast', wxSeat ? '该座位已绑定微信，请先完成微信授权再重连' : '未找到与你身份匹配的座位');
+      return;
+    }
+    const seat=r.seats[seatIdx];
+    seat.socketId=socket.id;
+    seat.offline=false;
+    seat.name=ident.name;
+    seat.avatar=ident.avatar;
+    if(ident.openid) seat.openid=ident.openid;
     clearOfflineKick(r, seatIdx); // 重连成功：取消未开局掉线踢出计时器
     room=r; mySeat=seatIdx;
     socket.join(r.code);
-    socket.emit('joined', {code:r.code, seat:seatIdx, name:r.seats[seatIdx].name});
+    socket.emit('joined', {code:r.code, seat:seatIdx, name:seat.name, avatar:seat.avatar||''});
     broadcast(r);
-    socket.emit('toast', `重连成功，你坐回 ${r.seats[seatIdx].name}`);
+    socket.emit('toast', `重连成功，你坐回 ${seat.name}`);
   });
 
   // 房主（seat 0）切换 AI 补位
@@ -570,7 +829,7 @@ io.on('connection', (socket)=>{
     }
     logLine(r, `${r.seats[seatIdx].name} 退出房间`);
     const wasHost = (seatIdx===0);
-    r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx]};
+    r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx], avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
     r.ready[seatIdx]=false;
     socket.leave(r.code);
@@ -581,7 +840,7 @@ io.on('connection', (socket)=>{
         if(r.seats[j].type==='human'){
           const moved=r.seats[j];
           r.seats[0]=moved;
-          r.seats[j]={type:'ai', name:['A家','B家','C家','D家'][j]};
+          r.seats[j]={type:'ai', name:['A家','B家','C家','D家'][j], avatar:'', openid:''};
           r.ready[0]=r.ready[j]; r.ready[j]=false;
           // 通知新房主：其座位变 0
           const s=io.sockets.sockets.get(moved.socketId);

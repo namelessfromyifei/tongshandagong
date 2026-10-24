@@ -14,6 +14,7 @@ const getNET = () => window.NET || { act(){}, nextRound(){} };
 let G = null;              // 服务器下发的快照（权威）
 let mySeat = -1;           // 我坐在第几号真实座位
 let seatNames = [];        // 服务器房间座位名
+let seatAvatars = [];      // 服务器座位头像 URL（微信授权头像）
 let seatTypes = [];        // 服务器座位类型 human/ai
 let seatOffline = [];      // 服务器座位掉线标记
 let seatReady = [];        // 服务器座位准备标记
@@ -22,9 +23,15 @@ let series = null;         // 轮结算累计
 let aiFill = true;
 let selected = new Set();
 let hintCursor=0, hintList=[];
-let sortMode=0;
+let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=牌型）
 let lastRoundNo=-1; // 用于判断是否换了新局（换局才清空预选）
 let lastRoundWasLast=false; // 当前结算的这局是否为一场的最后一局
+// 结算弹窗延迟展示：局末先构建好计分板，3 秒后再弹出
+const SETTLE_DELAY_MS=3000;
+let settleSeq=null;       // 当前已排定的结算局（G.seq / G.roundNo）
+let settleShown=false;    // 本局结算是否已经到时间展示过
+let settleTimer=null;     // 延迟弹出计时器
+
 let lastSettle=null, lastSettleSeq=0; // 局末结算（信息框外得分徽标用）
 let cumTotals=[0,0,0,0];    // 客户端按局累计（规避服务器快照时序导致的"累计=0"）
 let cumEndedSeq=0, resetPending=false;
@@ -54,7 +61,7 @@ function buildKindMap(hand){
   }
   return {cnt, kind, bombSize};
 }
-// 按牌型大类给每张牌分组（供"牌型"排序 sortMode=2）：0炸 1五十K 2三个 3对子 4单个 5王
+// 按牌型大类给每张牌分组（供"牌型"排序 sortMode=2）：0炸 1王 2五十K 3三个 4对子 5单个
 function buildGroupMap(hand){
   const cnt=new Array(TS.RANKS.length).fill(0);
   for(const c of hand){ if(!c.j) cnt[c.r]++; }
@@ -69,11 +76,11 @@ function buildGroupMap(hand){
   }
   const g=new Map();
   for(const c of hand){
-    if(c.j){ g.set(c.id,5); continue; }                    // 王
-    if(isFifty.has(c.id)){ g.set(c.id,1); continue; }      // 五十K 组
+    if(c.j){ g.set(c.id,1); continue; }                    // 王：紧跟炸，位于三张牌型最左侧
+    if(isFifty.has(c.id)){ g.set(c.id,2); continue; }      // 五十K 组
     const remain=cnt[c.r]-(gUsed[c.r]||0);                 // 此点其余分组剩余张数
     if(remain>=4){ g.set(c.id,0); continue; }              // 炸
-    g.set(c.id, remain>=3?2:(remain>=2?3:4));              // 三个/对子/单个
+    g.set(c.id, remain>=3?3:(remain>=2?4:5));              // 三个/对子/单个
   }
   return g;
 }
@@ -86,13 +93,13 @@ function sortHandCards(){
     return idx;
   }
   if(sortMode===2){
-    // 按牌型大类归拢：炸 → 五十K → 三个 → 对子 → 单个 → 王；同类内从大到小
+    // 按牌型大类归拢：炸 → 王 → 五十K → 三个 → 对子 → 单个；同类内从大到小
     const groupMap=buildGroupMap(hand);
     idx.sort((a,b)=>{
       const ca=hand[a], cb=hand[b];
       const ga=groupMap.get(ca.id), gb=groupMap.get(cb.id);
       if(ga!==gb) return ga-gb;
-      if(ga===5) return ca.id<cb.id?-1:1; // 王之间稳定排序
+      if(ga===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
       return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
     });
     return idx;
@@ -123,6 +130,7 @@ function setBtn(on){
 }
 function enablePlayer(){
   const mine = G && !G.ended && G.turn===mySeat;
+  $('btnPlay').style.display = 'inline-block'; // 出牌轮恢复显示（确认轮隐藏）
   $('btnPlay').disabled = !mine;
   $('btnPass').style.display='inline-block'; // 确认轮隐藏过（表态后）则恢复
   $('btnPass').disabled = !mine || !G.lastPlay;
@@ -135,6 +143,7 @@ function enablePlayer(){
 }
 function enableConfirm(){
   const seat=mySeat;
+  $('btnPlay').style.display = 'none'; // 明独/不明独阶段不显示出牌
   // 已表态（明独/不明独）：操作按钮不再显示
   if(G.seats[seat] && G.seats[seat].choice){
     $('btnHe').style.display='none';
@@ -220,7 +229,7 @@ function toggleSort(){ sortMode=(sortMode+1)%3; render(); }
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
 // 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
 const CARD_SCALES=[1.24,1.4,1.6,1.8];
-let cardSizeIdx=2; // 默认「特大」
+let cardSizeIdx=1; // 默认第二档「大」
 function applyCardSize(){
   document.documentElement.style.setProperty('--card-zoom', String(CARD_SCALES[cardSizeIdx]));
   if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>syncHandLayout());
@@ -249,13 +258,12 @@ const clipCache=new Map();        // url -> Promise<AudioBuffer>
 let voiceInit=true; // 首帧只记录状态，不播报历史事件
 let lastEndedKey=null; // 已播报过「继续继续」的局
 let prevRevealed=false; // 明鸡（对家打出叫牌）状态
-let prevPlaySeat=-1;    // 上一帧最后出牌的座位（用于接风判定）
-let lastRoundKey=null;  // 当前局标识（换局时重置接风判定）
+let lastRoundKey=null;  // 当前局标识（换局时重置状态）
 const PASS_TAKES=['不要','不要2','不要3']; // 三种「不要」随机播
 let lastPassSeq=0; // 上次播报的 passSeq（engine 每次"不要"递增，用于每次点击都播）
 let prevKingPlayed=[false,false,false,false]; // 各家"已打出第一张王"上升沿（≥4王触发"报王"播报）
-let prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
-                   {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
+let prevSeatState=[{passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false},
+                   {passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false}];
 // 音色排序：zh-CN 优先，常见高质量女声/网络音色优先
 function rankVoice(v){
   const lang=(v.lang||'').toLowerCase(), name=(v.name||'');
@@ -404,7 +412,7 @@ function speak(text, tokens){
   if(TTS_FALLBACK) speakTTS(text);
   else releaseVoice();
 }
-// 手动「快点」：强制播放语音包里的 快点.m4a（不受语音开关/播报门控限制）
+// 手动「生崽」（按钮原名为“快点”）：强制播放语音包里的 快点.m4a（不受语音开关/播报门控限制）
 function playQuick(){
   const text='快点', tokens=['快点'];
   if(voicePack && voicePack.files && tokens.every(t=>voicePack.files[t])){
@@ -477,7 +485,7 @@ function playSpeech(cards){
 function announceState(){
   if(!G) return;
   const rkey=G.seq||G.roundNo||0;
-  if(rkey!==lastRoundKey){ lastRoundKey=rkey; prevPlaySeat=-1; lastPassSeq=0; }
+  if(rkey!==lastRoundKey){ lastRoundKey=rkey; lastPassSeq=0; }
   const msgs=[]; // {text, tokens}
   if(G.lastSeat>=0 && G.lastCards && G.lastCards.length){
     const key = G.playNo!=null ? ('#'+G.playNo) : (G.lastSeat+':'+G.lastCards.map(c=>c.id).join(','));
@@ -489,14 +497,18 @@ function announceState(){
   }
   for(let i=0;i<4;i++){
     const s=G.seats[i]; if(!s) continue;
-    const cur={ passed:!!s.passed, choice:s.choice||null, dizhi:!s.out && !!s.hand && s.hand.length===1 };
-    const prev=prevSeatState[i]||{passed:false,choice:null,dizhi:false};
+    const cur={ passed:!!s.passed, choice:s.choice||null, dizhi:!s.out && !!s.hand && s.hand.length===1, out:!!s.out };
+    const prev=prevSeatState[i]||{passed:false,choice:null,dizhi:false,out:false};
     if(!voiceInit){
       if(cur.choice && cur.choice!==prev.choice){ const c=cur.choice==='mingdu'?'明独':'不独'; msgs.push({text:c,tokens:[c]}); }
       if(cur.dizhi && !prev.dizhi) msgs.push({text:'插底',tokens:['插底']});
       // 起到了 ≥4 王：该家第一次打出王时播报"报王"
       const kp = !!s.kingPlayed && (s.kings||0)>=4;
       if(kp && !prevKingPlayed[i]) msgs.push({text:'报王', tokens:['报王']});
+      // 任意玩家出完最后一手牌：播报跑完提示音
+      if(cur.out && !prev.out){
+        msgs.push({text:'出完了',tokens:['出完']});
+      }
     }
     // 首帧（voiceInit=true）也要同步记录报王状态，避免刷新重连后误判为"新报王"
     prevKingPlayed[i] = !!(s.kingPlayed && (s.kings||0)>=4);
@@ -512,19 +524,6 @@ function announceState(){
     }
   }
   lastPassSeq=ps;
-  // 已明鸡：出完牌的玩家由队友接风（带风）时播报「带风」
-  if(G.lastPlay==null && prevPlaySeat>=0 && !voiceInit){
-    const win=prevPlaySeat, ws=G.seats[win];
-    if(!G.ended && G.revealed && ws && ws.out){
-      const team=TS.teamOf(G,win);
-      const mate=team.find(i=>i!==win);
-      if(mate!=null && G.seats[mate] && !G.seats[mate].out && G.turn===mate){
-        msgs.push({text:'带风',tokens:['带风']});
-      }
-    }
-    prevPlaySeat=-1;
-  }
-  if(G.lastSeat>=0) prevPlaySeat=G.lastSeat;
 
   // 非叫牌家打出明鸡牌（身份公开）时播报「明鸡」
   const rv=!!G.revealed;
@@ -557,21 +556,22 @@ function applyState(snap){
       const he=$('hint'+k); if(he) he.innerHTML='';
     }
     const md=$('modal'); if(md) md.hidden=true;
+    clearSettleTimer(); settleSeq=null; settleShown=false;
     selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
     cumTotals=[0,0,0,0]; cumEndedSeq=0; resetPending=false; pendingPlay=false;
     lastSpokenKey=''; // 换房间后允许重新播报
     lastEndedKey=null;
     prevRevealed=false;
-    prevPlaySeat=-1;
     lastRoundKey=null;
     lastPassSeq=0;
     prevKingPlayed=[false,false,false,false];
     voiceInit=true;
-    prevSeatState=[{passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false},
-                   {passed:false,choice:null,dizhi:false},{passed:false,choice:null,dizhi:false}];
+    prevSeatState=[{passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false},
+                   {passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false}];
   }
   G = snap.G || null;
   seatNames = snap.seats.map(s=>s.name);
+  seatAvatars = snap.seats.map(s=>s.avatar||'');
   seatTypes = snap.seats.map(s=>s.type);
   seatOffline = snap.seats.map(s=>!!s.offline);
   aiFill = snap.aiFill;
@@ -606,25 +606,45 @@ function applyState(snap){
     if($('lblMode')) $('lblMode').textContent='等待开局';
     if($('lblRound')) $('lblRound').textContent='';
     if($('msg')) $('msg').textContent='等待全员准备…';
-    if($('btnSort')) $('btnSort').style.display='none'; // 开局前不显示排序按钮
+    // 未发牌：不显示排序/牌大小
+    if($('btnSort')) $('btnSort').style.display='none';
+    if($('btnSize')) $('btnSize').style.display='none';
     if($('btnNext')) $('btnNext').style.display='none';
     for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
     renderSeatNames();
     renderReadyIndicators();
     setBtn(false);
+    // 未开局恢复出牌轮按钮的显隐与文字（确认轮曾隐藏）
+    $('btnPlay').style.display='inline-block';
+    $('btnHint').style.display='inline-block';
+    $('btnPass').style.display='inline-block';
+    $('btnPass').textContent='不要';
     // 准备按钮居中（此时 G 为空，btnReady 挪到中间位置）
     layoutActionButtons();
     positionMidBtns();
     return;
   }
-  if($('btnSort')) $('btnSort').style.display='inline-block'; // 开局后显示排序按钮
+  // 发牌后显示排序/牌大小
+  if($('btnSort')) $('btnSort').style.display='inline-block';
+  if($('btnSize')) $('btnSize').style.display='inline-block';
   if($('lblMode')) $('lblMode').textContent = G.mode==='hard'?('硬牌 · '+seatNames[G.hardSeat]):'2V2';
-  // 结算弹窗
+  // 结算弹窗：局末先静默构建计分板，3 秒后再显示
   if(G.ended){
-    // 最后一局：始终弹结算窗（后面不再有 G 快照可取）；非最后一局：已就绪则不再重复弹
-    if(G.lastSeries || !seatReady[mySeat]) finishLocal();
-    else $('modal').hidden = true;
+    const rk=G.seq||G.roundNo;
+    const shouldShow=!!(G.lastSeries || !seatReady[mySeat]);
+    if(shouldShow){
+      if(settleSeq!==rk){ settleSeq=rk; settleShown=false; clearSettleTimer(); }
+      finishLocal(); // 只填充表格，不在这里弹出
+      if(!settleShown) scheduleSettleModal(rk, !!G.lastSeries);
+    } else {
+      clearSettleTimer();
+      settleShown=false;
+      $('modal').hidden = true;
+    }
   } else {
+    clearSettleTimer();
+    settleSeq=null;
+    settleShown=false;
     $('modal').hidden = true;
   }
   render();
@@ -635,11 +655,22 @@ function applyState(snap){
   if(G.ended){ setBtn(false); return; }
   if(G.confirming){
     setBtn(false);
+    // 明独/不明独阶段：不显示“出牌/提示”，只保留表态按钮
+    $('btnPlay').style.display='none';
+    $('btnHint').style.display='none';
     // 仅轮到我且未表态时才显示表态按钮（"不要"不会在中间出现）
     if(G.turn===mySeat && !(G.seats[mySeat] && G.seats[mySeat].choice)) enableConfirm();
     else { $('btnPass').style.display='none'; $('btnHard').style.display='none'; }
   }
-  else { setBtn(false); if(G.turn===mySeat) enablePlayer(); }
+  else {
+    setBtn(false);
+    // 出牌轮恢复“出牌/提示/不要”，避免沿用确认轮的文字和显隐
+    $('btnPlay').style.display='inline-block';
+    $('btnHint').style.display='inline-block';
+    $('btnPass').style.display='inline-block';
+    $('btnPass').textContent='不要';
+    if(G.turn===mySeat) enablePlayer();
+  }
   voiceGate(); // 语音播报未结束时保持按钮禁用
   syncHandLayout(); // 按钮显隐/换容器后重新定位（明独/不明独居中）
 }
@@ -661,14 +692,37 @@ function renderTop(){
   $('lblRound').textContent = `第 ${cur}/${total} 场`;
   updateSeriesInfo();
 }
+// 头像：有微信头像时显示图片，否则显示文字（昵称首字/庄标）
+function paintAvatar(av, url, label){
+  if(!av) return;
+  // 保留已加载的同 URL 图片，避免每次快照重绘都重新请求/闪烁
+  const old=av.querySelector('img.avImg');
+  const keep=(url && old && old.getAttribute('src')===url) ? old : null;
+  av.innerHTML='';
+  av.classList.toggle('hasAv', !!url);
+  if(url){
+    const img=keep || document.createElement('img');
+    if(!keep){
+      img.className='avImg'; img.alt=''; img.referrerPolicy='no-referrer';
+      img.src=url;
+    }
+    img.onerror=()=>{ img.remove(); av.classList.remove('hasAv'); };
+    av.appendChild(img);
+  }
+  if(label){
+    const sp=document.createElement('span');
+    sp.className='avTxt'; sp.textContent=label;
+    av.appendChild(sp);
+  }
+}
 // 仅渲染座位名字（未开局也可显示各玩家昵称 + 准备/掉线状态）
 function renderSeatNames(){
   const realOf = v => (mySeat + v) % 4;
   for(let v=0;v<4;v++){
     const i=realOf(v);
+    const isHuman = seatTypes[i]==='human';
     const nm=$('nm'+v);
     if(nm){
-      const isHuman = seatTypes[i]==='human';
       if(isHuman){
         // 真人座位：信息框只显示昵称/掉线；准备状态显示在各自牌桌上
         nm.textContent = (seatNames[i]||(''));
@@ -678,7 +732,9 @@ function renderSeatNames(){
         nm.textContent = '';
       }
     }
-    const av=$('av'+v); if(av) av.innerHTML=''; // 圆圈不显示东南西北字（庄家/明鸡标记在开局渲染中处理）
+    // 未开局：显示微信头像；无头像时用昵称首字兜底
+    const av=$('av'+v);
+    paintAvatar(av, isHuman?seatAvatars[i]:'', isHuman?((seatNames[i]||'').trim().charAt(0)):'');
     const pEl=$('p'+v); if(pEl) pEl.textContent = '';
   }
 }
@@ -723,8 +779,15 @@ function renderSeats(){
     // 4+ 王信息显示在头像上；头像圆圈不显示东南西北字，庄家（老板）圆圈里显示"庄"
     const av=$('av'+v);
     if(av){
-      av.innerHTML = (i===G.landlord && G.mode!=='hard') ? '庄' : '';
-      if(s.kingPlayed && s.kings>=4) av.innerHTML += `<span class="kingBadge">&gt;4王</span>`;
+      const firstChar=((seatNames[i]||s.name||'').trim().charAt(0));
+      const avLabel=(i===G.landlord && G.mode!=='hard') ? '庄' : (seatAvatars[i] ? '' : firstChar);
+      paintAvatar(av, seatAvatars[i], avLabel);
+      if(s.kingPlayed && s.kings>=4){
+        const badge=document.createElement('span');
+        badge.className='kingBadge';
+        badge.textContent='>4王';
+        av.appendChild(badge);
+      }
     }
     // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示
     const calledMiniHtml = (G.mode!=='hard' && G.called && i===G.landlord)
@@ -745,15 +808,21 @@ function renderSeats(){
     const pEl=$('p'+v); if(!pEl) continue;
     const rollN=s.rollcages.length;
     const rollFan=s.rollcages.reduce((a,r)=>a+r.fan,0);
-    pEl.textContent =
-      (v!==0 && settings.showRemain ? ('手牌 '+s.hand.length+' 张 · ') : '')+
-      '抓分 '+s.caught+
+    pEl.textContent='';
+    if(v!==0 && settings.showRemain) pEl.append(`手牌 ${s.hand.length} 张 · `);
+    pEl.append('抓分 ');
+    const caughtEl=document.createElement('span');
+    caughtEl.className='caughtNum';
+    caughtEl.textContent=s.caught;
+    pEl.append(caughtEl);
+    pEl.append(
       // 跑完：其打出的带番炸已生效，直接显示已得番数
       (s.out
-        ? (' · 得'+rollFan+'笼')
-        : (rollN>0?(' · 已打'+rollFan+'笼'):''))+
-      (s.out?(' · '+['一','二','三','四'][s.outOrder-1]+'游'):'')+
-      (G.mode==='hard'&&i===G.hardSeat?' · 硬牌':'');
+        ? (` · 得${rollFan}笼`)
+        : (rollN>0?(` · 已打${rollFan}笼`):''))+
+      (s.out?` · ${['一','二','三','四'][s.outOrder-1]}游`:'')+
+      (G.mode==='hard'&&i===G.hardSeat?' · 硬牌':'')
+    );
     // 其他玩家手牌背面（自己的手牌在手牌区渲染）
     if(v!==0){
       const h=$('h'+v); h.innerHTML='';
@@ -809,17 +878,23 @@ function renderSeats(){
     // 状态提示（插底 / x游）：南=准备按钮右侧；东/西=信息框下方；北=信息框右侧
     const hintEl=$('hint'+v);
     if(hintEl) hintEl.innerHTML='';
+    const makeAlert=()=>{
+      const w=document.createElement('span');
+      w.className='warnDizhi';
+      w.innerHTML='<span class="icon">!</span>';
+      return w;
+    };
     const addAlert=()=>{
       if(!hintEl) return;
       const d=document.createElement('div');
-      d.innerHTML='<span class="warnDizhi"><span class="icon">!</span></span>';
+      d.appendChild(makeAlert());
       hintEl.appendChild(d);
     };
     const addPlace=()=>{
       if(!hintEl) return;
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
-      d.style.cssText='color:#e8392e;font-size:13px;font-weight:bold;';
+      d.style.cssText='color:#fff;font-size:13px;font-weight:bold;';
       hintEl.appendChild(d);
     };
     if(i===G.turn && !G.ended){
@@ -827,10 +902,10 @@ function renderSeats(){
     } else if(s.choice){
       const d=document.createElement('div');
       d.textContent = s.choice==='mingdu' ? '明独' : '不明独';
-      d.style.cssText = s.choice==='mingdu' ? 'color:#ff9d8a;font-size:15px;font-weight:bold;padding:8px 0;' : 'color:#d9e8e0;font-size:14px;padding:8px 0;';
+      d.style.cssText = s.choice==='mingdu' ? 'color:#ffe9b0;font-size:15px;font-weight:bold;padding:8px 0;' : 'color:#ffe9b0;font-size:14px;padding:8px 0;';
       tr.appendChild(d);
     } else if(s.passed){
-      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffffff;font-size:17px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
+      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffe9b0;font-size:17px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
     } else if(s.lastCards&&s.lastCards.length){
       // 出到桌面的牌按点数理顺展示（不改变实际牌，仅排列顺序）：王放最后，其余按 3->2 升序
       const deskCards=[...s.lastCards].sort((a,b)=>{
@@ -864,7 +939,7 @@ function renderSeats(){
     } else if(s.out && s.outOrder>0){
       addPlace(false); // 已跑且无牌可展示：单独显示 x游
     }
-    // 插底提示始终显示（本局结束或该玩家已跑完才消失），不会被"不要/明独/出牌"覆盖
+    // 插底提示始终显示（本局结束或该玩家已跑完才消失），固定在原来的座位提示位置
     if(!G.ended && isDizhi) addAlert();
   }
   const msg=$('msg');
@@ -881,7 +956,11 @@ function renderSeats(){
 function renderCorner(){
   const c=$('corner'); if(!c) return;
   // 房主可在「对局配置」里开启该信息框（默认不显示）；显示当前牌局设置
-  c.style.display = settings.showCorner === true ? '' : 'none';
+  const show=settings.showCorner === true;
+  c.style.display = show ? '' : 'none';
+  // 同步给牌桌：信息框隐藏时，标题/房间号/我是谁 靠左，不占用信息框的位置
+  const table=c.closest ? c.closest('.table') : document.querySelector('.table');
+  if(table) table.classList.toggle('cornerOn', show);
   c.innerHTML='';
   const mkChip=(label,val)=>`<div class="cornerRow"><span style="color:#a8c8b8">${label}</span><b>${val||'—'}</b></div>`;
   c.innerHTML += mkChip('局数', `${settings.rounds||1} 局`);
@@ -905,7 +984,12 @@ function renderHand(){
   if(s.out){
     if(G.ended) return; // 本局已结束：桌面不再显示“已出局”
     let show=null;
-    if(G.mode!=='hard'){ show = G.landlord===mySeat ? G.partner : (G.partner===mySeat ? G.landlord : null); }
+    if(G.mode!=='hard'){
+      // 2V2 有两支队伍：庄家队（庄家+明鸡）和另外两名玩家。
+      // 之前只处理了庄家队，非庄家队的玩家跑完后找不到队友，会误显示“已跑完”。
+      const mate=TS.teamOf(G,mySeat).find(i=>i!==mySeat);
+      if(mate!=null) show=mate;
+    }
     if(show!=null && !G.seats[show].out){
       const hs=G.seats[show];
       // 先渲染队友牌，文字放在牌的右侧（避免被第一张牌的负边距遮住）
@@ -931,19 +1015,22 @@ function renderHand(){
     el.dataset.i=idx;
     el.innerHTML=cardHTML(c);
     // 双击同一张单牌且能压过上家 → 直接出牌作为快捷方式
-    const now=Date.now();
-    const dbl = (hintDblIdx===idx) && (now-hintDblAt>0) && (now-hintDblAt<350);
-    hintDblIdx=idx; hintDblAt=now;
     el.onclick=()=>{
       if(G.ended) return;
       if(clickSuppress){ clickSuppress=false; return; } // 拖动手势后的 click 不再切换
-      if(dbl && G.turn===mySeat && !G.out && !G.confirming){
+      // 双击记录必须在点击时更新；不能放在渲染时，否则拿到的是过期状态
+      const now=Date.now();
+      const dbl = (hintDblIdx===idx) && (now-hintDblAt>=0) && (now-hintDblAt<350);
+      hintDblIdx=idx; hintDblAt=now;
+      const mySeatState=G.seats[mySeat];
+      if(dbl && G.turn===mySeat && mySeatState && !mySeatState.out && !G.confirming){
         // 双击单张：仅当是合法单牌且能压过上家时直接出
         const p=TS.analyzePlay([c], G.cfg);
         if(p && p.type==='single' && (!G.lastPlay || TS.canBeat(G.lastPlay,p))){
           selected.clear();
-          G.seats[mySeat].hand.forEach((x,i)=>{ if(x.id===c.id) selected.add(i); });
+          mySeatState.hand.forEach((x,i)=>{ if(x.id===c.id) selected.add(i); });
           playerPlay();
+          hintDblIdx=-1; hintDblAt=0; // 防止第三击再次触发
           return;
         }
       }
@@ -952,7 +1039,7 @@ function renderHand(){
     };
     handEl.appendChild(el);
   });
-  const btn=$('btnSort'); if(btn) btn.textContent = sortMode===0?'排序：点数':(sortMode===1?'排序：炸前置':'排序：牌型');
+  const btn=$('btnSort'); if(btn) btn.textContent = '排序';
 }
 function renderCardFan(handEl, cards, forSeat){
   const order=[...cards].sort((a,b)=>handKey(a)-handKey(b));
@@ -967,7 +1054,14 @@ function renderCardFan(handEl, cards, forSeat){
   });
 }
 function renderCenter(){
-  $('trickScore').textContent=`本轮分数 ${G.trickPoints} 分` + (G.lastSeat>=0?` · ${seatNames[G.lastSeat]} 压着`:'');
+  const el=$('trickScore');
+  el.textContent='';
+  el.append('本轮分数 ');
+  const num=document.createElement('span');
+  num.className='scoreNum';
+  num.textContent=G.trickPoints;
+  el.append(num, ' 分');
+  if(G.lastSeat>=0) el.append(` · ${seatNames[G.lastSeat]} 压着`);
 }
 function describeShort(p){
   if(p.type==='rollcage') return `滚笼 ${p.s}×${p.k}（${p.soft?'软':'硬'} ${p.fan} 笼）`;
@@ -1003,6 +1097,22 @@ function bonusNetOf(s,i){
   }
   return net;
 }
+function clearSettleTimer(){
+  if(settleTimer){ clearTimeout(settleTimer); settleTimer=null; }
+}
+// 局末延迟 3 秒再显示计分板；最后一局即使 G 已被服务端清空也要弹
+function scheduleSettleModal(rk, isLast){
+  if(settleTimer) return;
+  settleTimer=setTimeout(()=>{
+    settleTimer=null;
+    settleShown=true;
+    const sameRound = !!(G && G.ended && (G.seq||G.roundNo)===rk);
+    if(isLast || (sameRound && !seatReady[mySeat])){
+      const md=$('modal');
+      if(md) md.hidden=false;
+    }
+  }, SETTLE_DELAY_MS);
+}
 function finishLocal(){
   try{
     const s=TS.settleRound(G);
@@ -1037,7 +1147,7 @@ function finishLocal(){
     } else {
       tb.innerHTML+=`<tr><td colspan="8" class="note">${noteTxt}</td></tr>`;
     }
-    $('modal').hidden=false;
+    // 不在这里弹出：由 applyState 统一延迟 3 秒显示
   }catch(e){}
 }
 
@@ -1049,8 +1159,8 @@ function addLog(msg){ log(msg); }
 /* ---------- 网络回调用（net.js 调用） ---------- */
 window.GameUI = {
   applyState,
-  setSelf(seat, names, types, aiOn, offArr, readyArr){
-    mySeat=seat; seatNames=names||[]; seatTypes=types||[]; seatOffline=offArr||[]; seatReady=readyArr||[]; aiFill=aiOn!==undefined?aiOn:true;
+  setSelf(seat, names, types, aiOn, offArr, readyArr, avatars){
+    mySeat=seat; seatNames=names||[]; seatTypes=types||[]; seatOffline=offArr||[]; seatReady=readyArr||[]; seatAvatars=avatars||[]; aiFill=aiOn!==undefined?aiOn:true;
   },
   setSeries(s){
     series = s || null;
@@ -1065,13 +1175,9 @@ function positionSideTricks(){
   const w=document.querySelector('.seatW'), e=document.querySelector('.seatE');
   const tw=document.getElementById('t3'), te=document.getElementById('t1');
   if(!table||!w||!e||!tw||!te) return;
-  // 旋转兜底（竖屏被翻转）下桌面整体翻转，offsetLeft/offsetWidth 不可靠，
-  // 且有写死的 .trickW{left:180px}/.trickE{right:180px} 兜底距离 → 交给 CSS：
-  // 先清掉 JS 此前写入的内联定位，让 CSS 生效
-  if(document.body.classList.contains('landscapeCompat')){
-    tw.style.left=''; tw.style.right=''; te.style.left=''; te.style.right='';
-    return;
-  }
+  // 旋转兜底（landscapeCompat）也走同一套计算：offset* 是布局坐标，不受 #app 旋转影响，
+  // 之前直接交给 CSS 的 180px 兜底会让东西家牌区离信息框约 70px，不够贴近。
+  // CSS 里的 180px 仅作为 JS 执行前的初始兜底，随后会被这里的 inline 定位覆盖。
   const gap=6, tableW=table.clientWidth;
   // 西家：紧贴信息框右侧
   tw.style.left=(w.offsetLeft + w.offsetWidth + gap)+'px';
@@ -1205,11 +1311,10 @@ function syncHandLayout(){
   if(!row) return;
   layoutActionButtons();
   const hand=document.getElementById('hand');
-  const tools=document.querySelector('.handTools');
   const w=row.clientWidth;
-  const tw=tools?tools.offsetWidth:0;
   const fullW=fullHandWidth(); // 用发牌满手宽度判断，避免剩牌减少时布局跳动
-  const compact = w>0 && (w<780 || (fullW>0 && fullW + 2*tw + 18 > w));
+  // 工具按钮已移到手牌上方，手牌行不再为右侧按钮列预留宽度
+  const compact = w>0 && (w<780 || (fullW>0 && fullW + 18 > w));
   row.classList.toggle('handRowCompact', compact);
   positionSideTricks();
   positionNorthTrick();

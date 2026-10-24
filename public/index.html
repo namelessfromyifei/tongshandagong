@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=162">
+<link rel="stylesheet" href="css/style.css?v=194">
 </head>
 <body>
 <div id="app">
@@ -14,12 +14,21 @@
   <div id="lobby">
     <div class="lobbyBox">
       <h1>通山打拱·拱神杨子版</h1>
-      <p class="lobbySub">先设置昵称，然后创建房间或加入已有房间</p>
-      <!-- 昵称 -->
-      <div class="lobbyRow nameRow">
+      <p class="lobbySub" id="lobbyTip">使用微信头像和昵称加入房间</p>
+      <!-- 微信授权后的身份 -->
+      <div id="wxProfile" class="wxProfile" hidden>
+        <img id="wxAvatar" class="wxAvatar" alt="" referrerpolicy="no-referrer">
+        <div class="wxMeta">
+          <b id="wxName">—</b>
+          <span class="wxSub">已获取微信头像和昵称</span>
+        </div>
+      </div>
+      <!-- 手动昵称：未配置微信或用户拒绝授权时使用 -->
+      <div class="lobbyRow nameRow" id="nameRow">
         <label>昵称</label>
         <input id="nameInput" type="text" placeholder="我的昵称" maxlength="12">
         <button id="btnSetName" class="btn">设置昵称</button>
+        <button id="btnWxLogin" class="btn" hidden>微信授权</button>
       </div>
       <!-- 三个主按钮 -->
       <div class="lobbyRow btns">
@@ -97,11 +106,20 @@
       <div class="chip tableWho" id="mySeatInfo">—</div>
       <!-- 牌桌右上角：局数/模式/配置/退出 -->
       <div class="tableTopRight">
-        <span class="chip" id="lblRound"></span>
-        <span class="chip" id="lblMode">2V2</span>
-        <button id="btnStart" class="btn gold">对局配置</button>
-        <button id="btnLeave" class="btn danger">退出房间</button>
-        <button id="btnRefresh" class="btn">刷新</button>
+        <div class="topRightInfo">
+          <span class="chip" id="lblRound"></span>
+          <span class="chip" id="lblMode">2V2</span>
+        </div>
+        <div class="toolBtns">
+          <button id="btnQuick" class="btn small toolBtn">生崽</button>
+          <button id="btnVoiceTone" class="btn small toolBtn" style="display:none">音色</button>
+        </div>
+        <div class="topRightSide">
+          <button id="btnLeave" class="btn danger">退出房间</button>
+          <button id="btnStart" class="btn gold">对局配置</button>
+          <button id="btnRefresh" class="btn">刷新</button>
+          <button id="btnVoice" class="btn">语音：开</button>
+        </div>
       </div>
       <!-- 牌桌左上角（标题下方）：叫牌 + 明鸡状态 -->
       <div class="corner" id="corner"></div>
@@ -162,13 +180,6 @@
               <div class="southHint" id="hint0"></div>
             </div>
             <div class="handArea"><div id="hand"></div></div>
-            <div class="handTools">
-              <button id="btnQuick" class="btn small">快点</button>
-              <button id="btnVoiceTone" class="btn small" style="display:none">音色</button>
-              <button id="btnSort" class="btn small">排序：点数</button>
-              <button id="btnSize" class="btn small">牌大小</button>
-              <button id="btnVoice" class="btn small">语音：开</button>
-            </div>
             <!-- 出牌/提示/不要：牌的右上角；明独/不明独：牌的中间（初始轮用） -->
             <div class="playBtns" id="playBtns">
               <button id="btnPlay" class="btn gold" disabled>出牌</button>
@@ -183,6 +194,11 @@
         </div>
       </div>
       <div class="trick trickS" id="t0"></div>
+      <!-- 排序 / 牌大小：固定在牌桌右下角，高层级；发牌后才显示 -->
+      <div class="tableSideBtns">
+        <button id="btnSort" class="btn tableSideBtn" style="display:none">排序</button>
+        <button id="btnSize" class="btn tableSideBtn" style="display:none">牌大小</button>
+      </div>
 
       <!-- 牌局设置弹窗（须在 #app 内，才能随 app 一起横屏旋转） -->
       <div id="setModal" class="overlay" hidden>
@@ -224,10 +240,10 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/engine.js?v=162"></script>
-<script src="js/ai.js?v=162"></script>
-<script src="js/ui-net.js?v=162"></script>
-<script src="js/screen.js?v=162"></script>
-<script src="js/net.js?v=162"></script>
+<script src="js/engine.js?v=194"></script>
+<script src="js/ai.js?v=194"></script>
+<script src="js/ui-net.js?v=194"></script>
+<script src="js/screen.js?v=194"></script>
+<script src="js/net.js?v=194"></script>
 </body>
 </html>
