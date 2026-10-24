@@ -528,7 +528,7 @@ body.landscapeCompat .corner .mini .ctr{font-size:14px;}
 body.landscapeCompat .tableTitle{font-size:12px;left:96px;top:4px;}
 body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
 body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}
-body.landscapeCompat .tableTopRight .btn{padding:5px 11px;font-size:14px;}
+body.landscapeCompat .tableTopRight .btn{padding:4px 9px;font-size:12px;}
 body.landscapeCompat .tableWho{left:96px;top:34px;font-size:9px;}
 body.landscapeCompat .modalBox{max-width:94%;padding:12px 14px;}
 body.landscapeCompat .modalBox .lobbyRow input,body.landscapeCompat .modalBox input{font-size:15px;padding:7px 10px;}
@@ -537,19 +537,19 @@ body.landscapeCompat .modalBox .mBtn{gap:8px;margin-top:10px;}
 body.landscapeCompat .setGrid{gap:6px;}
 body.landscapeCompat .setGrid label{font-size:12px;}
 
-/* 右上角按钮固定尺寸：不随牌大小（--card-zoom）变化，保证布局稳定；较上一版放大一档 */
+/* 右上角房间按钮固定尺寸：不随牌大小变化；较上一版缩小一档 */
 .tableTopRight .btn{
-  font-size:16px;
-  padding:8px 16px;
+  font-size:14px;
+  padding:7px 14px;
   white-space:nowrap;
 }
 @media (max-width:560px){
-  .tableTopRight .btn{font-size:12px;padding:4px 8px;}
-}
-@media (orientation:landscape) and (max-width:920px){
   .tableTopRight .btn{font-size:11px;padding:3px 7px;}
 }
-body.landscapeCompat .tableTopRight .btn{font-size:14px;padding:5px 11px;}
+@media (orientation:landscape) and (max-width:920px){
+  .tableTopRight .btn{font-size:10px;padding:2px 6px;}
+}
+body.landscapeCompat .tableTopRight .btn{font-size:12px;padding:4px 9px;}
 /* 快点/排序/牌大小：右上方工具按钮，比房间控制按钮小一档，避免挤压 */
 .tableTopRight .toolBtns .btn{font-size:12px;padding:4px 9px;}
 @media (max-width:560px){

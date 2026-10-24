@@ -1348,15 +1348,20 @@ if($('btnQuick')) $('btnQuick').onclick=playQuick;
 if($('btnVoiceTone')) $('btnVoiceTone').onclick=cycleVoiceTone;
 $('btnHard').onclick=playerHard;
 
-/* ---------- 全屏（进房自动尝试；只在全屏时显示“退出全屏”） ---------- */
+/* ---------- 全屏（进房自动尝试；未全屏显示“全屏”，全屏显示“退出全屏”） ---------- */
 (function initFullscreen(){
   const b=$('btnFullscreen'); if(!b) return;
   const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
     || (navigator.maxTouchPoints>0 && window.innerWidth<1024);
   const fsEl=()=>document.fullscreenElement || document.webkitFullscreenElement || null;
   const apply=()=>{
-    b.textContent='退出全屏';
-    b.style.display=(isMobile && fsEl()) ? 'inline-block' : 'none';
+    b.textContent=fsEl() ? '退出全屏' : '全屏';
+    b.style.display=isMobile ? 'inline-block' : 'none';
+  };
+  // 全屏默认第四档（1.8），退出全屏回到第三档（1.6）
+  const syncCardSizeForFullscreen=()=>{
+    cardSizeIdx=fsEl()?3:2;
+    applyCardSize();
   };
   const enterFullscreenIfMobile=()=>{
     if(!isMobile || fsEl()) return;
@@ -1378,15 +1383,19 @@ $('btnHard').onclick=playerHard;
       else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
     }catch(e){}
     apply();
+    syncCardSizeForFullscreen();
     setTimeout(()=>window.dispatchEvent(new Event('resize')), 200);
   };
-  const onChange=()=>{ apply(); setTimeout(()=>window.dispatchEvent(new Event('resize')), 200); };
+  const onChange=()=>{ apply(); syncCardSizeForFullscreen(); setTimeout(()=>window.dispatchEvent(new Event('resize')), 200); };
   document.addEventListener('fullscreenchange', onChange);
   document.addEventListener('webkitfullscreenchange', onChange);
   // 进房时如果没有用户手势导致自动全屏失败，进桌后第一次触摸再尝试一次
   let tapTried=false;
-  document.addEventListener('pointerdown',()=>{
+  document.addEventListener('pointerdown',(e)=>{
     if(tapTried) return;
+    // 第一次触摸就是全屏按钮时，交给按钮自身处理，避免 pointerdown 先进全屏、click 又退出；
+    // 同时标记已处理，避免用户退出全屏后下一次普通点击又被自动拉回全屏
+    if(e.target && e.target.closest && e.target.closest('#btnFullscreen')){ tapTried=true; return; }
     const app=document.getElementById('app');
     if(!app || !app.classList.contains('inTable')) return;
     tapTried=true;
