@@ -29,6 +29,8 @@ function enterTable(){
   if(app){ app.classList.remove('inLobby'); app.classList.add('inTable'); }
   // 进入房间：强制横屏
   if(window.LANDSCAPE) window.LANDSCAPE.enter();
+  // 进房自动尝试全屏（需要用户手势；失败时进桌后首次触摸会再试一次）
+  if(window.enterGameFullscreen) window.enterGameFullscreen();
 }
 
 function toast(msg){

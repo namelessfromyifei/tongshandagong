@@ -229,7 +229,7 @@ function toggleSort(){ sortMode=(sortMode+1)%3; render(); }
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
 // 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
 const CARD_SCALES=[1.24,1.4,1.6,1.8];
-let cardSizeIdx=1; // 默认第二档「大」
+let cardSizeIdx=2; // 默认第三档「特大」
 function applyCardSize(){
   document.documentElement.style.setProperty('--card-zoom', String(CARD_SCALES[cardSizeIdx]));
   if(typeof requestAnimationFrame==='function') requestAnimationFrame(()=>syncHandLayout());
@@ -894,7 +894,7 @@ function renderSeats(){
       if(!hintEl) return;
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
-      d.style.cssText='color:#fff;font-size:13px;font-weight:bold;';
+      d.style.cssText='color:#fff;font-size:17px;font-weight:bold;';
       hintEl.appendChild(d);
     };
     if(i===G.turn && !G.ended){
@@ -902,10 +902,12 @@ function renderSeats(){
     } else if(s.choice){
       const d=document.createElement('div');
       d.textContent = s.choice==='mingdu' ? '明独' : '不明独';
-      d.style.cssText = s.choice==='mingdu' ? 'color:#ffe9b0;font-size:15px;font-weight:bold;padding:8px 0;' : 'color:#ffe9b0;font-size:14px;padding:8px 0;';
+      d.style.cssText = s.choice==='mingdu'
+        ? 'color:#ffe9b0;font-size:19px;font-weight:bold;padding:8px 0;'
+        : 'color:#ffe9b0;font-size:18px;font-weight:bold;padding:8px 0;';
       tr.appendChild(d);
     } else if(s.passed){
-      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffe9b0;font-size:17px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
+      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffe9b0;font-size:21px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
     } else if(s.lastCards&&s.lastCards.length){
       // 出到桌面的牌按点数理顺展示（不改变实际牌，仅排列顺序）：王放最后，其余按 3->2 升序
       const deskCards=[...s.lastCards].sort((a,b)=>{
@@ -1345,6 +1347,53 @@ $('btnVoice').onclick=toggleVoice;
 if($('btnQuick')) $('btnQuick').onclick=playQuick;
 if($('btnVoiceTone')) $('btnVoiceTone').onclick=cycleVoiceTone;
 $('btnHard').onclick=playerHard;
+
+/* ---------- 全屏（进房自动尝试；只在全屏时显示“退出全屏”） ---------- */
+(function initFullscreen(){
+  const b=$('btnFullscreen'); if(!b) return;
+  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints>0 && window.innerWidth<1024);
+  const fsEl=()=>document.fullscreenElement || document.webkitFullscreenElement || null;
+  const apply=()=>{
+    b.textContent='退出全屏';
+    b.style.display=(isMobile && fsEl()) ? 'inline-block' : 'none';
+  };
+  const enterFullscreenIfMobile=()=>{
+    if(!isMobile || fsEl()) return;
+    const el=document.documentElement;
+    try{
+      if(el.requestFullscreen){
+        const p=el.requestFullscreen();
+        if(p && p.catch) p.catch(()=>{});
+      }else if(el.webkitRequestFullscreen){
+        el.webkitRequestFullscreen();
+      }
+    }catch(e){}
+  };
+  window.enterGameFullscreen=enterFullscreenIfMobile;
+  b.onclick=async()=>{
+    if(!fsEl()){ enterFullscreenIfMobile(); return; }
+    try{
+      if(document.exitFullscreen) await document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }catch(e){}
+    apply();
+    setTimeout(()=>window.dispatchEvent(new Event('resize')), 200);
+  };
+  const onChange=()=>{ apply(); setTimeout(()=>window.dispatchEvent(new Event('resize')), 200); };
+  document.addEventListener('fullscreenchange', onChange);
+  document.addEventListener('webkitfullscreenchange', onChange);
+  // 进房时如果没有用户手势导致自动全屏失败，进桌后第一次触摸再尝试一次
+  let tapTried=false;
+  document.addEventListener('pointerdown',()=>{
+    if(tapTried) return;
+    const app=document.getElementById('app');
+    if(!app || !app.classList.contains('inTable')) return;
+    tapTried=true;
+    if(!fsEl()) enterFullscreenIfMobile();
+  }, true);
+  apply();
+})();
 initCardSize();
 initVoice();
 $('btnHe').onclick=playerHe;
