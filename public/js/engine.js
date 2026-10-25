@@ -449,8 +449,8 @@ function handHasBomb(hand){
    */
   /* 抓分归属（只影响“输方抓到 0 分翻倍”的判断，以及计分板上的展示）：
    *  - 拿到一游的那一队保留全队抓分（一游把队友抓的分也算到本队头上）
-   *  - 没有一游的那一队：如果队里只剩一个人没跑完（尾游），
-   *    尾游的抓分 + 尾游手里没出的分数牌，都归对面（一游）那一队
+   *  - 没有一游的那一队：如果队里只剩一个人没跑完（尾游），尾游抓到的分归对面（一游）那一队。
+   *    注意：尾游手里还没出的牌的分不算（那些牌没被打出来，不产生抓分）
    *  - 两队都有人没跑完（赢家一二游）时不存在“尾游”，按原值
    */
   function attributedCaught(G){
@@ -462,8 +462,7 @@ function handHasBomb(hand){
     const left=[0,1,2,3].filter(i=>foTeam.indexOf(i)<0 && !G.seats[i].out); // 另一队还没跑完的人
     if(left.length!==1) return eff;
     const tail=left[0];
-    const handPts=(G.seats[tail].hand||[]).reduce((a,c)=>a+pointOf(c),0);
-    const give=eff[tail]+handPts;
+    const give=eff[tail]; // 只转抓到的分，不含手里剩余牌的分
     eff[tail]=0;
     eff[firstOut]+=give; // 归到一游头上（队伍内部怎么分不影响 0 分判断与总分）
     return eff;

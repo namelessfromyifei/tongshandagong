@@ -34,7 +34,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatE{right:12px;top:44%;transform:translateY(-50%);}
 .seat.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
 /* 局末得分徽标（信息框外侧右下角） */
-.roundSco{position:absolute;right:-6px;bottom:-6px;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
+.roundSco{position:absolute;right:-6px;bottom:-10px;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
 .roundSco.plus{background:#1d9c5c;}
 .roundSco.minus{background:#c0392b;}
 .roundSco.zero{background:#6b7a73;}
@@ -70,7 +70,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seat.hasCalled{padding-right:40px;}
 .calledMini .tl,.calledMini .br{line-height:1;}
 .pts{font-size:15px;color:#a8c8b8;}
-.pts .caughtNum{color:#ffe9b0;}
+.pts .caughtNum{color:#ffd24a;}
 
 .cards.back{display:flex;gap:0;min-height:34px;}
 .cards.back .backCard{width:20px;height:30px;background:repeating-linear-gradient(45deg,#3a6ea5,#3a6ea5 4px,#2f5d8c 4px,#2f5d8c 8px);border:1px solid #2a5078;border-radius:3px;flex:0 0 auto;}
@@ -101,7 +101,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 中间不再显示提示文字（信息已移到左上角）；保留占位，让分数行落在原来上面那行的位置 */
 #msg{font-size:15px;color:#fff;line-height:1.7;visibility:hidden;}
 #lastTrick{display:flex;justify-content:center;flex-wrap:wrap;gap:0;min-height:78px;margin:6px 0;align-items:flex-end;}
-#trickScore{position:relative;top:6px;font-size:13px;color:#d9e8e0;}
+#trickScore{position:relative;top:6px;font-size:15px;color:#d9e8e0;}
 #trickScore .scoreNum{color:#ffd24a;font-weight:bold;}
 
 /* 牌桌左上角：叫牌 + 明鸡状态 */
@@ -202,9 +202,14 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;}
 .modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
 #btnPeek{position:absolute;right:8px;top:8px;z-index:2;font-size:12px;padding:2px 8px;}
-/* 局末摊牌：没出完的牌当作一手牌摊在桌面上。只靠尺寸略小区分，
-   不要加透明度——半透明叠在绿色桌面上会显得发灰、看不清点数花色。 */
-.trickRow.remainDesk{margin-top:6px;zoom:.85;}
+/* 局末摊牌：没出完的牌当作一手牌摊在桌面上。
+   尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色，多行时上下叠起来。 */
+.trickRow.remainDesk{margin-top:6px;zoom:1;}
+.trickRow.remainDesk .card{width:26px!important;height:36px!important;zoom:1!important;margin-left:-14px!important;border-radius:4px!important;}
+.trickRow.remainDesk .card:first-child{margin-left:0!important;}
+.trickRow.remainDesk .card .tl,.trickRow.remainDesk .card .br{font-size:10px!important;}
+.trickRow.remainDesk .card .ctr{font-size:13px!important;}
+.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-14px;}
 /* 插底警报：红色圆徽标（白！）+ 文字 */
 .warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
 .warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:14px;line-height:1;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 5px rgba(0,0,0,.7);}
@@ -283,7 +288,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .trick.trickN{top:128px;} .trick.trickS{bottom:162px;} .trick.trickW{left:194px;} .trick.trickE{right:194px;}
   .center{top:49%;}
   #msg{font-size:12px;}
-  #trickScore{font-size:11px;}
+  #trickScore{font-size:13px;}
   /* 手牌区 */
   .south{bottom:-4px;}
   .toolBtns{gap:4px;}
@@ -347,7 +352,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:12px!important;}
   .trick.trickN{top:96px;} .trick.trickS{bottom:116px;} .trick.trickW{left:180px;} .trick.trickE{right:180px;}
-  .center{top:49%;} #msg{font-size:12px;} #trickScore{font-size:11px;}
+  .center{top:49%;} #msg{font-size:12px;} #trickScore{font-size:13px;}
   /* 手牌区在底部，横屏下尽量扁 */
   .south{bottom:-4px;}
   .southMain #hand .hcard + .hcard{margin-left:-27px;}
@@ -525,7 +530,7 @@ body.landscapeCompat .trick.trickW{left:180px;}
 body.landscapeCompat .trick.trickE{right:180px;}
 body.landscapeCompat .center{top:49%;}
 body.landscapeCompat #msg{font-size:12px;}
-body.landscapeCompat #trickScore{font-size:11px;}
+body.landscapeCompat #trickScore{font-size:13px;}
 body.landscapeCompat .south{bottom:-4px;}
 body.landscapeCompat .southMain #hand .hcard + .hcard{margin-left:-27px;}
 body.landscapeCompat .southMain #hand .hcard:first-child{margin-left:0;}

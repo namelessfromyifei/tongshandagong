@@ -615,6 +615,7 @@ function applyState(snap){
     if($('btnSort')) $('btnSort').style.display='none';
     if($('btnSize')) $('btnSize').style.display='none';
     if($('btnNext')) $('btnNext').style.display='none';
+    if($('btnSettle')) $('btnSettle').style.display='none';
     if($('btnAI')){ if(aiAutoOn) aiAutoSet(false); $('btnAI').style.display='none'; }
     if($('tableMsg')) $('tableMsg').textContent='';
     for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
@@ -665,7 +666,13 @@ function applyState(snap){
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
   if($('btnNext')) $('btnNext').style.display = (G && G.ended && !seriesOver) ? 'inline-block' : 'none';
   // 按钮：确认轮 / 出牌轮
-  if(G.ended){ setBtn(false); return; }
+  if(G.ended){
+    setBtn(false);
+    // 局末：出牌 / 提示 / 不要 / 牌大小 四个按钮不再显示
+    ['btnPlay','btnHint','btnPass','btnSize'].forEach(id=>{ const b=$(id); if(b) b.style.display='none'; });
+    return;
+  }
+  if($('btnSettle')) $('btnSettle').style.display='none';
   if(G.confirming){
     setBtn(false);
     // 明独/不明独阶段：不显示“出牌/提示”，只保留表态按钮
@@ -837,7 +844,7 @@ function renderSeats(){
       (s.out
         ? (` · 得${rollFan}笼`)
         : (rollN>0?(` · 已打${rollFan}笼`):''))+
-      (s.out?` · ${['一','二','三','四'][s.outOrder-1]}游`:'')+
+      // 信息框里不再显示“一游/二游…”（名次在牌桌提示和计分板里已有）
       (G.mode==='hard'&&i===G.hardSeat?' · 硬牌':'')
     );
     // 其他玩家手牌背面（自己的手牌在手牌区渲染）
@@ -913,12 +920,8 @@ function renderSeats(){
     // 局末摊牌：没出完的牌当作一手牌摊到桌面上（替代原先塞在信息框里的缩略牌）。
     // 自己的牌仍在下方手牌区，这里只处理其余三家。
     if(G.ended && v!==0 && !s.out && s.hand && s.hand.length){
-      const left=[...s.hand].sort((a,b)=>{
-        if(a.j&&b.j) return a.id-b.id;
-        if(a.j) return 1;
-        if(b.j) return -1;
-        return a.r-b.r || a.id-b.id;
-      });
+      // 牌序与手牌一致：王在前，其余按 2→3 从大到小
+      const left=[...s.hand].sort((a,b)=> handKey(a)-handKey(b) || (a.id<b.id?-1:1));
       // 北家在正上方：横向空间最宽，全部排成一行，避免向下压到中间提示；
       // 东西两侧窄，每行 7 张
       const ROW = v===2 ? left.length : 7;
@@ -1262,18 +1265,26 @@ function positionSeatS(){
   // 累加 offsetTop 到 handRow（offset* 为布局坐标，旋转兜底不受 transform 影响）
   const topWithin=(el, stop)=>{ let y=0; for(let n=el; n && n!==stop; n=n.offsetParent) y+=n.offsetTop; return y; };
   const first=hand.querySelector('.hcard');
-  let cardsTopInRow;
-  if(first){
-    cardsTopInRow = topWithin(first, row);
-  } else {
-    const pad=parseFloat(getComputedStyle(hand).paddingTop)||0;
-    cardsTopInRow = topWithin(hand, row) + pad;
+  const mateHand=hand.querySelector('.mateHand');
+  // 重算时机：
+  //  - 还没开局（G 为空）：刚进房间时按当前布局定位
+  //  - 自己正常握牌：跟随手牌位置
+  //  - 出完牌后（显示队友手牌 / 局末空手牌）：保持上一位置，避免信息框上下跳动
+  const keepPos = !!(G && (mateHand || !first));
+  if(!keepPos || !info.style.bottom){
+    let cardsTopInRow;
+    if(first){
+      cardsTopInRow = topWithin(first, row);
+    } else {
+      const pad=parseFloat(getComputedStyle(hand).paddingTop)||0;
+      cardsTopInRow = topWithin(hand, row) + pad;
+    }
+    // 尽量贴近手牌：选中牌会向上浮 6*zoom，留 2px 余量即可，不再固定留 6px
+    const z=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
+    const gap=Math.max(0, Math.round(6*z - 10));
+    const bottom = Math.round(row.offsetHeight - cardsTopInRow + gap);
+    info.style.bottom = bottom + 'px';
   }
-  // 尽量贴近手牌：选中牌会向上浮 6*zoom，留 2px 余量即可，不再固定留 6px
-  const z=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
-  const gap=Math.max(0, Math.round(6*z - 10));
-  const bottom = Math.round(row.offsetHeight - cardsTopInRow + gap);
-  info.style.bottom = bottom + 'px';
 
   // 牌面开到最大档时手牌区更高，信息框跟着上移，会压到左边西家的信息框。
   // 真压上了就把本家信息框横向右移，避开西家这一列（高度不变，不影响别的定位）。
@@ -1533,13 +1544,26 @@ if($('btnAI')){
 $('btnHe').onclick=playerHe;
 $('btnClose').onclick=()=>{
   $('modal').hidden=true;
+  if($('btnSettle')) $('btnSettle').style.display='none';
   // 非最后一局：点【下一局】自动就绪等全员；最后一局：不自动准备，需手动点【准备】
   if(!lastRoundWasLast) getNET().nextRound();
 };
-// 计分板右上角"关闭计分板"：点击即收起，露出牌桌（牌桌上另有"下一局"按钮）
+// 计分板右上角"关闭计分板"：收起后，牌桌上出现【计分板】按钮（在【下一局】左侧），可重新打开
 (function(){
-  const pk=$('btnPeek'); if(pk) pk.onclick=()=>{ $('modal').hidden=true; };
-  const nx=$('btnNext'); if(nx) nx.onclick=()=>{ $('modal').hidden=true; if(!lastRoundWasLast) getNET().nextRound(); };
+  const showSettleBtn=on=>{ const b=$('btnSettle'); if(b) b.style.display=on?'inline-block':'none'; };
+  const pk=$('btnPeek'); if(pk) pk.onclick=()=>{
+    $('modal').hidden=true;
+    if(G && G.ended) showSettleBtn(true);
+  };
+  const st=$('btnSettle'); if(st) st.onclick=()=>{
+    $('modal').hidden=false;
+    showSettleBtn(false);
+  };
+  const nx=$('btnNext'); if(nx) nx.onclick=()=>{
+    $('modal').hidden=true;
+    showSettleBtn(false);
+    if(!lastRoundWasLast) getNET().nextRound();
+  };
 })();
 
 /* ---------- 长按拖动一次选多张 / 取消选中 + 点击桌面空白收回已选 ---------- */
