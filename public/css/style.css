@@ -6,7 +6,11 @@
   --card-zoom:1.6; /* 牌面整体缩放：手牌 + 桌面出牌，按钮可调（标准/大/特大/巨无霸），默认第三档「特大」 */
 }
 body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-family:"Microsoft YaHei",system-ui,sans-serif;min-height:100vh;padding:10px;}
-#app{max-width:1100px;margin:0 auto;}
+/* 移动端：点按牌时浏览器默认的高亮是半透明蓝色（Chromium 默认 0x33B5E5），
+   会盖在牌面上且不跟随圆角；这里全局关掉。文字长按选中同样关掉，输入框单独放开。 */
+html{-webkit-tap-highlight-color:transparent;}
+input,textarea{-webkit-user-select:text;user-select:text;}
+#app{max-width:1100px;margin:0 auto;-webkit-user-select:none;user-select:none;}
 /* 大厅/牌桌显隐用 #app 状态类控制，避免内联 display 覆盖牌桌的 flex 布局 */
 #tableWrap{display:none;}
 #app.inTable #tableWrap{display:flex;flex-direction:column;position:relative;}
@@ -60,8 +64,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .tag{font-size:15px;color:var(--gold);display:inline-flex;align-items:center;gap:5px;}
 .calledMini{display:inline-flex;vertical-align:middle;}
 .calledMini .card{width:18px;height:27px;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.4);}
-.calledMini .card .tl{font-size:6px;} .calledMini .card .br{font-size:6px;} .calledMini .card .ctr{font-size:10px;}
-.calledMini .card.jk .ctr{font-size:8px;}
+.calledMini .card .tl{font-size:6px;} .calledMini .card .br{font-size:6px;} .calledMini .card .ctr{font-size:7px;}
+.calledMini .card.jk .ctr{font-size:6px;}
 .calledMini .tl,.calledMini .br{line-height:1;}
 .pts{font-size:15px;color:#a8c8b8;}
 .pts .caughtNum{color:#ffe9b0;}
@@ -70,6 +74,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .cards.back .backCard{width:20px;height:30px;background:repeating-linear-gradient(45deg,#3a6ea5,#3a6ea5 4px,#2f5d8c 4px,#2f5d8c 8px);border:1px solid #2a5078;border-radius:3px;flex:0 0 auto;}
 /* 5 张背面牌叠起来显示（第一张不偏移） */
 .cards.back .backCard + .backCard{margin-left:-12px;}
+/* 局末占位：只占宽高，不显示（让信息框尺寸与对局中一致，避免出牌区跳位） */
+.cards.back .ghost{visibility:hidden;}
 .trick{display:flex;flex-wrap:wrap;gap:1px;min-height:40px;margin-top:5px;}
 .trick .ministat{font-size:11px;color:#ffd;}
 /* 四家出牌区：摆在桌面各朝向，不套方框；牌像手牌一样叠起来，JS 每排 7 张自动换行成两排 */
@@ -82,7 +88,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .trickRow .card{width:44px!important;height:62px!important;margin-left:-30px!important;box-shadow:0 2px 4px rgba(0,0,0,.35)!important;min-width:0!important;}
 .trickRow .card:first-child{margin-left:0!important;}
 .trickRow .card .tl{font-size:11px!important;} .trickRow .card .br{font-size:11px!important;}
-.trickRow .card .ctr{font-size:26px!important;}
+.trickRow .card .ctr{font-size:18px!important;}
 .trickRow + .trickRow{margin-top:6px;}
 /* 本家手牌中明鸡牌标记：牌面底色变黄（与打出桌面时一致） */
 .hcard.calledMark .card{background:#ffd24a !important;}
@@ -99,8 +105,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .corner{position:absolute;top:10px;left:12px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px 10px;font-size:12px;color:#e5f0e9;display:flex;flex-direction:column;gap:3px;min-width:120px;}
 .corner .cornerRow{display:flex;align-items:center;gap:6px;line-height:1.4;}
 .corner .mini{width:30px;height:42px;border-radius:4px;}
-.corner .mini .tl{font-size:10px;} .corner .mini .br{font-size:10px;} .corner .mini .ctr{font-size:17px;}
-.corner .mini.jk .ctr{font-size:13px;}
+.corner .mini .tl{font-size:10px;} .corner .mini .br{font-size:10px;} .corner .mini .ctr{font-size:12px;}
+.corner .mini.jk .ctr{font-size:9px;}
 .corner b{color:var(--gold);}
 
 /* ===== 扑克牌 ===== */
@@ -108,20 +114,22 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .card.red{color:var(--red);}
 .card .tl{position:absolute;top:2px;left:4px;font-size:12px;font-weight:bold;line-height:1;text-align:center;}
 .card .br{position:absolute;bottom:2px;right:4px;font-size:12px;font-weight:bold;line-height:1;transform:rotate(180deg);}
-.card .ctr{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;font-family:Georgia,serif;}
-.card.jk .ctr{font-size:24px;color:#7b2fa0;font-weight:bold;}
+.card .ctr{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:21px;font-family:Georgia,serif;}
+/* 角标“10”占两个字符，比单字符点数宽，叠牌时会被相邻牌盖住 → 只压窄数字，花色保持原样 */
+.card .rk.ten{display:inline-block;transform:scaleX(.76);}
+.card.jk .ctr{font-size:18px;color:#7b2fa0;font-weight:bold;}
 .card.called{border-color:var(--gold);box-shadow:0 0 8px rgba(232,193,90,.9);}
 .card.mini{width:30px;height:44px;border-radius:5px;}
-.card.mini .tl{font-size:9px;} .card.mini .br{font-size:9px;} .card.mini .ctr{font-size:17px;}
-.card.mini.jk .ctr{font-size:14px;}
+.card.mini .tl{font-size:9px;} .card.mini .br{font-size:9px;} .card.mini .ctr{font-size:12px;}
+.card.mini.jk .ctr{font-size:10px;}
 /* 本家（南家）手牌放大，方便看清 */
 /* 负边距只作用于第 2 张起：第一张永远从 x=0 开始，避免被更高优先级的规则覆盖后裁出可视区 */
 .southMain #hand .hcard + .hcard{margin-left:-42px;}
 .southMain #hand .hcard:first-child{margin-left:0;}
 .southMain #hand .card{width:62px;height:88px;}
 .southMain #hand .card .tl{font-size:15px;} .southMain #hand .card .br{font-size:15px;}
-.southMain #hand .card .ctr{font-size:38px;}
-.southMain #hand .card.jk .ctr{font-size:30px;}
+.southMain #hand .card .ctr{font-size:27px;}
+.southMain #hand .card.jk .ctr{font-size:21px;}
 
 /* ===== 玩家手牌区（在桌面南侧） ===== */
 /* 玩家手牌区：整块居中在桌面南侧，无框 */
@@ -133,6 +141,11 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .handRow{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;width:100%;gap:6px;min-height:104px;}
 .handArea{position:relative;grid-column:2;display:flex;justify-content:center;align-items:center;min-width:0;min-height:104px;}
 .handArea #hand{flex:0 1 auto;min-width:0;}
+/* 自己出完后展示队友手牌：提示文字浮在牌的上方、靠右。
+   用绝对定位放进 #hand 自带的 padding-top 里，不额外撑高手牌区（小屏兜底布局很紧） */
+.mateHand{position:relative;display:flex;align-items:flex-end;flex:0 0 auto;}
+.mateCards{display:flex;align-items:flex-end;}
+.mateCap{position:absolute;right:0;bottom:calc(100% + 2px);z-index:2;color:#a8c8b8;font-size:12px;line-height:1;white-space:nowrap;}
 /* 本家信息框：悬在手牌行左上方（不占手牌横向空间）；牌变大时随行高自动上移。
  * 单行紧凑布局（头像+昵称+标记+抓分），降低高度并右移，避免与西家信息框重叠。 */
 .handRow .seatS{position:absolute;left:32px;bottom:100%;margin-bottom:6px;transform:none;width:max-content;max-width:70%;min-width:150px;min-height:34px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:2px 8px;z-index:5;font-size:15px;}
@@ -163,7 +176,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 }
 /* padding-top 随牌面缩放增加：给选中牌上浮（translateY 会被 zoom 放大）留出空间，避免顶部被滚动容器裁掉 */
 #hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:calc(10px * var(--card-zoom) + 6px);overflow-x:auto;}
-.hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;}
+/* 圆角必须给外层：选中态的 box-shadow 画在 .hcard 上，没有圆角时阴影是方的，左下角会露出直角 */
+.hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;border-radius:7px;}
 .hcard + .hcard{margin-left:-34px;}
 .hcard:first-child{margin-left:0;}
 @media (hover:hover){ /* 仅鼠标设备悬停上浮，触摸端不粘 :hover（避免"收回一半"） */
@@ -181,16 +195,9 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;}
 .modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
 #btnPeek{position:absolute;right:8px;top:8px;z-index:2;font-size:12px;padding:2px 8px;}
-/* 局末信息框中展示的"未出完手牌"小卡 */
-.cards.back .card.remainCard{width:19px;height:28px;border-radius:3px;margin-left:-12px;box-shadow:none;}
-.cards.back .card.remainCard:first-child{margin-left:0;}
-.cards.back .card.remainCard .tl{font-size:6px;top:1px;left:2px;}
-.cards.back .card.remainCard .br{font-size:6px;bottom:1px;right:2px;}
-.cards.back .card.remainCard .ctr{font-size:10px;}
-/* 局末剩余手牌：分两行、行间叠起，保留点数花色可读 */
-.cards.back.remainStack{display:block;}
-.cards.back.remainStack .remainRow{display:flex;}
-.cards.back.remainStack .remainRow + .remainRow{margin-top:-18px;}
+/* 局末摊牌：没出完的牌当作一手牌摊在桌面上。只靠尺寸略小区分，
+   不要加透明度——半透明叠在绿色桌面上会显得发灰、看不清点数花色。 */
+.trickRow.remainDesk{margin-top:6px;zoom:.85;}
 /* 插底警报：红色圆徽标（白！）+ 文字 */
 .warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
 .warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:14px;line-height:1;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 5px rgba(0,0,0,.7);}
@@ -265,7 +272,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   /* 出牌区牌更小 */
   .trickRow .card{width:30px!important;height:42px!important;margin-left:-16px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
-  .trickRow .card .ctr{font-size:18px!important;}
+  .trickRow .card .ctr{font-size:13px!important;}
   .trick.trickN{top:128px;} .trick.trickS{bottom:162px;} .trick.trickW{left:194px;} .trick.trickE{right:194px;}
   .center{top:49%;}
   #msg{font-size:12px;}
@@ -276,8 +283,8 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .southMain #hand .hcard + .hcard{margin-left:-34px;}
   .southMain #hand .card{width:48px;height:68px;}
   .southMain #hand .card .tl{font-size:12px;} .southMain #hand .card .br{font-size:12px;}
-  .southMain #hand .card .ctr{font-size:30px;}
-  .southMain #hand .card.jk .ctr{font-size:24px;}
+  .southMain #hand .card .ctr{font-size:21px;}
+  .southMain #hand .card.jk .ctr{font-size:17px;}
   .actions{gap:5px;}
   /* 设置栏 */
   .settingsBar{font-size:11px;gap:6px;padding:4px 8px;}
@@ -289,7 +296,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   /* 角落信息 */
   .corner{min-width:90px;padding:4px 6px;font-size:10px;}
   .corner .mini{width:28px;height:40px;}
-  .corner .mini .tl{font-size:9px;} .corner .mini .br{font-size:9px;} .corner .mini .ctr{font-size:16px;}
+  .corner .mini .tl{font-size:9px;} .corner .mini .br{font-size:9px;} .corner .mini .ctr{font-size:11px;}
 }
 /* 移动端手牌：超宽时可横向滑动 */
 @media (max-width: 560px){
@@ -331,7 +338,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   /* 出牌区 */
   .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
-  .trickRow .card .ctr{font-size:17px!important;}
+  .trickRow .card .ctr{font-size:12px!important;}
   .trick.trickN{top:96px;} .trick.trickS{bottom:116px;} .trick.trickW{left:180px;} .trick.trickE{right:180px;}
   .center{top:49%;} #msg{font-size:12px;} #trickScore{font-size:11px;}
   /* 手牌区在底部，横屏下尽量扁 */
@@ -339,7 +346,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   .southMain #hand .hcard + .hcard{margin-left:-27px;}
   .southMain #hand .card{width:42px;height:60px;}
   .southMain #hand .card .tl{font-size:10px;} .southMain #hand .card .br{font-size:10px;}
-  .southMain #hand .card .ctr{font-size:26px;}
+  .southMain #hand .card .ctr{font-size:18px;}
   #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(10px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   .toolBtns{gap:4px;}
@@ -354,7 +361,7 @@ body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-famil
   /* 角落 */
   .corner{min-width:80px;padding:3px 6px;font-size:9px;}
   .corner .mini{width:26px;height:36px;}
-  .corner .mini .tl{font-size:8px;} .corner .mini .br{font-size:8px;} .corner .mini .ctr{font-size:14px;}
+  .corner .mini .tl{font-size:8px;} .corner .mini .br{font-size:8px;} .corner .mini .ctr{font-size:10px;}
   /* 设置弹窗 */
   .modalBox{max-width:94%;padding:12px;}
   .setGrid{gap:6px;}
@@ -492,7 +499,7 @@ body.landscapeCompat .trickRow .card{width:28px!important;height:40px!important;
 body.landscapeCompat .trickRow .card:first-child{margin-left:0!important;}
 body.landscapeCompat .trickRow .card .tl{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
-body.landscapeCompat .trickRow .card .ctr{font-size:17px!important;}
+body.landscapeCompat .trickRow .card .ctr{font-size:12px!important;}
 body.landscapeCompat .trick.trickN{top:96px;}
 body.landscapeCompat .trick.trickS{bottom:116px;}
 body.landscapeCompat .trick.trickW{left:180px;}
@@ -506,8 +513,8 @@ body.landscapeCompat .southMain #hand .hcard:first-child{margin-left:0;}
 body.landscapeCompat .southMain #hand .card{width:42px;height:60px;}
 body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
-body.landscapeCompat .southMain #hand .card .ctr{font-size:26px;}
-body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:21px;}
+body.landscapeCompat .southMain #hand .card .ctr{font-size:18px;}
+body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:15px;}
 body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(10px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
 body.landscapeCompat .toolBtns{gap:4px;}
@@ -524,7 +531,7 @@ body.landscapeCompat .corner{min-width:80px;padding:3px 6px;font-size:9px;}
 body.landscapeCompat .corner .mini{width:26px;height:36px;}
 body.landscapeCompat .corner .mini .tl{font-size:8px;}
 body.landscapeCompat .corner .mini .br{font-size:8px;}
-body.landscapeCompat .corner .mini .ctr{font-size:14px;}
+body.landscapeCompat .corner .mini .ctr{font-size:10px;}
 body.landscapeCompat .tableTitle{font-size:12px;left:96px;top:4px;}
 body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
 body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}

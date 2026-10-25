@@ -829,20 +829,14 @@ function renderSeats(){
       if(s.out){
         // 已跑完：手牌已空，不显示背面牌堆
       } else if(G.ended){
-        // 局末：未出完的真实手牌，按点数顺序理好；较多时分两行、两行叠起
-        h.classList.add('remainStack');
-        const order=[...s.hand].sort((a,b)=>{
-          const ka=a.j?-1:(TS.RANKS.length-1-a.r), kb=b.j?-1:(TS.RANKS.length-1-b.r);
-          return ka-kb;
-        });
-        const ROW=14;
-        const rows=Math.ceil(order.length/ROW);
-        for(let ri=0;ri<rows;ri++){
-          const row=document.createElement('div'); row.className='remainRow';
-          order.slice(ri*ROW,(ri+1)*ROW).forEach(c=>{
-            row.insertAdjacentHTML('beforeend', cardHTML(c,'mini remainCard'));
-          });
-          h.appendChild(row);
+        // 局末：剩余牌改到牌桌上摊开，这里放同数量的透明占位牌。
+        // 目的：信息框宽度不因“背面牌堆消失”而变窄，否则 positionSideTricks() 会把两侧出牌区内移，整个牌桌跳一下。
+        h.classList.remove('remainStack');
+        const shown = settings.showRemain ? s.hand.length : 5;
+        const n = Math.min(shown, 15);
+        for(let k=0;k<n;k++){ const d=document.createElement('div'); d.className='backCard ghost'; h.appendChild(d); }
+        if(settings.showRemain && s.hand.length>15){
+          const sp=document.createElement('span'); sp.className='ghost'; sp.textContent='+'+(s.hand.length-15); h.appendChild(sp);
         }
       } else {
         h.classList.remove('remainStack');
@@ -897,7 +891,28 @@ function renderSeats(){
       d.style.cssText='color:#fff;font-size:17px;font-weight:bold;';
       hintEl.appendChild(d);
     };
-    if(i===G.turn && !G.ended){
+    // 局末摊牌：没出完的牌当作一手牌摊到桌面上（替代原先塞在信息框里的缩略牌）。
+    // 自己的牌仍在下方手牌区，这里只处理其余三家。
+    if(G.ended && v!==0 && !s.out && s.hand && s.hand.length){
+      const left=[...s.hand].sort((a,b)=>{
+        if(a.j&&b.j) return a.id-b.id;
+        if(a.j) return 1;
+        if(b.j) return -1;
+        return a.r-b.r || a.id-b.id;
+      });
+      // 北家在正上方：横向空间最宽，全部排成一行，避免向下压到中间提示；
+      // 东西两侧窄，每行 7 张
+      const ROW = v===2 ? left.length : 7;
+      const rows = Math.ceil(left.length/ROW);
+      for(let ri=0; ri<rows; ri++){
+        const row=document.createElement('div');
+        row.className='trickRow remainDesk';
+        left.slice(ri*ROW,(ri+1)*ROW).forEach(c=>{
+          row.insertAdjacentHTML('beforeend', cardHTML(c,'mini'));
+        });
+        tr.appendChild(row);
+      }
+    } else if(i===G.turn && !G.ended){
       // 轮到该家：不显示任何占位符（插底提示在末尾统一追加）
     } else if(s.choice){
       const d=document.createElement('div');
@@ -976,8 +991,12 @@ function cardHTML(c,cls){
   if(c.j) return `<div class="card jk ${cls||''}"><span class="tl">王</span><span class="br">王</span><span class="ctr">王</span></div>`;
   const red=(c.s===1||c.s===3)?' red':'';
   const rn=TS.RANKS[c.r], ch=TS.SUIT_CH[c.s];
+  // “10”是两个字符，角标比其他点数宽，叠牌时容易被相邻牌盖住 → 只压缩数字本身，花色不动
+  const ten = rn==='10' ? ' ten' : '';
   return `<div class="card${red} ${cls||''}">`+
-    `<span class="tl">${rn}<br>${ch}</span><span class="br">${rn}<br>${ch}</span><span class="ctr">${ch}</span></div>`;
+    `<span class="tl"><span class="rk${ten}">${rn}</span><br>${ch}</span>`+
+    `<span class="br"><span class="rk${ten}">${rn}</span><br>${ch}</span>`+
+    `<span class="ctr">${ch}</span></div>`;
 }
 function renderHand(){
   const handEl=$('hand'); handEl.innerHTML='';
@@ -994,13 +1013,18 @@ function renderHand(){
     }
     if(show!=null && !G.seats[show].out){
       const hs=G.seats[show];
-      // 先渲染队友牌，文字放在牌的右侧（避免被第一张牌的负边距遮住）
-      renderCardFan(handEl, hs.hand, show);
+      // 提示文字放在牌的正上方、靠右；明鸡已出才点名，未明时只说"队友牌"，避免提前泄露身份
+      const wrap=document.createElement('div');
+      wrap.className='mateHand';
       const cap=document.createElement('div');
-      // 明鸡已出 → 明确显示队友是谁；未明 → 保持"队友牌"
+      cap.className='mateCap';
       cap.textContent = G.revealed ? `队友 ${seatNames[show]} 的手牌` : '队友牌';
-      cap.style.cssText='color:#a8c8b8;font-size:12px;align-self:center;margin-left:8px;flex:0 0 auto;white-space:nowrap;';
-      handEl.appendChild(cap);
+      wrap.appendChild(cap);
+      const row=document.createElement('div');
+      row.className='mateCards';
+      renderCardFan(row, hs.hand, show);
+      wrap.appendChild(row);
+      handEl.appendChild(wrap);
     } else {
       const d=document.createElement('div'); d.textContent='已跑完'; d.style.cssText='padding:24px;color:#a8c8b8;font-size:14px;'; handEl.appendChild(d);
     }
