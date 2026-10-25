@@ -7,3 +7,16 @@ tests/*.json
 
 # 实际部署配置（含密钥，不提交）
 ecosystem.config.js
+
+# Android 构建产物与本机配置（工程本身要提交）
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.apk
+*.aab
+dist/
+*.jks
+*.keystore

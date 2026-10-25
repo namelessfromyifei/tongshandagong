@@ -29,6 +29,7 @@ Node.js 服务器权威：发牌、规则判定、结算、AI 托管全部在服
 | 前端 | 原生 HTML / CSS / JavaScript（无框架、无构建步骤） |
 | 规则引擎 | `js/engine.js`，Node 与浏览器共用同一份逻辑 |
 | AI | `js/ai.js`，候选生成 + 启发式决策 |
+| Android App | Capacitor 7 外壳 + 本地资源包，复用同一套 H5 |
 
 ---
 
@@ -67,7 +68,7 @@ tongshandagong/
 ├── js/
 │   ├── engine.js          规则引擎（纯逻辑，服务端 require / 浏览器全局共用）
 │   └── ai.js              AI 候选生成与决策
-├── public/                静态资源（Express 托管根目录）
+├── public/                静态资源（Express 托管根目录，同时是 App 的资源包）
 │   ├── index.html         大厅 + 牌桌
 │   ├── css/style.css
 │   ├── js/
@@ -75,11 +76,16 @@ tongshandagong/
 │   │   ├── ai.js          AI 副本（浏览器加载）
 │   │   ├── ui-net.js      联网版牌桌渲染与交互
 │   │   ├── net.js         Socket.IO 事件绑定
-│   │   └── screen.js      屏幕适配
+│   │   ├── screen.js      屏幕适配
+│   │   └── app.js         App 外壳适配（沉浸式/返回键，浏览器中不生效）
+│   ├── vendor/            socket.io 浏览器客户端（由 sync-vendor 生成）
 │   └── voice/             语音包（manifest.json + default/ + tongshan/）
+├── android/               Capacitor 生成的 Android 工程（独立 Gradle 项目）
+├── capacitor.config.json  App 配置（appId / 本地资源目录 / 服务端地址）
 ├── tests/                 引擎单测、AI 单测、联机集成测试
 └── tools/
-    └── voice-pack-check.js  语音包完整性校验
+    ├── voice-pack-check.js  语音包完整性校验
+    └── sync-vendor.js       同步 socket.io 浏览器客户端到 public/vendor/
 ```
 
 > 根目录的 `index.html`、`css/style.css`、`js/ui.js` 是早期单机试玩版残留，`server.js` **不会**加载它们；实际运行的是 `public/` + `js/engine.js` + `js/ai.js`。
@@ -235,6 +241,57 @@ GIT_URL=git@github.com:<账号>/tongshandagong.git sudo ./deploy.sh
 ```
 
 脚本会安装 Node 20+ / PM2、拉代码、装依赖并守护进程；需在云控制台安全组放行 TCP 8080。
+
+---
+
+## Android App
+
+App 是 **Capacitor 外壳 + 本地资源包**：页面、脚本、语音全部打进 APK（约 5MB），首屏不依赖网络；只有 `/api/*` 和 Socket.IO 走网络。
+
+### 与网页端的关系
+
+- 共用同一份 `public/`、同一套规则引擎和 UI 代码，不维护第二套
+- App 内不提供微信网页授权（WebView 里整页跳转会离开本地资源包），使用手动昵称
+- App 页面 origin 是 `https://localhost`，与本站不同源，因此 API / Socket 走绝对地址（见 `public/js/net.js` 的 `IS_APP`）；服务端对 `/api` 开了不带凭据的 CORS
+- 进入牌桌时由 AndroidManifest 锁定横屏，不再走 `screen.js` 的旋转兜底
+
+### 构建
+
+```bash
+npm install
+npm run cap:sync      # 同步 socket.io 客户端 + 把 public/ 拷进 android
+npm run android:apk   # 产出 android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+也可以用 Android Studio 打开 `android/` 目录直接运行到真机。
+
+**指定服务器地址构建**（域名备案前的 IP 内测）：
+
+```bash
+node tools/build-apk.js --server http://8.148.29.231
+# 或 npm run apk -- --server http://8.148.29.231
+```
+
+脚本会临时把地址写进 `public/js/env.js`、按 http/https 调整 Capacitor 配置，构建完自动还原仓库文件；产物在 `dist/tongshandagong-<host>-debug.apk`。
+
+用 IP 走 http 时，服务端需要额外放行一个端口（见 `deploy/nginx-www.zhangyuning.xyz.conf` 里的「IP 直连」server 块），否则 80 端口只会 301 跳到证书不匹配的 https。
+
+### 环境要求
+
+| 项 | 要求 | 说明 |
+|---|---|---|
+| Node | 20+ | 仅用于跑 Capacitor CLI |
+| JDK | 21+ | Capacitor 7 的源码级别是 Java 21；在 `android/gradle.properties` 的 `org.gradle.java.home` 指定 |
+| Android SDK | Platform 35 + Build-Tools 35 | 用 Android Studio 的 SDK Manager 安装 |
+| Gradle | 8.11.1 | 已在 `android/gradle/wrapper` 固定，并从腾讯云镜像下载 |
+
+> `android/gradle.properties` 里的 JDK 路径、`android/local.properties` 里的 SDK 路径都是本机配置，换机器时要改；`local.properties` 已在 `.gitignore` 中忽略。
+
+### 发布
+
+- 调试包（debug）可直接安装，用于内测分发
+- 正式包需要在 `android/app/build.gradle` 配置 signingConfig，keystore 文件不入库（`.gitignore` 已忽略 `*.jks` / `*.keystore`），**务必备份**
+- 包名 `xyz.zhangyuning.dagong` 一旦上架不可更改
 
 ---
 

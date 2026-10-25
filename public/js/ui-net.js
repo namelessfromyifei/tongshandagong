@@ -1353,10 +1353,12 @@ $('btnHard').onclick=playerHard;
   const b=$('btnFullscreen'); if(!b) return;
   const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
     || (navigator.maxTouchPoints>0 && window.innerWidth<1024);
+  // App（Capacitor）本身已是沉浸式全屏 + 原生横屏锁，这组按钮没有意义
+  const isNativeApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   const fsEl=()=>document.fullscreenElement || document.webkitFullscreenElement || null;
   const apply=()=>{
     b.textContent=fsEl() ? '退出全屏' : '全屏';
-    b.style.display=isMobile ? 'inline-block' : 'none';
+    b.style.display=(isMobile && !isNativeApp) ? 'inline-block' : 'none';
   };
   // 全屏默认第四档（1.8），退出全屏回到第三档（1.6）
   const syncCardSizeForFullscreen=()=>{
@@ -1364,7 +1366,7 @@ $('btnHard').onclick=playerHard;
     applyCardSize();
   };
   const enterFullscreenIfMobile=()=>{
-    if(!isMobile || fsEl()) return;
+    if(!isMobile || isNativeApp || fsEl()) return;
     const el=document.documentElement;
     try{
       if(el.requestFullscreen){
@@ -1395,6 +1397,7 @@ $('btnHard').onclick=playerHard;
     if(tapTried) return;
     // 第一次触摸就是全屏按钮时，交给按钮自身处理，避免 pointerdown 先进全屏、click 又退出；
     // 同时标记已处理，避免用户退出全屏后下一次普通点击又被自动拉回全屏
+    if(isNativeApp) return;
     if(e.target && e.target.closest && e.target.closest('#btnFullscreen')){ tapTried=true; return; }
     const app=document.getElementById('app');
     if(!app || !app.classList.contains('inTable')) return;

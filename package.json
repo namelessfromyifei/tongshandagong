@@ -4,13 +4,23 @@
   "description": "通山打拱 · 多人联网版（服务器权威）",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "sync:vendor": "node tools/sync-vendor.js",
+    "cap:sync": "npm run sync:vendor && cap sync android",
+    "android:apk": "npm run cap:sync && cd android && gradlew assembleDebug",
+    "apk": "node tools/build-apk.js"
   },
   "dependencies": {
     "express": "^4.21.2",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/splash-screen": "^7.0.5",
+    "@capacitor/status-bar": "^7.0.6",
     "socket.io-client": "^4.8.4"
   }
 }

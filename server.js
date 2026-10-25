@@ -49,6 +49,19 @@ const server = http.createServer(app);
 // 缩短心跳，断线更快被发现（默认 ping 约 25s）
 const io = new Server(server, { pingInterval: 5000, pingTimeout: 5000, cors: { origin: '*' } });
 
+/* ---------- CORS：Android App 从 https://localhost 读取 API ----------
+ * App 的页面在本地资源包里，origin 是 https://localhost，与本站不同源。
+ * App 不使用 Cookie（身份走手动昵称），所以允许 * 且不带凭据即可。
+ * 浏览器端同源访问，不受影响。 */
+app.use('/api', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if(req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ---------- 微信授权：Cookie / 会话 ---------- */

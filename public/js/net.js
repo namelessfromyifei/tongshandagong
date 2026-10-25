@@ -16,6 +16,16 @@ let authReady=false;
 
 const $=id=>document.getElementById(id);
 
+/* ---------- 运行环境 ----------
+ * App（Capacitor）里页面从本地资源包加载，origin 是 https://localhost，
+ * 与服务器域名不同源，因此 API / Socket 必须使用绝对地址。
+ * 浏览器里仍走同源相对路径，行为不变。 */
+const IS_APP = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const DEFAULT_SERVER_ORIGIN = 'https://www.zhangyuning.xyz';
+// 可用 tools/build-apk.js --server <地址> 覆盖（写入 js/env.js），用于域名备案前的 IP 内测
+const SERVER_ORIGIN = IS_APP ? (window.TS_SERVER_ORIGIN || DEFAULT_SERVER_ORIGIN) : '';
+const apiUrl = p => SERVER_ORIGIN + p;
+
 /* ---------- 房间界面 ---------- */
 function enterLobby(){
   const app=document.getElementById('app');
@@ -42,7 +52,7 @@ function toast(msg){
 /* ---------- 连接 ---------- */
 function connect(){
   if(socket && socket.connected) return;
-  socket = io();
+  socket = SERVER_ORIGIN ? io(SERVER_ORIGIN) : io();
   socket.on('connect', ()=>{
     toast('已连接服务器');
     if(socket){
@@ -185,7 +195,8 @@ function applyWxProfile(profile){
   }
   const wb=$('btnWxLogin');
   if(wb){
-    wb.hidden = !(wxConfig.enabled && !me && (wxConfig.wechat || wxConfig.mock));
+    // App 内不提供微信网页授权（WebView 里跳转会离开本地资源包），一律用手动昵称
+    wb.hidden = IS_APP || !(wxConfig.enabled && !me && (wxConfig.wechat || wxConfig.mock));
     wb.onclick=()=>{
       try{ sessionStorage.removeItem('tsWxTried'); sessionStorage.removeItem('tsWxManual'); }catch(e){}
       location.href='/api/wx/start?next='+encodeURIComponent(authNext());
@@ -194,7 +205,7 @@ function applyWxProfile(profile){
 }
 async function initAuth(){
   try{
-    const r=await fetch('/api/wx/config',{cache:'no-store'});
+    const r=await fetch(apiUrl('/api/wx/config'),{cache:'no-store'});
     if(r.ok) wxConfig=await r.json();
   }catch(e){}
   const q=new URLSearchParams(location.search);
@@ -205,14 +216,14 @@ async function initAuth(){
   }
   if(q.get('wxmanual')==='1'){ try{ sessionStorage.setItem('tsWxManual','1'); }catch(e){} }
   try{
-    const r=await fetch('/api/me',{cache:'no-store'});
+    const r=await fetch(apiUrl('/api/me'),{cache:'no-store'});
     const d=await r.json();
     if(d && d.ok) applyWxProfile(d.profile);
   }catch(e){}
   // 微信内且已配置：自动发起一次授权；拒绝/失败后用按钮重试，不再自动跳转
   let blocked=false;
   try{ blocked=sessionStorage.getItem('tsWxManual')==='1' || sessionStorage.getItem('tsWxTried')==='1'; }catch(e){}
-  if(!me && wxConfig.enabled && wxConfig.wechat && !blocked){
+  if(!me && wxConfig.enabled && wxConfig.wechat && !blocked && !IS_APP){
     try{ sessionStorage.setItem('tsWxTried','1'); }catch(e){}
     authReady=true;
     location.replace('/api/wx/start?next='+encodeURIComponent(authNext()));

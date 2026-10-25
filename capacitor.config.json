@@ -1,0 +1,19 @@
+{
+  "appId": "xyz.zhangyuning.dagong",
+  "appName": "通山打拱",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0f3d2a"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "backgroundColor": "#0f3d2a",
+      "launchAutoHide": true,
+      "launchShowDuration": 600
+    }
+  }
+}
