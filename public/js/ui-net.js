@@ -20,6 +20,10 @@ let seatOffline = [];      // 服务器座位掉线标记
 let seatReady = [];        // 服务器座位准备标记
 let settings = {};         // 房间设置
 let series = null;         // 轮结算累计
+let seriesOver = false;    // 本场已结束（服务端保留 G，牌桌冻结，等玩家准备）
+let aiAutoOn = false;      // 玩家自己开启的「AI出牌」代打
+let aiAutoKey = '';        // 已经代打过的回合标识，防止同一回合重复出牌
+let aiAutoTimer = null;
 let aiFill = true;
 let selected = new Set();
 let hintCursor=0, hintList=[];
@@ -570,6 +574,7 @@ function applyState(snap){
                    {passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false}];
   }
   G = snap.G || null;
+  seriesOver = !!snap.seriesOver;
   seatNames = snap.seats.map(s=>s.name);
   seatAvatars = snap.seats.map(s=>s.avatar||'');
   seatTypes = snap.seats.map(s=>s.type);
@@ -610,6 +615,8 @@ function applyState(snap){
     if($('btnSort')) $('btnSort').style.display='none';
     if($('btnSize')) $('btnSize').style.display='none';
     if($('btnNext')) $('btnNext').style.display='none';
+    if($('btnAI')){ if(aiAutoOn) aiAutoSet(false); $('btnAI').style.display='none'; }
+    if($('tableMsg')) $('tableMsg').textContent='';
     for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
     renderSeatNames();
     renderReadyIndicators();
@@ -627,6 +634,11 @@ function applyState(snap){
   // 发牌后显示排序/牌大小
   if($('btnSort')) $('btnSort').style.display='inline-block';
   if($('btnSize')) $('btnSize').style.display='inline-block';
+  // AI出牌按钮：房主在“对局配置”里允许后才出现
+  if($('btnAI')){
+    if((!settings.aiAuto || seriesOver) && aiAutoOn) aiAutoSet(false);
+    $('btnAI').style.display = (settings.aiAuto && !seriesOver) ? 'inline-block' : 'none';
+  }
   if($('lblMode')) $('lblMode').textContent = G.mode==='hard'?('硬牌 · '+seatNames[G.hardSeat]):'2V2';
   // 结算弹窗：局末先静默构建计分板，3 秒后再显示
   if(G.ended){
@@ -649,8 +661,9 @@ function applyState(snap){
   }
   render();
   announceState();
+  aiAutoMaybePlay(); // 开了 AI代打：轮到我就自动出牌
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
-  if($('btnNext')) $('btnNext').style.display = (G && G.ended) ? 'inline-block' : 'none';
+  if($('btnNext')) $('btnNext').style.display = (G && G.ended && !seriesOver) ? 'inline-block' : 'none';
   // 按钮：确认轮 / 出牌轮
   if(G.ended){ setBtn(false); return; }
   if(G.confirming){
@@ -789,9 +802,13 @@ function renderSeats(){
         av.appendChild(badge);
       }
     }
-    // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示
-    const calledMiniHtml = (G.mode!=='hard' && G.called && i===G.landlord)
-      ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini') + '</span>' : '';
+    // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示。
+    // 本家（南）不放在 tag 里 —— 会把信息框撑高、压到左边西家；改放到信息框右侧的 hint 区。
+    const isCaller = (G.mode!=='hard' && G.called && i===G.landlord);
+    const calledCardHtml = isCaller ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini') + '</span>' : '';
+    const calledMiniHtml = (isCaller && v!==0) ? calledCardHtml : '';
+    // 其他三家的叫牌卡改为绝对定位浮在信息框右侧，不参与文字行高；右侧留出通道给它
+    if(el) el.classList.toggle('hasCalled', !!(isCaller && v!==0));
     if(G.mode!=='hard' && G.revealed){
       // 头像圆圈颜色：庄家红 + 出明鸡牌的也红 → teamA；其余两家蓝 → teamB
       el.classList.toggle('teamA', (i===G.landlord||i===G.partner));
@@ -872,6 +889,8 @@ function renderSeats(){
     // 状态提示（插底 / x游）：南=准备按钮右侧；东/西=信息框下方；北=信息框右侧
     const hintEl=$('hint'+v);
     if(hintEl) hintEl.innerHTML='';
+    // 本家是庄家：叫牌小卡挂在信息框右侧（不占信息框高度）
+    if(hintEl && v===0 && calledCardHtml) hintEl.insertAdjacentHTML('beforeend', calledCardHtml);
     const makeAlert=()=>{
       const w=document.createElement('span');
       w.className='warnDizhi';
@@ -959,22 +978,20 @@ function renderSeats(){
     // 插底提示始终显示（本局结束或该玩家已跑完才消失），固定在原来的座位提示位置
     if(!G.ended && isDizhi) addAlert();
   }
+  // 中间提示不再显示“轮到谁”
   const msg=$('msg');
   if(!G.ended){
-    msg.textContent = G.turn===mySeat ? '轮到你了' : `轮到 ${seatNames[G.turn]}`;
-    if(G.mode!=='hard'){
-      msg.textContent += G.revealed ? ` · 对家已明：${seatNames[G.partner]}` : ` · 对家未明（叫牌 ${TS.cardName(G.called)}）`;
-    } else {
-      msg.textContent += ` · ${seatNames[G.hardSeat]} 硬牌 1打3`;
-    }
-  } else msg.textContent='本局结束';
+    msg.textContent = G.mode!=='hard'
+      ? (G.revealed ? `对家已明：${seatNames[G.partner]}` : `对家未明（叫牌 ${TS.cardName(G.called)}）`)
+      : `${seatNames[G.hardSeat]} 硬牌 1打3`;
+  } else msg.textContent = seriesOver ? '本场结束' : '本局结束';
   renderCorner();
 }
 function renderCorner(){
   const c=$('corner'); if(!c) return;
   // 房主可在「对局配置」里开启该信息框（默认不显示）；显示当前牌局设置
   const show=settings.showCorner === true;
-  c.style.display = show ? '' : 'none';
+  c.style.display = show ? 'flex' : 'none';
   // 同步给牌桌：信息框隐藏时，标题/房间号/我是谁 靠左，不占用信息框的位置
   const table=c.closest ? c.closest('.table') : document.querySelector('.table');
   if(table) table.classList.toggle('cornerOn', show);
@@ -991,10 +1008,11 @@ function cardHTML(c,cls){
   if(c.j) return `<div class="card jk ${cls||''}"><span class="tl">王</span><span class="br">王</span><span class="ctr">王</span></div>`;
   const red=(c.s===1||c.s===3)?' red':'';
   const rn=TS.RANKS[c.r], ch=TS.SUIT_CH[c.s];
-  // “10”是两个字符，角标比其他点数宽，叠牌时容易被相邻牌盖住 → 只压缩数字本身，花色不动
-  const ten = rn==='10' ? ' ten' : '';
+  // “10”是两个字符，角标比其他点数宽，叠牌时容易被相邻牌盖住 → 压窄数字，左上角再整体往左挪一点
+  const isTen = rn==='10';
+  const ten = isTen ? ' ten' : '';
   return `<div class="card${red} ${cls||''}">`+
-    `<span class="tl"><span class="rk${ten}">${rn}</span><br>${ch}</span>`+
+    `<span class="tl${isTen?' tlten':''}"><span class="rk${ten}">${rn}</span><br>${ch}</span>`+
     `<span class="br"><span class="rk${ten}">${rn}</span><br>${ch}</span>`+
     `<span class="ctr">${ch}</span></div>`;
 }
@@ -1087,7 +1105,15 @@ function renderCenter(){
   num.className='scoreNum';
   num.textContent=G.trickPoints;
   el.append(num, ' 分');
-  if(G.lastSeat>=0) el.append(` · ${seatNames[G.lastSeat]} 压着`);
+  // 中间不再显示“谁压着”
+  // 房间号右侧同步一份：对家信息 + 本轮分数，字号更大，方便一眼看到
+  const tm=$('tableMsg');
+  if(tm){
+    const m=$('msg');
+    const head=(m && m.textContent) ? m.textContent : '';
+    tm.innerHTML = (head ? `<span class="m1">${head}</span>` : '') +
+      `<span class="m2">本轮分数 <b>${G.trickPoints}</b> 分</span>`;
+  }
 }
 function describeShort(p){
   if(p.type==='rollcage') return `滚笼 ${p.s}×${p.k}（${p.soft?'软':'硬'} ${p.fan} 笼）`;
@@ -1143,14 +1169,16 @@ function finishLocal(){
   try{
     const s=TS.settleRound(G);
     const tb=$('mTable');
-    $('mTitle').textContent = `本局结束 · ${G.mode==='hard'
-      ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
-      : `赢${s.winnerSeats.map(i=>seatNames[i]).join('、')}`}`;
     // 是否本场最后一局：由服务器标记（避免客户端根据已累计的局数猜错）
     lastRoundWasLast = !!G.lastSeries;
+    // 标题右侧直接带局数：（第2局/共3局）
+    const roundTxt = `（第${G.roundNo||1}局/共${settings.rounds||1}局）`;
+    $('mTitle').textContent = `${lastRoundWasLast?'本场结束':'本局结束'} · ${G.mode==='hard'
+      ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
+      : `赢${s.winnerSeats.map(i=>seatNames[i]).join('、')}`}${roundTxt}`;
     const close=$('btnClose');
     if(close) close.textContent = lastRoundWasLast ? '本场结束' : '下一局';
-    tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>牌面笼数</th><th>滚笼</th><th>奖金</th><th>本局(分)</th><th>本场(分)</th></tr>`;
+    tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面笼数</th><th>滚笼</th><th>奖金</th><th>本局(分)</th><th>本场(分)</th></tr>`;
     for(let v=0;v<4;v++){
       const i=(mySeat+v)%4, fv=s.perFen[i];
       const bs=baseCageOf(s,i);              // 牌面笼数（番，带符号，半笼=0.5）
@@ -1160,8 +1188,10 @@ function finishLocal(){
       const place = gs.out ? ['一','二','三','四'][gs.outOrder-1]+'游' : '—';
       const kb = s.kingBonus&&s.kingBonus[i] ? `（王奖${s.kingBonus[i]}笼×3）` : '';
       const bb = s.bombBonus&&s.bombBonus[i] ? `（硬炸奖${s.bombBonus[i]}笼×3）` : '';
+      // 抓分：优先用引擎归属后的值（尾游的抓分归对面队伍），旧缓存引擎回退到原始值
+      const caughtVal = (s.effCaught && s.effCaught[i]!=null) ? s.effCaught[i] : gs.caught;
       tb.innerHTML+=`<tr><td>${seatNames[i]}</td>`+
-        `<td>${place}</td><td>${teamDotHtml(i)}</td><td>${bs>0?'+':''}${bs}</td>`+
+        `<td>${place}</td><td>${teamDotHtml(i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
         `<td>${cageC>0?'+':''}${cageC}</td>`+
         `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
         `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
@@ -1169,9 +1199,9 @@ function finishLocal(){
     // 说明 + 轮累计
     const noteTxt = `牌面笼数 + 滚笼 + 奖金 = 本局分`;
     if(series && series.active && settings.rounds>1){
-      tb.innerHTML+=`<tr><td colspan="8" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${seatNames[i]} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
+      tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${seatNames[i]} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
     } else {
-      tb.innerHTML+=`<tr><td colspan="8" class="note">${noteTxt}</td></tr>`;
+      tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt}</td></tr>`;
     }
     // 不在这里弹出：由 applyState 统一延迟 3 秒显示
   }catch(e){}
@@ -1239,8 +1269,25 @@ function positionSeatS(){
     const pad=parseFloat(getComputedStyle(hand).paddingTop)||0;
     cardsTopInRow = topWithin(hand, row) + pad;
   }
-  const bottom = Math.round(row.offsetHeight - cardsTopInRow + 6);
+  // 尽量贴近手牌：选中牌会向上浮 6*zoom，留 2px 余量即可，不再固定留 6px
+  const z=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
+  const gap=Math.max(0, Math.round(6*z - 10));
+  const bottom = Math.round(row.offsetHeight - cardsTopInRow + gap);
   info.style.bottom = bottom + 'px';
+
+  // 牌面开到最大档时手牌区更高，信息框跟着上移，会压到左边西家的信息框。
+  // 真压上了就把本家信息框横向右移，避开西家这一列（高度不变，不影响别的定位）。
+  info.style.left='';
+  const west=document.querySelector('.seatW');
+  // 竖屏旋转兜底时 #app 整体转了 90°，用屏幕坐标换算会错位，不用这套修正
+  if(west && !document.body.classList.contains('landscapeCompat')){
+    const rr=row.getBoundingClientRect(), ir=info.getBoundingClientRect(), wr=west.getBoundingClientRect();
+    const overlap = ir.top < wr.bottom+4 && ir.left < wr.right+4 && ir.right > wr.left+4;
+    if(overlap){
+      const leftPx=Math.round(wr.right + 8 - rr.left);
+      if(leftPx>32) info.style.left=leftPx+'px';
+    }
+  }
 }
 
 /* ---------- 明独/不明独：确认轮放在牌的中间；未开局准备按钮也居中 ---------- */
@@ -1248,8 +1295,8 @@ function layoutActionButtons(){
   const mid=$('midBtns'), right=$('playBtns'), ready=$('btnReady');
   const pass=$('btnPass'), hard=$('btnHard'), hint=$('btnHint');
   if(!mid||!right||!pass||!hard||!hint||!ready) return;
-  if(!G){
-    // 未开局：准备按钮放中间，出牌/表态按钮隐藏
+  if(!G || seriesOver){
+    // 未开局 / 本场已结束：准备按钮放中间，出牌/表态按钮隐藏
     if(ready.parentElement!==mid) mid.appendChild(ready);
     return;
   }
@@ -1284,7 +1331,10 @@ function positionMidBtns(){
   const center = hasCards ? (leftWithin(hand,row)+hand.offsetWidth/2) : (row.offsetWidth/2);
   box.style.left = Math.max(0, Math.round(center - box.offsetWidth/2)) + 'px';
   const cardsTop = hasCards ? topWithin(first,row) : 0;
-  box.style.bottom = Math.round(row.offsetHeight - cardsTop + 6) + 'px';
+  // 尽量贴近手牌，但给选中牌的上浮（6*zoom）留 2px 余量
+  const z2=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
+  const gap2=Math.max(0, Math.round(6*z2 - 10));
+  box.style.bottom = Math.round(row.offsetHeight - cardsTop + gap2) + 'px';
 }
 
 /* ---------- 手牌满 28 张时的宽度（用于固定按钮位置，不随剩牌减少左移） ---------- */
@@ -1326,7 +1376,10 @@ function positionPlayBtns(){
   rightEdge = Math.min(rightEdge, row.offsetWidth);
   box.style.right = Math.max(0, Math.round(row.offsetWidth - rightEdge)) + 'px';
   const cardsTop = hasCards ? topWithin(first,row) : 0;
-  box.style.bottom = Math.round(row.offsetHeight - cardsTop + 6) + 'px';
+  // 尽量贴近手牌，但给选中牌的上浮（6*zoom）留 2px 余量
+  const z2=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
+  const gap2=Math.max(0, Math.round(6*z2 - 10));
+  box.style.bottom = Math.round(row.offsetHeight - cardsTop + gap2) + 'px';
 }
 
 /* ---------- 手牌行布局同步 ----------
@@ -1432,6 +1485,51 @@ $('btnHard').onclick=playerHard;
 })();
 initCardSize();
 initVoice();
+
+/* ---------- AI 代打：房主在“对局配置”里允许后，玩家可一键让 AI 替自己出牌 ---------- */
+function aiAutoSet(on){
+  aiAutoOn=!!on;
+  if(!aiAutoOn && aiAutoTimer){ clearTimeout(aiAutoTimer); aiAutoTimer=null; }
+  const b=$('btnAI');
+  if(b){
+    b.textContent = aiAutoOn ? 'AI出牌中' : 'AI出牌';
+    b.classList.toggle('gold', aiAutoOn);
+  }
+}
+function aiAutoMaybePlay(){
+  const stopTimer=()=>{ if(aiAutoTimer){ clearTimeout(aiAutoTimer); aiAutoTimer=null; } };
+  // 不该代打时，撤销已排队的动作
+  if(!aiAutoOn || !G || G.ended || mySeat<0){ stopTimer(); return; }
+  const me=G.seats[mySeat];
+  if(!me || me.out || G.turn!==mySeat || (G.confirming && me.choice)){ stopTimer(); return; }
+  // 同一回合只代打一次：已经排过队就保留（不要因为一次重渲染把定时器清掉）
+  const key=[G.seq||G.roundNo, G.playNo||0, G.turn, G.confirming?1:0].join(':');
+  if(aiAutoKey===key) return;
+  stopTimer();
+  aiAutoKey=key;
+  aiAutoTimer=setTimeout(()=>{
+    aiAutoTimer=null;
+    if(!aiAutoOn || !G || G.ended || G.turn!==mySeat || !window.NET) return;
+    const st=G.seats[mySeat]; if(!st || st.out) return;
+    if(G.confirming){
+      if(st.choice) return;
+      NET.act({type:'confirm', choice:'pass'}); // 代打一律不明独
+      return;
+    }
+    if(!st.hand || !st.hand.length) return;
+    let ch=null;
+    try{ ch = window.TSAI ? window.TSAI.aiChoose(G, mySeat) : null; }catch(e){ ch=null; }
+    if(ch && ch.cards && ch.cards.length) NET.act({type:'play', cards: ch.cards});
+    else if(G.lastPlay) NET.act({type:'pass'});
+  }, 800);
+}
+if($('btnAI')){
+  $('btnAI').onclick=()=>{
+    aiAutoSet(!aiAutoOn);
+    if(aiAutoOn) aiAutoMaybePlay();
+  };
+}
+
 $('btnHe').onclick=playerHe;
 $('btnClose').onclick=()=>{
   $('modal').hidden=true;

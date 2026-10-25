@@ -94,7 +94,8 @@ function connect(){
       const isReady = !!readyArr[mySeat];
       // 只要还有当前局（含已结束、等待“下一局”），就不显示“准备”；
       // 本场最后一局结束后服务端会把 G 清空，此时才显示“准备”开新场。
-      $('btnReady').style.display = snap.G ? 'none' : 'inline-block';
+      // 本场结束时服务端保留 G（牌桌冻结），此时也要显示【准备】
+      $('btnReady').style.display = (snap.G && !snap.seriesOver) ? 'none' : 'inline-block';
       $('btnReady').textContent = isReady ? '取消准备' : '准备';
       $('btnReady').classList.toggle('gold', isReady);
     }
@@ -400,7 +401,7 @@ function bindLobby(){
   // 刷新列表按钮（大厅右上角）：重新拉取房间列表（非整页刷新）
   const rl=$('btnRefreshList'); if(rl) rl.onclick=()=>{ if(socket) socket.emit('listRooms'); };
   // 设置变更 → 发服务器（开局前生效）
-  ['setRounds','setKings','setJoker','setHalfFan','setFanCap','setTailBonus','setShowRemain','setShowCorner','setShowLog','setAIFill'].forEach(id=>{
+  ['setRounds','setKings','setJoker','setHalfFan','setFanCap','setTailBonus','setShowRemain','setShowCorner','setShowLog','setAIFill','setAIAuto'].forEach(id=>{
     const el=$(id);
     if(el) el.onchange=()=>{ if(socket) socket.emit('setSettings', collectSettings()); };
   });
@@ -444,6 +445,7 @@ function collectSettings(){
     showLog: !!$('setShowLog')?.checked,
   };
   if($('setAIFill')) s.aiFill=!!$('setAIFill').checked;
+  if($('setAIAuto')) s.aiAuto=!!$('setAIAuto').checked;
   return s;
 }
 function applySettings(s){

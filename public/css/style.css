@@ -42,8 +42,6 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .cumSco{position:absolute;right:-5px;top:-5px;font-size:9px;font-weight:bold;padding:1px 5px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
 .cumSco.fan{background:#b8860b;}
 /* 东家：笼数/计分角标改到左上、左下（其余座位仍在右上、右下） */
-.seatE .cumSco{right:auto;left:-5px;}
-.seatE .roundSco{right:auto;left:-6px;}
 /* 明鸡已出：同队相同标记（庄队◆ / 客队◇）+ 座位底色 */
 .teamMark{font-style:normal;font-size:17px;line-height:1;margin-right:2px;}
 .teamMark.ta{color:#ffd94a;text-shadow:0 0 5px rgba(255,217,74,.8);}
@@ -63,9 +61,13 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .nm{font-weight:bold;font-size:16px;min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .tag{font-size:15px;color:var(--gold);display:inline-flex;align-items:center;gap:5px;}
 .calledMini{display:inline-flex;vertical-align:middle;}
-.calledMini .card{width:18px;height:27px;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.4);}
-.calledMini .card .tl{font-size:6px;} .calledMini .card .br{font-size:6px;} .calledMini .card .ctr{font-size:7px;}
-.calledMini .card.jk .ctr{font-size:6px;}
+/* 叫牌小卡：用 mini 的尺寸（30×44，点数花色 9px 看得清）。
+   本家的不放在信息框里，挂在信息框右侧；其他三家浮在信息框右侧的空白处，
+   都不参与行高计算，避免把文字行撑高。 */
+.calledMini .card.mini{width:30px;height:44px;border-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.4);}
+.seat .tag .calledMini{position:absolute;right:6px;top:50%;transform:translateY(-50%);}
+/* 给叫牌卡留出右侧通道，避免盖住名字/标签 */
+.seat.hasCalled{padding-right:40px;}
 .calledMini .tl,.calledMini .br{line-height:1;}
 .pts{font-size:15px;color:#a8c8b8;}
 .pts .caughtNum{color:#ffe9b0;}
@@ -96,13 +98,16 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .fanBadge{position:absolute;right:1px;bottom:1px;background:#d4a017;color:#fff;font-size:9px;font-weight:bold;padding:0 3px;border-radius:3px;z-index:3;}
 
 .center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:46%;}
-#msg{font-size:15px;color:#fff;line-height:1.7;}
+/* 中间不再显示提示文字（信息已移到左上角）；保留占位，让分数行落在原来上面那行的位置 */
+#msg{font-size:15px;color:#fff;line-height:1.7;visibility:hidden;}
 #lastTrick{display:flex;justify-content:center;flex-wrap:wrap;gap:0;min-height:78px;margin:6px 0;align-items:flex-end;}
-#trickScore{font-size:13px;color:#d9e8e0;}
+#trickScore{position:relative;top:6px;font-size:13px;color:#d9e8e0;}
 #trickScore .scoreNum{color:#ffd24a;font-weight:bold;}
 
 /* 牌桌左上角：叫牌 + 明鸡状态 */
-.corner{position:absolute;top:10px;left:12px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px 10px;font-size:12px;color:#e5f0e9;display:flex;flex-direction:column;gap:3px;min-width:120px;}
+/* 默认隐藏：只有 renderCorner() 明确开启（对局配置里勾选显示信息框）时才出现，
+   否则空盒子会在进房未开局时露出一块“占位” */
+.corner{position:absolute;top:10px;left:12px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px 10px;font-size:12px;color:#e5f0e9;display:none;flex-direction:column;gap:3px;min-width:120px;}
 .corner .cornerRow{display:flex;align-items:center;gap:6px;line-height:1.4;}
 .corner .mini{width:30px;height:42px;border-radius:4px;}
 .corner .mini .tl{font-size:10px;} .corner .mini .br{font-size:10px;} .corner .mini .ctr{font-size:12px;}
@@ -117,6 +122,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .card .ctr{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:21px;font-family:Georgia,serif;}
 /* 角标“10”占两个字符，比单字符点数宽，叠牌时会被相邻牌盖住 → 只压窄数字，花色保持原样 */
 .card .rk.ten{display:inline-block;transform:scaleX(.76);}
+/* “10”的左上角整体再往左 2px，给相邻牌让出空间 */
+.card .tl.tlten{left:2px;}
 .card.jk .ctr{font-size:18px;color:#7b2fa0;font-weight:bold;}
 .card.called{border-color:var(--gold);box-shadow:0 0 8px rgba(232,193,90,.9);}
 .card.mini{width:30px;height:44px;border-radius:5px;}
@@ -175,7 +182,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   white-space:nowrap;
 }
 /* padding-top 随牌面缩放增加：给选中牌上浮（translateY 会被 zoom 放大）留出空间，避免顶部被滚动容器裁掉 */
-#hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:calc(10px * var(--card-zoom) + 6px);overflow-x:auto;}
+#hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:calc(6px * var(--card-zoom) + 6px);overflow-x:auto;}
 /* 圆角必须给外层：选中态的 box-shadow 画在 .hcard 上，没有圆角时阴影是方的，左下角会露出直角 */
 .hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;border-radius:7px;}
 .hcard + .hcard{margin-left:-34px;}
@@ -184,7 +191,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .hcard:hover{transform:translateY(-8px);}
 }
 /* 选中牌只小幅上浮（露出左上角点数/花色即可）：保持原叠放次序（左邻在下、右邻在上），不挪动相邻牌 */
-.hcard.sel{transform:translateY(-10px);border-color:var(--gold)!important;box-shadow:0 10px 16px rgba(0,0,0,.5)!important;}
+.hcard.sel{transform:translateY(-6px);border-color:var(--gold)!important;box-shadow:0 10px 16px rgba(0,0,0,.5)!important;}
 /* 牌面整体缩放（按钮切换）：手牌与桌面出牌同步放大/缩小，边距与字号随 zoom 一起缩放 */
 #hand .hcard, .trickRow .card{zoom:var(--card-zoom,1);}
 
@@ -300,7 +307,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 }
 /* 移动端手牌：超宽时可横向滑动 */
 @media (max-width: 560px){
-  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;-webkit-overflow-scrolling:touch;padding:calc(10px * var(--card-zoom) + 6px) 0 6px;min-height:0;}
+  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;-webkit-overflow-scrolling:touch;padding:calc(6px * var(--card-zoom) + 6px) 0 6px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   .southMain{gap:2px;}
   .actions{margin:0;gap:4px;}
@@ -314,8 +321,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .avatar .avImg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;z-index:0;}
 .avatar .avTxt{position:relative;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,.85);}
 .avatar.hasAv .avTxt{font-size:11px;}
-.kingBadge{position:absolute;top:-6px;right:-8px;background:#d4a017;color:#fff;font-size:9px;font-weight:bold;padding:1px 4px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap;z-index:5;}
-@media (max-width: 560px){ .kingBadge{font-size:7px;top:-5px;right:-6px;padding:0 3px;} }
+.kingBadge{position:absolute;top:-10px;right:-8px;background:#d4a017;color:#fff;font-size:9px;font-weight:bold;padding:1px 4px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap;z-index:5;}
+@media (max-width: 560px){ .kingBadge{font-size:7px;top:-9px;right:-6px;padding:0 3px;} }
 
 /* ===== 设置弹窗 ===== */
 .setGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin:12px 0;align-items:center;}
@@ -347,7 +354,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .southMain #hand .card{width:42px;height:60px;}
   .southMain #hand .card .tl{font-size:10px;} .southMain #hand .card .br{font-size:10px;}
   .southMain #hand .card .ctr{font-size:18px;}
-  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(10px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
+  #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(6px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
   #hand .hcard{flex:0 0 auto;}
   .toolBtns{gap:4px;}
   .actions{gap:4px;margin:0;}
@@ -381,14 +388,14 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 @media (max-width:560px){
   .tableTitle{font-size:12px;left:8px;top:4px;}
   .tableTopRight{right:8px;top:4px;gap:4px;}
-  .tableTopRight .chip{font-size:10px;padding:1px 5px;}
+  .tableTopRight .chip{font-size:13px;padding:2px 7px;}
   .tableTopRight .btn{padding:3px 7px;font-size:11px;}
   .corner{top:30px;}
 }
 @media (orientation:landscape) and (max-width:920px){
   .tableTitle{font-size:12px;left:6px;top:2px;}
   .tableTopRight{right:6px;top:2px;gap:3px;}
-  .tableTopRight .chip{font-size:9px;padding:1px 4px;}
+  .tableTopRight .chip{font-size:13px;padding:2px 7px;}
   .tableTopRight .btn{padding:2px 6px;font-size:10px;}
   .corner{top:22px;}
 }
@@ -422,9 +429,20 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .corner{top:4px;}
 }
 /* 标题 + 房间号 + 人数（同行） */
-.tableTitle{display:flex;align-items:center;gap:8px;white-space:nowrap;}
-.tableTitle .tTitle{color:var(--gold);font-size:15px;letter-spacing:2px;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,.5);}
+/* 竖排：通山打拱+提示 / 房间号 / 我是谁 */
+.tableTitle{display:flex;flex-direction:column;align-items:flex-start;gap:3px;white-space:nowrap;}
+.tableTitle .titleTop{display:flex;align-items:center;gap:10px;}
+.tableTitle .tTitle{color:var(--gold);font-size:23px;letter-spacing:2px;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,.5);}
 .tableTitle .chip{font-size:11px;padding:2px 8px;background:rgba(0,0,0,.4);}
+/* 房间号右侧：牌桌中间两行提示的副本（去掉“轮到谁/谁压着”），字号比中间大。
+   两行竖排在房间号右下方，宽度控制在北家信息框（居中）左边的空白区内。 */
+.tableTitle .tMsg{display:flex;flex-direction:column;gap:1px;font-size:15px;line-height:1.2;font-weight:normal;letter-spacing:.5px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.5);}
+/* 颜色与牌桌中间保持一致：主提示白色，分数行浅灰绿、数字金黄加粗 */
+.tableTitle .tMsg .m1{color:#fff;}
+.tableTitle .tMsg .m2{color:#d9e8e0;}
+.tableTitle .tMsg .m2 b{color:#ffd24a;font-weight:bold;}
+@media (max-width:560px){ .tableTitle .tMsg{font-size:12px;} }
+body.landscapeCompat .tableTitle .tMsg{font-size:12px;}
 /* 房间删除按钮 */
 .roomDel{margin-left:8px;background:#8a3a2e;border-color:#a85345;color:#fff;border-radius:5px;padding:1px 7px;font-size:11px;cursor:pointer;}
 .roomCodeLbl{font-weight:bold;color:var(--gold);}
@@ -448,7 +466,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .modalBox .mBtn{gap:8px;margin-top:10px;}
 }
 /* 我是谁：房间号下方，角落上方 */
-.tableWho{position:absolute;left:150px;top:38px;font-size:11px;background:rgba(0,0,0,.4);z-index:4;}
+/* 现在在 .tableTitle 竖排里，跟着标题走，不再绝对定位 */
+.tableWho{position:static;font-size:11px;background:rgba(0,0,0,.4);z-index:4;}
 @media (max-width:560px){ .tableWho{left:105px;top:40px;font-size:10px;} }
 @media (orientation:landscape) and (max-width:920px){ .tableWho{left:96px;top:34px;font-size:9px;} }
 
@@ -515,7 +534,7 @@ body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
 body.landscapeCompat .southMain #hand .card .ctr{font-size:18px;}
 body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:15px;}
-body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(10px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
+body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(6px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
 body.landscapeCompat #hand .hcard{flex:0 0 auto;}
 body.landscapeCompat .toolBtns{gap:4px;}
 body.landscapeCompat .actions{gap:4px;margin:0;}
@@ -534,7 +553,7 @@ body.landscapeCompat .corner .mini .br{font-size:8px;}
 body.landscapeCompat .corner .mini .ctr{font-size:10px;}
 body.landscapeCompat .tableTitle{font-size:12px;left:96px;top:4px;}
 body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
-body.landscapeCompat .tableTopRight .chip{font-size:9px;padding:1px 4px;}
+body.landscapeCompat .tableTopRight .chip{font-size:13px;padding:2px 7px;}
 body.landscapeCompat .tableTopRight .btn{padding:4px 9px;font-size:12px;}
 body.landscapeCompat .tableWho{left:96px;top:34px;font-size:9px;}
 body.landscapeCompat .modalBox{max-width:94%;padding:12px 14px;}
@@ -557,15 +576,16 @@ body.landscapeCompat .setGrid label{font-size:12px;}
   .tableTopRight .btn{font-size:10px;padding:2px 6px;}
 }
 body.landscapeCompat .tableTopRight .btn{font-size:12px;padding:4px 9px;}
-/* 快点/排序/牌大小：右上方工具按钮，比房间控制按钮小一档，避免挤压 */
-.tableTopRight .toolBtns .btn{font-size:12px;padding:4px 9px;}
+/* 生崽/AI出牌/全屏：右上方工具按钮，比房间控制按钮小一档，避免挤压。
+   min-width 统一按“4 个字 + 左右内边距”给，保证 生崽 和 退出全屏 一样宽。 */
+.tableTopRight .toolBtns .btn{font-size:12px;padding:4px 9px;min-width:calc(4em + 18px);text-align:center;}
 @media (max-width:560px){
-  .tableTopRight .toolBtns .btn{font-size:11px;padding:3px 7px;}
+  .tableTopRight .toolBtns .btn{font-size:11px;padding:3px 7px;min-width:calc(4em + 14px);}
 }
 @media (orientation:landscape) and (max-width:920px){
-  .tableTopRight .toolBtns .btn{font-size:10px;padding:2px 6px;}
+  .tableTopRight .toolBtns .btn{font-size:10px;padding:2px 6px;min-width:calc(4em + 12px);}
 }
-body.landscapeCompat .tableTopRight .toolBtns .btn{font-size:12px;padding:4px 9px;}
+body.landscapeCompat .tableTopRight .toolBtns .btn{font-size:12px;padding:4px 9px;min-width:calc(4em + 18px);}
 
 /* ===== 排序 / 牌大小：固定在牌桌右下角，排序在上、牌大小在下。
  * 层级高于手牌/其他按钮（低于弹窗遮罩）；发牌后才由 JS 显示。 ===== */

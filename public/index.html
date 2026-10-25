@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=212">
+<link rel="stylesheet" href="css/style.css?v=229">
 </head>
 <body>
 <div id="app">
@@ -97,13 +97,15 @@
     <!-- 轮结算累计显示 -->
     <div id="seriesInfo"></div>
     <div class="table">
-      <!-- 牌桌左上角：标题 + 房间号 -->
+      <!-- 牌桌左上角：标题+提示 / 房间号 / 我是谁（竖排） -->
       <div class="tableTitle">
-        <span class="tTitle">通山打拱</span>
+        <div class="titleTop">
+          <span class="tTitle">通山打拱</span>
+          <span class="tMsg" id="tableMsg"></span>
+        </div>
         <span class="chip" id="roomCode">房间号：—</span>
+        <div class="chip tableWho" id="mySeatInfo">—</div>
       </div>
-      <!-- 房间号下方：我是谁 -->
-      <div class="chip tableWho" id="mySeatInfo">—</div>
       <!-- 牌桌右上角：局数/模式/配置/退出 -->
       <div class="tableTopRight">
         <div class="topRightInfo">
@@ -113,6 +115,7 @@
         <div class="toolBtns">
           <button id="btnFullscreen" class="btn small toolBtn" style="display:none">退出全屏</button>
           <button id="btnQuick" class="btn small toolBtn">生崽</button>
+          <button id="btnAI" class="btn small toolBtn" style="display:none">AI出牌</button>
           <button id="btnVoiceTone" class="btn small toolBtn" style="display:none">音色</button>
         </div>
         <div class="topRightSide">
@@ -146,8 +149,9 @@
         <div class="seatHint" id="hint3"></div>
       </div>
       <div class="center">
-        <div id="msg">等待开始…</div>
         <div id="trickScore"></div>
+        <!-- 中间只显示本轮分数这一行；#msg 保留占位（内容隐藏），让分数留在原来上面那行的位置 -->
+        <div id="msg">等待开始…</div>
       </div>
       <div class="seat seatE" data-seat="1">
         <div class="head">
@@ -216,6 +220,7 @@
             <label class="chk"><input type="checkbox" id="setShowCorner"> 显示牌局信息框（左上角）</label>
             <label class="chk"><input type="checkbox" id="setShowLog"> 显示出牌记录框（右上角）</label>
             <label class="chk"><input type="checkbox" id="setAIFill"> AI 补位（不足4人时）</label>
+            <label class="chk"><input type="checkbox" id="setAIAuto"> 允许 AI 代打（可开启 AI出牌 按钮）</label>
           </div>
           <div class="mBtn">
             <button id="btnSetGo" class="btn gold">开始对局</button>
@@ -240,13 +245,13 @@
   </div>
 </div>
 
-<script src="vendor/socket.io.min.js?v=212"></script>
-<script src="js/engine.js?v=212"></script>
-<script src="js/ai.js?v=212"></script>
-<script src="js/ui-net.js?v=212"></script>
-<script src="js/screen.js?v=212"></script>
-<script src="js/app.js?v=212"></script>
-<script src="js/env.js?v=212"></script>
-<script src="js/net.js?v=212"></script>
+<script src="vendor/socket.io.min.js?v=229"></script>
+<script src="js/engine.js?v=229"></script>
+<script src="js/ai.js?v=229"></script>
+<script src="js/ui-net.js?v=229"></script>
+<script src="js/screen.js?v=229"></script>
+<script src="js/app.js?v=229"></script>
+<script src="js/env.js?v=229"></script>
+<script src="js/net.js?v=229"></script>
 </body>
 </html>

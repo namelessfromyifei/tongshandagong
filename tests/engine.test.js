@@ -173,6 +173,18 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('结算3 跑了一个：basePer=0.5', Math.abs(s.basePer-0.5)<1e-9);
   T('结算3 各输半番', Math.abs(s.perSeat[2]+0.5)<1e-9 && Math.abs(s.perSeat[3]+0.5)<1e-9);
 }
+// 场景3b：设好名次后，没有一游那一队的尾游（2号，唯一没跑完的）抓分与手里剩余牌分归对家
+{
+  const G=mkGame(9); setOut(G,[0,1,3]); G.seats[2].caught=10; G.seats[3].caught=0;
+  G.seats[0].outOrder=1; G.seats[1].outOrder=2; G.seats[3].outOrder=3; // 一游=0
+  // 尾游手里还剩 5 + K = 15 分
+  G.seats[2].hand=[{id:9001,r:TS.RANK_OF['5'],s:0,j:false},{id:9002,r:TS.RANK_OF['K'],s:1,j:false}];
+  const s=settleRound(G);
+  T('结算3b 尾游抓分归零', s.effCaught[2]===0, s.effCaught);
+  T('结算3b 尾游抓分+手里分归一游', s.effCaught[0]===25, s.effCaught);
+  T('结算3b 输方归属后0分→翻倍 basePer=1', Math.abs(s.basePer-1)<1e-9, s.basePer);
+  T('结算3b 原始抓分仍保留在 caught 里', s.caught[2]===10, s.caught);
+}
 // 场景4：滚笼归属——2号(客队)打过2番滚笼且跑完→归客队(L)？ 注意规则：跑完→算自己队
 //   2号跑了→L=2 → Δ=-2（W=0,L=2）→ 庄队反而要承担？ 不——赢了牌的庄队净额=base+Δ
 {

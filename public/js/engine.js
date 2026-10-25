@@ -447,6 +447,28 @@ function handHasBomb(hand){
    *   滚笼按同上归属；为保持零和，硬牌者的账为三人的 3 倍
    *   即：硬牌者 ±(6+3Δ)，三家各 ∓(2+Δ)
    */
+  /* 抓分归属（只影响“输方抓到 0 分翻倍”的判断，以及计分板上的展示）：
+   *  - 拿到一游的那一队保留全队抓分（一游把队友抓的分也算到本队头上）
+   *  - 没有一游的那一队：如果队里只剩一个人没跑完（尾游），
+   *    尾游的抓分 + 尾游手里没出的分数牌，都归对面（一游）那一队
+   *  - 两队都有人没跑完（赢家一二游）时不存在“尾游”，按原值
+   */
+  function attributedCaught(G){
+    const eff=G.seats.map(s=>s.caught);
+    if(G.mode==='hard') return eff;
+    const firstOut=[0,1,2,3].find(i=>G.seats[i].out && G.seats[i].outOrder===1);
+    if(firstOut==null) return eff;
+    const foTeam=teamOf(G, firstOut);
+    const left=[0,1,2,3].filter(i=>foTeam.indexOf(i)<0 && !G.seats[i].out); // 另一队还没跑完的人
+    if(left.length!==1) return eff;
+    const tail=left[0];
+    const handPts=(G.seats[tail].hand||[]).reduce((a,c)=>a+pointOf(c),0);
+    const give=eff[tail]+handPts;
+    eff[tail]=0;
+    eff[firstOut]+=give; // 归到一游头上（队伍内部怎么分不影响 0 分判断与总分）
+    return eff;
+  }
+
   function settleRound(G){
     const halfFan=Math.max(1,Math.min(50,Number(G.cfg&&G.cfg.halfFan)||1)); // 半番=几分
     const out=i=>G.seats[i].out;
@@ -461,6 +483,7 @@ function handHasBomb(hand){
       if(t0.every(out)){ winnerSeats=t0; loserSeats=t1; } else { winnerSeats=t1; loserSeats=t0; }
     }
     const winSet=new Set(winnerSeats);
+    const effCaught=attributedCaught(G); // 归属后的抓分（尾游的分归对面队）
 
     // 滚笼归属：归赢队 W / 归输队 L
     let W=0, L=0;
@@ -488,7 +511,7 @@ function handHasBomb(hand){
     } else {
       const nonOut=loserSeats.filter(i=>!out(i)).length; // 1或2
       basePer=0.5*nonOut;
-      const loserCaught=loserSeats.reduce((a,i)=>a+G.seats[i].caught,0);
+      const loserCaught=loserSeats.reduce((a,i)=>a+effCaught[i],0);
       if(loserCaught===0) basePer*=2;
       for(let i=0;i<4;i++) perSeat[i]= winSet.has(i) ? (basePer+delta) : -(basePer+delta);
     }
@@ -529,6 +552,7 @@ function handHasBomb(hand){
     return {
       mode:G.mode, hardSeat:G.hardSeat, basePer, delta, W, L,
       winnerSeats, loserSeats, perSeat, perSeatNoBonus, perFen, kingBonus, bombBonus,
+      caught:G.seats.map(s=>s.caught), effCaught,
     };
   }
 

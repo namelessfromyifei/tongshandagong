@@ -306,6 +306,7 @@ function createRoom(code){
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
       showCorner: false, // 是否显示牌桌信息框（叫牌/局数/半番等），默认不显示
       showLog: false,    // 是否显示出牌记录框（右上角日志），默认不显示
+      aiAuto: false,     // 是否允许玩家开启「AI出牌」代打按钮（默认关）
       kings: 8,         // 王总数 8/10/12
       jokerValue: 3,    // 王单出算 3 或 2
       tailBonus: false, // 4+王 尾游能否拿奖金
@@ -351,6 +352,7 @@ function snapshot(room){
     settings: Object.assign({aiFill: room.aiFill}, room.settings),
     series: room.series,
     seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, avatar:s.avatar||'', humanCount:room.humanCount})),
+    seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
     G: room.G,
   };
 }
@@ -513,8 +515,8 @@ function describe(cards){
 // 两种可开局状态：① 尚未开局（G 为空）② 上一局刚结束、等待开下一局（G.ended）
 function checkAllReady(room){
   if(!room) return false;
-  const waitingNext = !!(room.G && room.G.ended);
-  const noGame = !room.G;
+  const waitingNext = !!(room.G && room.G.ended && !room.seriesOver);
+  const noGame = !room.G || room.seriesOver;
   if(!waitingNext && !noGame) return false;
   const needHuman = room.aiFill ? 0 : 4;
   if(room.humanCount < needHuman){ broadcast(room); return false; }
@@ -534,6 +536,7 @@ function checkAllReady(room){
 function startRound(room){
   clearAllOfflineKicks(room); // 开局后掉线一律保留座位，不再踢出
   clearIdleKick(room);
+  room.seriesOver=false;      // 新的一场开始：解除“本场已结束”的冻结状态
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   room.G.rollcages = room.G.seats.map(()=>[]);
   room.roundSeq++; room.G.seq=room.roundSeq;
@@ -580,7 +583,8 @@ function finishRoom(room){
     logLine(room, `  累计：${room.seats.map((se,i)=>`${se.name} ${room.series.totals[i]>0?'+':''}${room.series.totals[i]}分`).join('｜')}`);
     room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
     room.ready=[false,false,false,false]; // 准备重置，下场比赛重新准备
-    room.G=null;
+    // 本场结束不清 G：保留最后一局的牌桌，等玩家点【准备】开下一场时再换新局
+    room.seriesOver=true;
   } else {
     // 非最后一局：等所有玩家点【下一局】就绪后自动开下一局
     room.ready=[false,false,false,false];
@@ -608,7 +612,7 @@ io.on('connection', (socket)=>{
         code:r.code,
         humans:r.humanCount,
         aiFill:r.aiFill,
-        started: !!(r.G && r.G.started),
+        started: !!(r.G && r.G.started && !r.seriesOver),
         hasGame: !!r.G,   // 房间已创建对局（含确认轮），供重连列表判断
         rounds:r.settings.rounds,
         host: r.seats[0].type==='human' ? r.seats[0].name : null,
@@ -654,6 +658,7 @@ io.on('connection', (socket)=>{
     if(data.fanCap!=null){ const n=Number(data.fanCap); s.fanCap=[32,64,128,0].includes(n)?n:32; }
     if(data.halfFan!=null){ const n=Math.round(Number(data.halfFan)); s.halfFan=Math.min(50,Math.max(1,n||1)); }
     if(data.aiFill!=null) room.aiFill=!!data.aiFill;
+    if(data.aiAuto!=null) s.aiAuto=!!data.aiAuto;
     // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
     const wantStart = (data.start===true);
     if(wantStart) room.ready[0]=true;
@@ -674,7 +679,7 @@ io.on('connection', (socket)=>{
     const name=ident.name;
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
-    if(r.G){ socket.emit('toast','对局已开始，无法中途加入'); return; }
+    if(r.G && !r.seriesOver){ socket.emit('toast','对局已开始，无法中途加入'); return; }
     // 身份检查：微信按 openid 判重（允许不同 openid 的昵称重名）；手动昵称仍要求唯一
     const sameHuman = r.seats.some(s=>{
       if(s.type!=='human') return false;
@@ -752,7 +757,7 @@ io.on('connection', (socket)=>{
 
   // 玩家准备/取消准备（对局配置由房主在弹窗调整；全员准备后自动开局）
   socket.on('toggleReady', ()=>{
-    if(!room || room.G) return;
+    if(!room || (room.G && !room.seriesOver)) return;
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     room.ready[mySeat]=!room.ready[mySeat];
     socket.emit('toast', room.ready[mySeat]?'已准备':'已取消准备');
@@ -762,7 +767,7 @@ io.on('connection', (socket)=>{
   // 开局（房主点击"对局配置"后由设置弹窗确认，不再直接 start；保留 start 兼容）
   socket.on('start', ()=>{
     if(!room) return;
-    if(room.G) return;
+    if(room.G && !room.seriesOver) return;
     if(!room.aiFill && room.humanCount<4){
       socket.emit('toast', `AI补位未开，还差 ${4-room.humanCount} 位真人才能开始；或先开启AI补位`);
       return;
