@@ -210,7 +210,7 @@ function playerHint(){
   if(!G||G.ended||G.seats[mySeat].out) return;
   hintList=TSAI ? [] : [];
   // 用本地引擎生成候选（仅供提示，不执行）
-  if(window.TSAI) hintList=TSAI.genCandidates(G.seats[mySeat].hand, G.lastPlay||null);
+  if(window.TSAI) hintList=TSAI.genCandidates(G.seats[mySeat].hand, G.lastPlay||null, G.cfg);
   if(hintList.length===0){
     flashMsg('没有能压的牌');
     // 已无牌可压：直接点击"不要"（无出牌权时提示也保持当前）——仅当能过牌时自动不要
@@ -972,7 +972,7 @@ function renderSeats(){
       // 东/西在两侧，仍按每排 7 张分行。
       const ROW = (v===0 || v===2) ? deskCards.length : 7;
       const rows=Math.ceil(deskCards.length/ROW);
-      const pPlay=TS.analyzePlay(s.lastCards);
+      const pPlay=TS.analyzePlay(s.lastCards, G.cfg);
       const showFan = pPlay && (pPlay.type==='rollcage'||pPlay.type==='kingBomb'||(pPlay.type==='bomb'&&pPlay.fan>0)||pPlay.type==='fiftyCage');
       for(let ri=0;ri<rows;ri++){
         const row=document.createElement('div'); row.className='trickRow';

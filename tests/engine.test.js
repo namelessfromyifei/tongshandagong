@@ -513,5 +513,26 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   }
 }
 
+/* ===== cfg 全链路：候选/提示与房间设置一致（fanCap / jokerValue） ===== */
+{
+  const sixteen=()=>[...Array.from({length:8},()=>mk('8','S')),...Array.from({length:8},()=>mkj())]; // 8 真牌 + 8 王
+  T('候选带 cfg：16张软炸 fanCap32 → 32 番', (()=>{
+    const c=genCandidates(sixteen(), null, {fanCap:32}).find(x=>x.play.type==='bomb'&&x.play.size===16);
+    return !!c && c.play.fan===32;
+  })());
+  T('候选无 cfg：16张软炸 → 512 番（默认不封顶）', (()=>{
+    const c=genCandidates(sixteen(), null).find(x=>x.play.type==='bomb'&&x.play.size===16);
+    return !!c && c.play.fan===512;
+  })());
+  T('候选带 cfg：jokerValue=2 时单王算 2（val 12）', (()=>{
+    const it=genCandidates([mkj()], null, {jokerValue:2}).find(x=>x.cards.length===1);
+    return !!it && it.play.val===12;
+  })());
+  T('候选无 cfg：单王仍算 3（val 0）', (()=>{
+    const it=genCandidates([mkj()], null).find(x=>x.cards.length===1);
+    return !!it && it.play.val===0;
+  })());
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);

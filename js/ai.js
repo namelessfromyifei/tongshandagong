@@ -1,6 +1,6 @@
 /* =========================================================
  * 通山打拱 · AI 与候选生成（基于 engine）
- *   genCandidates(hand, mustBeat) —— 手牌所有合法出法
+ *   genCandidates(hand, mustBeat, cfg) —— 手牌所有合法出法
  *   aiChoose(G, seat) —— AI 决策（出牌 / 过）
  *   runSim —— 自动跑完整局，供测试用
  * ========================================================= */
@@ -9,14 +9,14 @@
   const TS = (global && global.TS) || (typeof window!=='undefined' && window.TS) || require('./engine.js');
 
   /* ---------- 候选生成 ---------- */
-  function genCandidates(hand, mustBeat){
+  function genCandidates(hand, mustBeat, cfg){
     const cnt=new Array(TS.RANKS.length).fill(0);
     const byRank=[]; for(let i=0;i<TS.RANKS.length;i++) byRank.push([]);
     let wilds=0;
     const jokers=[];
     for(const c of hand){ if(c.j){ wilds++; jokers.push(c); } else { cnt[c.r]++; byRank[c.r].push(c); } }
     const out=[];
-    const tryAdd=(cs)=>{ const p=TS.analyzePlay(cs); if(!p) return; if(mustBeat&&!TS.canBeat(mustBeat,p)) return; out.push({cards:cs.slice(),play:p}); };
+    const tryAdd=(cs)=>{ const p=TS.analyzePlay(cs, cfg); if(!p) return; if(mustBeat&&!TS.canBeat(mustBeat,p)) return; out.push({cards:cs.slice(),play:p}); };
     const dedupe=()=>{
       const seen=new Set(), res=[];
       for(const it of out){
@@ -79,7 +79,7 @@
           let need=sz-have; if(need<0) need=0;
           for(let i=0;i<need;i++) cs.push(jokers[i]);
           if(cs.length===sz){
-            const p=TS.analyzePlay(cs);
+            const p=TS.analyzePlay(cs, cfg);
             if(p) tryAdd(cs); // 无番炸按现行规则也可领出
           }
         }
@@ -193,7 +193,7 @@
     const pOut = partner>=0 ? G.seats[partner].out : true;
 
     // 0) 整手一次出完（跑牌最终步）
-    const whole=TS.analyzePlay(hand);
+    const whole=TS.analyzePlay(hand, G.cfg);
     if(whole) return {cards:hand, play:whole};
 
     // 1) 手牌少：优先一次大甩、接近跑完（省王优先）；不给对手拖的机会
@@ -320,7 +320,7 @@
     const S=G.seats[seat];
     const mustBeat=G.lastPlay;
     if(S.out||G.ended) return null;
-    const cands=genCandidates(S.hand, mustBeat||null);
+    const cands=genCandidates(S.hand, mustBeat||null, G.cfg);
     if(cands.length===0) return null; // 无牌可出（过）
     if(!mustBeat) return chooseLead(G,seat,cands);
     return chooseFollow(G,seat,mustBeat,cands);
