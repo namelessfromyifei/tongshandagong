@@ -399,7 +399,13 @@ function handHasBomb(hand){
       S.outOrder=4-activeSeats(G).length; // 先置 out 再数：第1人→4-3=1
       if(G.firstOut===-1) G.firstOut=seatIdx;
     }
-    if(modeEnded(G)){ G.ended=true; return {ok:true,end:true}; }
+    if(modeEnded(G)){
+      G.ended=true;
+      // 终局恰好发生在本手：最后一圈的分数此刻仍挂在 G.trickPoints，
+      // 直接结给最后出牌者（当前推顶的人）——否则这手抓分永不入账，总抓分凑不满 200。
+      if(G.trickPoints>0){ G.seats[G.lastSeat].caught += G.trickPoints; G.trickPoints=0; }
+      return {ok:true,end:true};
+    }
     advanceTurn(G);
     return {ok:true};
   }

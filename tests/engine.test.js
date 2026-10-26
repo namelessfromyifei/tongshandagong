@@ -548,5 +548,19 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   })());
 }
 
+/* ===== 最后一手抓分入账（终局 = 决胜手） ===== */
+{
+  const G=newGame(73); passConfirm(G);
+  G.mode='2v2'; G.landlord=0; G.partner=1;
+  G.seats[1].out=true; G.seats[1].outOrder=1; G.seats[1].hand=[];
+  G.seats[0].hand=[mk('5','S')];                       // 庄家只剩一张 5（分值牌，点5）
+  G.seats[2].hand=[mk('3','S'),mk('4','S')];
+  G.seats[3].hand=[mk('5','S')];
+  G.confirming=false; G.lastPlay=null; G.lastSeat=-1; G.passes=0; G.trickPoints=0;
+  G.turn=0; G.leader=0;
+  const r=TS.doPlay(G,0,[G.seats[0].hand[0]]);
+  T('终局手：本手分数结给最后出牌者', r.ok && r.end===true && G.seats[0].caught===5 && G.trickPoints===0);
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);
