@@ -1155,6 +1155,7 @@ function renderHand(){
       }
       if(selected.has(idx)) selected.delete(idx); else selected.add(idx);
       el.classList.toggle('sel',selected.has(idx));
+      lastHandSig = handViewSig(); // 就地改选后同步签名，确保后续「点桌面清选→重建」不被差量误跳
     };
     handEl.appendChild(el);
   });
@@ -1633,9 +1634,13 @@ if($('btnAI')){
 $('btnHe').onclick=playerHe;
 $('btnClose').onclick=()=>{
   $('modal').hidden=true;
-  if($('btnSettle')) $('btnSettle').style.display='none';
-  // 非最后一局：点【下一局】自动就绪等全员；最后一局：不自动准备，需手动点【准备】
-  if(!lastRoundWasLast) getNET().nextRound();
+  // 最后一局（本场结束）关闭后保留【计分板】按钮，可重新打开计分板；非末局隐藏并就绪下一局
+  if(lastRoundWasLast){
+    const b=$('btnSettle'); if(b) b.style.display='inline-block';
+  } else {
+    const b=$('btnSettle'); if(b) b.style.display='none';
+    getNET().nextRound();
+  }
 };
 // 计分板右上角"关闭计分板"：收起后，牌桌上出现【计分板】按钮（在【下一局】左侧），可重新打开
 (function(){
@@ -1663,6 +1668,7 @@ $('btnClose').onclick=()=>{
   const toggleSel=(idx, el)=>{
     if(selected.has(idx)){ selected.delete(idx); el.classList.remove('sel'); }
     else { selected.add(idx); el.classList.add('sel'); }
+    lastHandSig = handViewSig(); // 就地改选后同步签名，防差量跳过后续清选重建
   };
   handEl.addEventListener('pointerdown',(e)=>{
     if(!G || mySeat<0 || G.seats[mySeat].out || G.ended) return;

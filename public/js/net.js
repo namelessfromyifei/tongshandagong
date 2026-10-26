@@ -15,6 +15,7 @@ let me=null;      // 微信授权身份 {nickname, avatar}
 let wxConfig={enabled:false, mock:false, wechat:false};
 let authReady=false;
 let endAskRequester=-1; // 当前提前收场表决的发起方座位（-1=无）
+let curG=null, curSeriesOver=false, curHostSeat=-1; // 最近一次快照的状态（对局配置锁定/房主判断用）
 
 const $=id=>document.getElementById(id);
 
@@ -54,6 +55,14 @@ function toast(msg){
   setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见
+// 对局配置弹窗只读开关：一场未结束时除「返回」外全部禁用（设置与「开始对局」都锁）
+function syncSetLock(){
+  const m=$('setModal'); if(!m) return;
+  const locked = !!(curG && !curSeriesOver);
+  const nodes=m.querySelectorAll('select,input,button');
+  for(const n of nodes){ if(n.id==='btnSetBack') continue; n.disabled=locked; }
+  const h=$('setLockHint'); if(h) h.style.display=locked?'':'none';
+}
 function showTableToast(msg){
   const t=document.getElementById('tableToast');
   if(!t) return;
@@ -108,6 +117,8 @@ function connect(){
 
   socket.on('state', (snap)=>{
     inGame = !!(snap.G);  // 有 G（对局已创建）视为对局中
+    curG = snap.G || null; curSeriesOver = !!snap.seriesOver; curHostSeat = (snap.hostSeat!=null ? snap.hostSeat : -1);
+    syncSetLock(); // 一场未结束 → 对局配置弹窗只读（除“返回”外全部禁用）
     // 提前收场表决已结束/作废 → 收起弹窗
     if(endAskRequester!==-1 && !snap.endVote){
       const m=$('endAskModal'); if(m) m.hidden=true; endAskRequester=-1;
@@ -437,8 +448,9 @@ function bindLobby(){
   };
   $('btnRejoinBack').onclick=()=>{ const m=$('rejoinModal'); if(m) m.hidden=true; };
   $('btnStart').onclick=()=>{
-    // 房主点"对局配置" → 打开设置弹窗（非房主隐藏）
-    if(mySeat!==0){ toast('只有房主能配置'); return; }
+    // 房主点"对局配置" → 打开设置弹窗（hostSeat 与座位解耦后按快照判断）
+    if(curHostSeat!==mySeat){ toast('只有房主能配置'); return; }
+    syncSetLock(); // 一场未结束时弹窗只读
     const m=$('setModal'); if(m) m.hidden=false;
   };
   $('btnReady').onclick=()=>{

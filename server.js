@@ -355,10 +355,10 @@ function createRoom(code){
 }
 
 /* ---------- 广播 ---------- */
-// 配置锁定：只要当前这一局已开始且尚未结束（含发牌/确认/出牌），所有设置不可改；
-// 未开局（G 为空）或本局已结束（G.ended）时可改。
+// 配置锁定：一场（多局）未结束时（含局间等待下一局）所有设置不可改、不可直接开局；
+// 未开局（G 为空）或本场已结束（seriesOver，等玩家准备开下一场）才可改。
 function configLocked(room){
-  return !!(room.G && !room.G.ended);
+  return !!(room.G && !room.seriesOver);
 }
 // 把 settings 映射为引擎 cfg
 function makeCfg(room){
