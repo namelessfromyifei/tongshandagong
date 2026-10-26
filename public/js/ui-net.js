@@ -721,10 +721,9 @@ function render(){
 }
 function renderTop(){
   $('lblMode').textContent = G.mode==='hard'?('硬牌 · '+seatNames[G.hardSeat]):'2V2';
-  // 场/局：场=多局，当前是第几场/共几场
+  // 局数直接用服务端下发的 G.roundNo：进行中即显示当前局，不再等本局结算后才 +1
   const total=settings.rounds||1;
-  const cur=series&&series.active ? series.roundCount : Math.min(1,total);
-  $('lblRound').textContent = `第 ${cur}/${total} 场`;
+  $('lblRound').textContent = `第 ${G.roundNo||1}/${total} 局`;
   updateSeriesInfo();
 }
 // 头像：有微信头像时显示图片，否则显示文字（昵称首字/庄标）
