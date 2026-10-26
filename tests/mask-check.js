@@ -12,6 +12,14 @@ const { io } = require('socket.io-client');
 const PORT = 18099;
 const ROOT = path.resolve(__dirname, '..');
 const wait = ms => new Promise(r => setTimeout(r, ms));
+async function until(fn, ms){
+  const t0 = Date.now();
+  while(Date.now() - t0 < (ms || 6000)){
+    if(fn()) return true;
+    await wait(80);
+  }
+  return false;
+}
 
 let pass = 0, fail = 0;
 function T(name, cond, extra){
@@ -114,6 +122,20 @@ function connect(port){
       setTimeout(res, 400);
     });
     c0.emit('setSettings', { aiFill: true, rounds: 1, start: true });
+
+    // #14 大厅可加入状态：确认轮/首手前也应显示「对局中」（不依赖 G.started）
+    {
+      const lc = await connect(PORT);
+      const gotStart = await until(() => clients.some(cl => cl.snap && cl.snap.G && !cl.snap.G.ended && !cl.snap.seriesOver));
+      if(gotStart){
+        const lr = await new Promise(res => { lc.on('rooms', list => res(list||[])); lc.emit('listRooms'); });
+        const ent = lr.find(x => x.code === roomCode);
+        T('确认轮/首手前大厅显示「对局中」', !!(ent && ent.started));
+      } else {
+        T('确认轮/首手前大厅显示「对局中」', false);
+      }
+      lc.close();
+    }
 
     // 跑到对局结束（或超时）
     const endedAt = Date.now();
