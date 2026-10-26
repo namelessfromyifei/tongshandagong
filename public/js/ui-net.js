@@ -300,7 +300,7 @@ function refreshVoices(){
   } else voiceIdx=0;
   const b=$('btnVoiceTone');
   if(b){
-    b.style.display = (TTS_FALLBACK && zhVoices.length>1) ? 'inline-block' : 'none';
+    b.style.display = ('speechSynthesis' in window && zhVoices.length>1) ? 'inline-block' : 'none';
     b.textContent = zhVoices.length ? `音色 ${voiceIdx+1}/${zhVoices.length}` : '音色';
   }
 }
@@ -456,6 +456,10 @@ function fanBombSpeech(p){
   if(p.fan>0 && FAN_LONG_TOKENS[p.fan]){
     return {text:`${p.fan}笼`, tokens:[`${p.fan}long`]};
   }
+  if(p.type==='bomb'){
+    // 单点番炸没有「N笼」词条（7张软=1、7硬/8软=2 …）：不许混报成滚笼，直接报「炸弹」
+    return {text:`${p.fan}番炸`, tokens:['炸弹']};
+  }
   if(p.fan===1) return {text:'软滚', tokens:['软滚']};
   if(p.fan===2) return {text:'硬滚', tokens:['硬滚']};
   return {text:'滚笼', tokens:['滚笼']};
@@ -490,7 +494,14 @@ function playSpeech(cards){
       return fanBombSpeech(p);
     case 'rollcage':
       return fanBombSpeech(p);
-    case 'kingBomb': return {text:`${p.size}个王`, tokens:[`${p.size}-W`]};
+    case 'kingBomb': {
+      const kw = `${p.size}-W`;
+      if(voicePack && voicePack.files && voicePack.files[kw]){
+        return {text:`${p.size}个王`, tokens:[kw]};
+      }
+      // 语音包只配到 8-W：9~12 王兜底报「炸弹」，避免静音
+      return {text:`${p.size}个王（王炸）`, tokens:['炸弹']};
+    }
     default: return null;
   }
 }
