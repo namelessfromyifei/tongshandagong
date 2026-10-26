@@ -82,7 +82,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .trick .ministat{font-size:11px;color:#ffd;}
 /* 四家出牌区：摆在桌面各朝向，不套方框；牌像手牌一样叠起来，JS 每排 7 张自动换行成两排 */
 .trick.trickN{position:absolute;left:50%;top:157px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
-.trick.trickS{position:absolute;left:50%;bottom:170px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
+.trick.trickS{position:absolute;left:50%;bottom:169px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
 .trick.trickW{position:absolute;left:224px;top:43%;transform:translateY(-50%);margin-top:0;}
 .trick.trickE{position:absolute;right:224px;top:43%;transform:translateY(-50%);margin-top:0;}
 .trick.trickN,.trick.trickS,.trick.trickW,.trick.trickE{flex-direction:column;align-items:center;}
@@ -222,8 +222,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 提示位置：上方/下方贴住信息框，并在相应一侧对齐
  * 西=上方右侧；东=上方左侧；北=右侧下方（贴右侧、底部对齐）；南=信息框右方 */
 .seatN .seatHint{left:100%;bottom:0;margin-left:6px;}
-.seatE .seatHint{bottom:100%;left:0;margin-bottom:4px;}
-.seatW .seatHint{bottom:100%;right:0;margin-bottom:4px;}
+.seatE .seatHint{right:100%;bottom:0;margin-right:4px;} /* 右侧玩家名次/插底：信息框左侧下方 */
+.seatW .seatHint{left:100%;bottom:0;margin-left:4px;} /* 左侧玩家名次/插底：信息框右侧下方 */
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
 .handRow .seatS .southHint:empty{display:none;}
 /* 准备状态：显示在各家牌桌上 */
@@ -231,12 +231,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .readyDot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto;}
 .readyDot.on{background:#1d9c5c;box-shadow:0 0 6px rgba(29,156,92,.8);}
 .readyDot.off{background:#c0392b;box-shadow:0 0 6px rgba(192,57,43,.8);}
-/* 牌桌内浮动提示：进桌后第三方提示（还没轮到你/请先选牌 等）都显示在这里 */
-#tableToast{display:none;position:fixed;top:12%;left:50%;transform:translateX(-50%);z-index:60;max-width:min(84vw,560px);box-sizing:border-box;background:rgba(8,18,15,.88);color:#eaf6ef;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:8px 16px;font-size:14px;text-align:center;pointer-events:none;white-space:normal;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,.35);}
-#tableToast.show{display:block;}
-/* 局间 / 本场结束后：各家准备徽标（挂在座位元素上，不占用出牌区、不覆盖局末摊牌） */
-.readyPill{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:bold;color:#e5f0e9;white-space:nowrap;margin:2px 4px;}
-.readyPill .readyDot{width:7px;height:7px;}
+/* 牌桌内浮动提示：随出牌排锚定在「出牌」按钮左侧，无底色纯文字；
+ * 挂在出牌排内部，天然跟随旋转/窄屏布局（不用 fixed/视口坐标，避免被 #app 旋转搞乱） */
+.playBtns #tableToast{display:none;position:absolute;right:calc(100% + 8px);bottom:6px;width:max-content;max-width:min(70vw,420px);z-index:60;box-sizing:border-box;color:#ffe9b0;font-size:12px;text-align:right;pointer-events:none;white-space:normal;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.65);}
+.playBtns #tableToast.show{display:block;}
 .modalBox h2{color:var(--gold);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
 .modalBox th,.modalBox td{border:1px solid rgba(255,255,255,.18);padding:6px 8px;text-align:left;}
@@ -291,7 +289,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .trickRow .card{width:30px!important;height:42px!important;margin-left:-16px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:13px!important;}
-  .trick.trickN{top:128px;} .trick.trickS{bottom:162px;} .trick.trickW{left:194px;} .trick.trickE{right:194px;}
+  .trick.trickN{top:128px;} .trick.trickS{bottom:161px;} .trick.trickW{left:194px;} .trick.trickE{right:194px;}
+  .handRow .seatS{max-width:37%;min-width:0;} /* 窄屏：本家信息框不挤到出牌按钮区 */
   .center{top:49%;}
   #msg{font-size:12px;}
   #trickScore{font-size:13px;}
@@ -357,7 +356,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:12px!important;}
-  .trick.trickN{top:96px;} .trick.trickS{bottom:116px;} .trick.trickW{left:180px;} .trick.trickE{right:180px;}
+  .trick.trickN{top:96px;} .trick.trickS{bottom:115px;} .trick.trickW{left:180px;} .trick.trickE{right:180px;}
   .center{top:49%;} #msg{font-size:12px;} #trickScore{font-size:13px;}
   /* 手牌区在底部，横屏下尽量扁 */
   .south{bottom:-4px;}
@@ -531,7 +530,7 @@ body.landscapeCompat .trickRow .card .tl{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .ctr{font-size:12px!important;}
 body.landscapeCompat .trick.trickN{top:96px;}
-body.landscapeCompat .trick.trickS{bottom:116px;}
+body.landscapeCompat .trick.trickS{bottom:115px;}
 body.landscapeCompat .trick.trickW{left:180px;}
 body.landscapeCompat .trick.trickE{right:180px;}
 body.landscapeCompat .center{top:49%;}
@@ -576,8 +575,8 @@ body.landscapeCompat .setGrid label{font-size:12px;}
 
 /* 右上角房间按钮固定尺寸：不随牌大小变化；较上一版缩小一档 */
 .tableTopRight .btn{
-  font-size:14px;
-  padding:7px 14px;
+  font-size:12px;
+  padding:5px 12px;
   white-space:nowrap;
 }
 @media (max-width:560px){

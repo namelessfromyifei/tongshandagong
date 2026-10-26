@@ -63,6 +63,8 @@ function syncSetLock(){
   for(const n of nodes){ if(n.id==='btnSetBack') continue; n.disabled=locked; }
   const h=$('setLockHint'); if(h) h.style.display=locked?'':'none';
 }
+// 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见。
+// 位置由 CSS 锚定在出牌排左侧（随旋转/窄屏自适应），这里只负责显隐。
 function showTableToast(msg){
   const t=document.getElementById('tableToast');
   if(!t) return;
@@ -132,7 +134,7 @@ function connect(){
     // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置（hostSeat 与座位解耦）
     if(snap.hostSeat!=null){
       if($('mySeatInfo')) $('mySeatInfo').textContent = `你是 ${myName}（${mySeat===snap.hostSeat?'房主':'第 '+mySeat+' 位玩家'}）`;
-      const canConfig = mySeat===snap.hostSeat && (!snap.G || snap.G.ended);
+      const canConfig = mySeat===snap.hostSeat && (!snap.G || snap.seriesOver); // 仅未开局或本场结束后可配置/开局
       if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
     }
     // 准备按钮：对局进行中（含确认轮、出牌轮）隐藏；未开始或一局结束才显示

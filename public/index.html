@@ -5,13 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=234">
+<link rel="stylesheet" href="css/style.css?v=241">
 </head>
 <body>
 <div id="app">
-
-  <!-- 牌桌内浮动提示（toast）：#status 只在大厅可见，牌桌内统一走这里 -->
-  <div id="tableToast" aria-live="polite"></div>
 
   <!-- ===== 大厅（进入前） ===== -->
   <div id="lobby">
@@ -119,10 +116,10 @@
           <button id="btnFullscreen" class="btn small toolBtn" style="display:none">退出全屏</button>
           <button id="btnQuick" class="btn small toolBtn">生崽</button>
           <button id="btnAI" class="btn small toolBtn" style="display:none">AI出牌</button>
-          <button id="btnVoiceTone" class="btn small toolBtn" style="display:none">音色</button>
         </div>
         <div class="topRightSide">
           <button id="btnLeave" class="btn danger">退出房间</button>
+          <button id="btnEndSeries" class="btn" style="display:none">结束场次</button>
           <button id="btnStart" class="btn gold">对局配置</button>
           <button id="btnRefresh" class="btn">刷新</button>
           <button id="btnVoice" class="btn">语音：开</button>
@@ -176,7 +173,6 @@
             <button id="btnHe" class="btn danger">毁牌（重发）</button>
             <button id="btnSettle" class="btn" style="display:none">计分板</button>
             <button id="btnNext" class="btn gold" style="display:none">下一局</button>
-            <button id="btnEndSeries" class="btn" style="display:none">提前结束本场</button>
           </div>
           <!-- 手牌行：信息框（左）、手牌（中）、排序按钮（右）；左右两列等宽以保证手牌居中 -->
           <div class="handRow">
@@ -196,6 +192,8 @@
               <button id="btnHint" class="btn">提示</button>
               <button id="btnPass" class="btn" disabled>不要</button>
               <button id="btnReady" class="btn gold" style="display:none">准备</button>
+              <!-- 牌桌内浮动提示：随出牌排定位（出牌按钮左侧），旋转/窄屏自适应 -->
+              <div id="tableToast" aria-live="polite"></div>
             </div>
             <div class="midBtns" id="midBtns">
               <button id="btnHard" class="btn danger">明独</button>
@@ -263,13 +261,13 @@
   </div>
 </div>
 
-<script src="vendor/socket.io.min.js?v=234"></script>
-<script src="js/engine.js?v=234"></script>
-<script src="js/ai.js?v=234"></script>
-<script src="js/ui-net.js?v=234"></script>
-<script src="js/screen.js?v=234"></script>
-<script src="js/app.js?v=234"></script>
-<script src="js/env.js?v=234"></script>
-<script src="js/net.js?v=234"></script>
+<script src="vendor/socket.io.min.js?v=241"></script>
+<script src="js/engine.js?v=241"></script>
+<script src="js/ai.js?v=241"></script>
+<script src="js/ui-net.js?v=241"></script>
+<script src="js/screen.js?v=241"></script>
+<script src="js/app.js?v=241"></script>
+<script src="js/env.js?v=241"></script>
+<script src="js/net.js?v=241"></script>
 </body>
 </html>

@@ -54,6 +54,7 @@ let hintDblIdx=-1, hintDblAt=0; // 双击单牌快捷出牌的最近点击记录
 let downInfo=null, clickSuppress=false;
 let lastHandSig='';    // #26 手牌差量：视图签名未变则跳过重建（省去反复拼 28 张牌）
 let renderCornerKey=''; // #26 信息框缓存：设置内容未变不重建
+let boardCleared=false; // 点「准备/下一局」后清空上局牌桌，等新局（在牌桌上显示准备圆点）
 function snapSeatOffline(i){ return !!seatOffline[i]; }
 
 /* ---------- 排序（与单机版一致） ---------- */
@@ -598,6 +599,9 @@ function applyState(snap){
   G = snap.G || null;
   window.__lastG = G; // 供联调工具读取（tests/cdp-mobile-check.js 的 enterRoom 检查 hasG）
   seriesOver = !!snap.seriesOver;
+  // 点「准备/下一局」清空上局牌桌：新一局开始恢复桌面；我准备（场未结束）则清空并显示准备圆点
+  if(G && !G.ended){ boardCleared=false; }
+  else if(G && G.ended && snap.ready && snap.ready[mySeat]){ boardCleared=true; }
   // 服务端脱敏：明鸡未公开前对家身份只对本人可见（youArePartner → 本人座位即对家）
   if(G && snap.youArePartner) G.partner = mySeat;
   seatNames = snap.seats.map(s=>s.name);
@@ -629,11 +633,12 @@ function applyState(snap){
   } else {
     lastSettle = null;
   }
-  // 提前结束本场按钮：仅场进行中、全员在线真人且无进行中表决时显示
-  const esBtn=$('btnEndSeries');
-  if(esBtn){
-    const allHuman=(snap.seats||[]).every(s => s.type==='human' && !s.offline);
-    esBtn.style.display = (!!G && !seriesOver && allHuman && !snap.endVote) ? 'inline-block' : 'none';
+  // 右上角二选一：场进行中显示「结束场次」（点击发起共识收场），否则显示「退出房间」
+  const lv=$('btnLeave'), esB=$('btnEndSeries');
+  if(lv && esB){
+    const inPlay = !!(G && !seriesOver);
+    lv.style.display = inPlay ? 'none' : '';
+    esB.style.display = inPlay ? 'inline-block' : 'none';
   }
   hintCursor=0; hintList=[];
   if(!G){
@@ -691,7 +696,9 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
-  renderSeatReadyPills(); // 局间/场末冻结：各人准备徽标（进行中自行隐藏）
+  if(G && G.ended && boardCleared) renderReadyIndicators(); // 准备后：各家准备圆点显示在牌桌上
+  // 场末计分板按钮兜底：本场结束且计分板弹窗未开时始终可见，可重开计分板
+  if(G && G.ended && seriesOver){ const b=$('btnSettle'); if(b && $('modal').hidden) b.style.display='inline-block'; }
   announceState();
   aiAutoMaybePlay(); // 开了 AI代打：轮到我就自动出牌
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
@@ -699,6 +706,9 @@ function applyState(snap){
   // 按钮：确认轮 / 出牌轮
   if(G.ended){
     setBtn(false);
+    layoutActionButtons(); // 本场结束后：准备/计分板放到出牌排（准备在「不要」槽位，计分板在左）
+    // 本场结束：计分板按钮保留在出牌排（弹窗未开时可见），可重开计分板
+    if(seriesOver){ const b=$('btnSettle'); if(b && $('modal').hidden) b.style.display='inline-block'; }
     // 局末：出牌 / 提示 / 不要 / 牌大小 四个按钮不再显示
     ['btnPlay','btnHint','btnPass','btnSize'].forEach(id=>{ const b=$(id); if(b) b.style.display='none'; });
     return;
@@ -802,21 +812,7 @@ function renderReadyIndicators(){
     tr.appendChild(d);
   }
 }
-// 局间 / 本场结束后（G.ended）在各自座位显示准备徽标：挂在座位元素上，
-// 不占用出牌区（出牌区在局末放着摊牌），进行中隐藏。
-function renderSeatReadyPills(){
-  const realOf = v => (mySeat + v) % 4;
-  for(let v=0;v<4;v++){
-    const el=document.querySelector(`.seat[data-seat="${v}"]`);
-    if(!el) continue;
-    let p=el.querySelector('.readyPill');
-    if(G && G.ended && seatTypes[realOf(v)]==='human'){
-      if(!p){ p=document.createElement('div'); p.className='readyPill'; el.appendChild(p); }
-      const ready=!!seatReady[realOf(v)];
-      p.innerHTML=`<span class="readyDot ${ready?'on':'off'}"></span><span>${ready?'已准备':'未准备'}</span>`;
-    } else if(p){ p.remove(); }
-  }
-}
+// 准备提示改由 renderReadyIndicators 显示在牌桌（出牌区）上：#13 座位徽标方案已弃用
 // 显示本场累计分数：改显示在每人 tag 右上侧（局数>1），不再放牌桌上方
 function updateSeriesInfo(){
   const el=$('seriesInfo'); if(!el) return;
@@ -856,7 +852,7 @@ function renderSeats(){
     // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示。
     // 本家（南）不放在 tag 里 —— 会把信息框撑高、压到左边西家；改放到信息框右侧的 hint 区。
     const isCaller = (G.mode!=='hard' && G.called && i===G.landlord);
-    const calledCardHtml = isCaller ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini') + '</span>' : '';
+    const calledCardHtml = isCaller ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini calledOnDesk') + '</span>' : '';
     const calledMiniHtml = (isCaller && v!==0) ? calledCardHtml : '';
     // 其他三家的叫牌卡改为绝对定位浮在信息框右侧，不参与文字行高；右侧留出通道给它
     if(el) el.classList.toggle('hasCalled', !!(isCaller && v!==0));
@@ -874,6 +870,13 @@ function renderSeats(){
       $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
     }
     const pEl=$('p'+v); if(!pEl) continue;
+    // 点「准备」清空上局：保留座位名/头像，抓分、背面牌堆、出牌区全部清空等新局
+    if(boardCleared){
+      const tr=$('t'+v); if(tr) tr.innerHTML='';
+      const hc=$('h'+v); if(hc) hc.innerHTML='';
+      pEl.textContent='';
+      continue;
+    }
     const rollN=s.rollcages.length;
     const rollFan=s.rollcages.reduce((a,r)=>a+r.fan,0);
     pEl.textContent='';
@@ -1089,6 +1092,13 @@ function handViewSig(){
 function renderHand(){
   const handEl=$('hand');
   if(!G||mySeat<0){ if(handEl) handEl.innerHTML=''; return; }
+  // 点「准备」后清空手牌区，等新局发牌
+  if(boardCleared && G && G.ended){
+    handEl.innerHTML='';
+    const d=document.createElement('div'); d.textContent='已清空，等待新局…'; d.style.cssText='padding:24px;color:#a8c8b8;font-size:14px;';
+    handEl.appendChild(d);
+    return;
+  }
   // #26 差量：手牌视图没变时直接复用现有 DOM（对手出牌等帧免去重拼 28 张牌）
   const sig=handViewSig();
   if(sig===lastHandSig && handEl && handEl.childNodes.length>0){ return; }
@@ -1385,9 +1395,19 @@ function layoutActionButtons(){
   const mid=$('midBtns'), right=$('playBtns'), ready=$('btnReady');
   const pass=$('btnPass'), hard=$('btnHard'), hint=$('btnHint');
   if(!mid||!right||!pass||!hard||!hint||!ready) return;
-  if(!G || seriesOver){
-    // 未开局 / 本场已结束：准备按钮放中间，出牌/表态按钮隐藏
+  if(!G){ // 未开局：准备按钮放中间
     if(ready.parentElement!==mid) mid.appendChild(ready);
+    return;
+  }
+  if(seriesOver){ // 本场结束后：准备放「不要」槽位（出牌排右侧），计分板在它左边
+    if(ready.parentElement!==right) right.appendChild(ready);
+    const st=$('btnSettle');
+    if(st){
+      if(st.parentElement!==right) right.appendChild(st);
+      // HTMLCollection 无 indexOf：用 Array 化再比，确保 计分板 在 准备 左边
+      const kids=[...right.children];
+      if(kids.indexOf(st) > kids.indexOf(ready)) right.insertBefore(st, ready);
+    }
     return;
   }
   if(G.confirming){
