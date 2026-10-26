@@ -594,6 +594,7 @@ function applyState(snap){
                    {passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false}];
   }
   G = snap.G || null;
+  window.__lastG = G; // 供联调工具读取（tests/cdp-mobile-check.js 的 enterRoom 检查 hasG）
   seriesOver = !!snap.seriesOver;
   // 服务端脱敏：明鸡未公开前对家身份只对本人可见（youArePartner → 本人座位即对家）
   if(G && snap.youArePartner) G.partner = mySeat;

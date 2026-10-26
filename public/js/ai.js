@@ -332,15 +332,16 @@
     let guard=0, n=0;
     const results=[];
     while(!G.ended && guard++<2000){
+      // 确认轮：庄家小概率硬牌，其余一律「不明独」——不处理则 turn 会停在庄家转不动、模拟空转
+      if(G.confirming){
+        if(n===0 && G.mode==='2v2' && G.turn===G.landlord && G.rnd()<(rounds>0?0.12:0)){
+          if(TS.declareHard(G, G.turn)) continue; // 硬牌成立（确认轮已结束）
+        }
+        TS.confirmAdvance(G, G.turn);
+        continue;
+      }
       const seat=G.turn;
-      // 开局可选硬牌：AI 庄家小概率硬牌
-      if(n===0 && G.lastPlay===null && G.mode==='2v2' && G.turn===G.landlord){
-        if(G.rnd()<(rounds>0?0.12:0)) TS.declareHard(G,seat);
-      }
       if(G.seats[seat].out){ TS.advanceTurn(G); continue; }
-      if(rounds>0 && n%(G.mode==='hard'?1:1)===0){
-        // 每轮模拟都走 AI
-      }
       const ch=aiChoose(G,seat);
       if(ch===null){ TS.handlePass(G,seat); }
       else { const r=TS.doPlay(G,seat,ch.cards); if(r&&r.ok){} }

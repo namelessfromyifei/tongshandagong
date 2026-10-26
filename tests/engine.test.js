@@ -627,5 +627,11 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('有炸判据：全是散牌 → 无炸', TS.handHasBomb([mk('3','S'),mk('5','S'),mk('7','S'),mk('9','S'),mk('J','S'),mk('A','S')])===false);
 }
 
+/* ===== runSim：确认轮自动表态（不再空转 2000 步） ===== */
+{
+  const res=TSAI.runSim(2027, 1);
+  T('runSim 处理确认轮并打完（返回 ended 局）', res.length>0 && res[0].G.ended===true);
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);

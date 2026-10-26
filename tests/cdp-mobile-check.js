@@ -1,5 +1,6 @@
 /* CDP 验证脚本：模拟移动端横屏/竖屏，检查牌桌高度与选牌上弹是否被裁剪
- * 运行：node tests/cdp-mobile-check.js   （需无头 Chrome 已在 9223 端口）
+ * 运行：node tests/cdp-mobile-check.js
+ *   前置：本机 8080 起游戏服务（node server.js）；无头 Chrome 以远程调试端口 9224 启动
  */
 const http = require('http');
 const wsmod = require('ws');
