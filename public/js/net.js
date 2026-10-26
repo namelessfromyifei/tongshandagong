@@ -6,6 +6,7 @@
 "use strict";
 const UI = window.GameUI;
 let socket=null;
+let socketReset=false; // socket 需重建的标记：被服务端强制断开（删房/被踢）时置位，下次 connect() 重建单例
 let mySeat=-1, myName='';
 let roomCode='';
 let inGame=false; // 是否已在对局中（用于退出时判断保留重连）
@@ -56,7 +57,16 @@ function esc(s){
 
 /* ---------- 连接 ---------- */
 function connect(){
-  if(socket && socket.connected) return;
+  if(socket && !socketReset){
+    // socket 单例：会话全程只建一个 socket。已存在即复用；瞬断交给 socket.io
+    // 自动重连（未连上时的 emit 会被缓冲，重连成功后补发），不再重复 new io()。
+    return;
+  }
+  if(socket){
+    try{ socket.removeAllListeners(); socket.disconnect(); }catch(e){}
+    socket=null;
+  }
+  socketReset=false;
   socket = SERVER_ORIGIN ? io(SERVER_ORIGIN) : io();
   socket.on('connect', ()=>{
     toast('已连接服务器');
@@ -141,7 +151,11 @@ function connect(){
     m.hidden=false;
   });
 
-  socket.on('disconnect', ()=>{ toast('与服务器断开，尝试重连…'); });
+  socket.on('disconnect', (reason)=>{
+    toast('与服务器断开，尝试重连…');
+    // 服务端强制断开（删房/被踢/闲置解散）：下次 connect() 要重建 socket（否则旧 socket 不会自动重连）
+    if(reason==='io server disconnect') socketReset=true;
+  });
 }
 
 /* ---------- 动作 ---------- */
@@ -159,6 +173,7 @@ function toggleAI(){
 }
 // 退出房间回大厅
 function leaveRoom(){
+  roomCode=''; // 退出标记：杜绝“点了退出后网络闪断又被自动 rejoin 回桌”
   if(socket) socket.emit('leave', {});
   // 对局中退出：保留 localStorage（可用同昵称重连）；未开局才清除
   if(inGame){
@@ -168,8 +183,10 @@ function leaveRoom(){
   }
   enterLobby();
 }
-// 房间解散（房主退出）
+// 房间解散（房主退出/被删）
 function roomClosed(){
+  roomCode='';
+  socketReset=true; // 房间已不存在：强制断开后 socket 需要重建
   try{ localStorage.removeItem('tsRoom'); }catch(e){}
   toast('房间已解散，回到大厅');
   enterLobby();
