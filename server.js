@@ -317,7 +317,7 @@ function createRoom(code){
       aiAuto: false,     // 是否允许玩家开启「AI出牌」代打按钮（默认关）
       kings: 8,         // 王总数 8/10/12
       jokerValue: 3,    // 王单出算 3 或 2
-      tailBonus: false, // 4+王 尾游能否拿奖金
+      tailBonus: false, // 未跑完者能否拿王奖金（决策D：默认关）
       fanCap: 32,       // 笼数封顶：32/64/128，0=不封顶（超过按封顶值计）
       halfFan: 1,       // 半番=几分（1~50，默认 1）
     },

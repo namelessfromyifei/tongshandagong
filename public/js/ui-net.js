@@ -1035,7 +1035,7 @@ function renderCorner(){
   c.innerHTML += mkChip('王单出', settings.jokerValue===2 ? '算 2' : '算 3');
   c.innerHTML += mkChip('半边', `${settings.halfFan||1} 分`);
   c.innerHTML += mkChip('笼数封顶', settings.fanCap ? `${settings.fanCap} 笼` : '不封顶');
-  c.innerHTML += mkChip('尾游', settings.tailBonus ? '有奖金' : '无奖金');
+  c.innerHTML += mkChip('未跑奖', settings.tailBonus ? '可拿王奖' : '不拿');
 }
 function cardHTML(c,cls){
   if(c.j) return `<div class="card jk ${cls||''}"><span class="tl">王</span><span class="br">王</span><span class="ctr">王</span></div>`;

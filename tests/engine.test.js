@@ -431,6 +431,48 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   // seat0 赢队、基础0 + 王奖金(5王=2番×3人=6番) = +6
   T('王奖金：5王二游+基础0=6番', Math.abs(s.perSeat[0]-6)<1e-9 && s.kingBonus[0]===2);
 }
+/* ===== 王奖金：未跑也有奖金（决策 D：四游不可达，改为未跑可拿） ===== */
+{
+  const G=mkGame(82);
+  G.seats[0].kings=4; G.seats[0].out=true; G.seats[0].outOrder=1; G.seats[0].caught=10;
+  G.seats[1].kings=4; G.seats[1].out=false;                     // 未跑
+  G.seats[2].out=true; G.seats[2].outOrder=2; G.seats[2].caught=0;
+  G.seats[3].out=true; G.seats[3].outOrder=3; G.seats[3].caught=0;
+  G.cfg={tailBonus:true};
+  const s=settleRound(G);
+  T('王奖金：未跑也有奖金（开关开）', s.kingBonus[1]===1 && s.kingBonus[0]===1);
+}
+{
+  const G=mkGame(83);
+  G.seats[0].kings=4; G.seats[0].out=true; G.seats[0].outOrder=1; G.seats[0].caught=10;
+  G.seats[1].kings=4; G.seats[1].out=false;                     // 未跑
+  G.seats[2].out=true; G.seats[2].outOrder=2; G.seats[2].caught=0;
+  G.seats[3].out=true; G.seats[3].outOrder=3; G.seats[3].caught=0;
+  G.cfg={tailBonus:false};
+  const s=settleRound(G);
+  T('王奖金：未跑者开关未开不拿', s.kingBonus[1]===undefined);
+}
+/* ===== 王奖金：未跑也有奖金（决策 D：四游不可达，改为未跑可拿） ===== */
+{
+  const G=mkGame(82);
+  G.seats[0].kings=4; G.seats[0].out=true; G.seats[0].outOrder=1; G.seats[0].caught=10;
+  G.seats[1].kings=4; G.seats[1].out=false;                     // 未跑
+  G.seats[2].out=true; G.seats[2].outOrder=2; G.seats[2].caught=0;
+  G.seats[3].out=true; G.seats[3].outOrder=3; G.seats[3].caught=0;
+  G.cfg={tailBonus:true};
+  const s=settleRound(G);
+  T('王奖金：未跑也有奖金（开关开）', s.kingBonus[1]===1 && s.kingBonus[0]===1);
+}
+{
+  const G=mkGame(83);
+  G.seats[0].kings=4; G.seats[0].out=true; G.seats[0].outOrder=1; G.seats[0].caught=10;
+  G.seats[1].kings=4; G.seats[1].out=false;                     // 未跑
+  G.seats[2].out=true; G.seats[2].outOrder=2; G.seats[2].caught=0;
+  G.seats[3].out=true; G.seats[3].outOrder=3; G.seats[3].caught=0;
+  G.cfg={tailBonus:false};
+  const s=settleRound(G);
+  T('王奖金：未跑者开关未开不拿', s.kingBonus[1]===undefined);
+}
 /* ===== 硬炸奖金（起到 7/8 张纯牌同点） ===== */
 {
   const seven=cards([['8','S'],['8','H'],['8','C'],['8','D'],['8','S'],['8','H'],['8','C']]);

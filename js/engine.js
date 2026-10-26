@@ -548,12 +548,14 @@ function handHasBomb(hand){
     for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2*halfFan);
     const perSeatNoBonus=Object.assign({}, perSeat); // 加奖金前的每座值（用于计分板拆"奖金"列）
 
-    // 王奖金：抓 ≥4 王，非四游（cfg.tailBonus=true 时尾游也可拿）→ 从其他三人各收 (王数-3) 番
+    // 王奖金：抓 ≥4 王 → 从其他三人各收 (王数-3) 番。
+    // 决策 D：四游不可达（一队跑完即终局），「尾游也可拿」的旧含义作废——
+    // 改为：跑完且非四游始终有奖；本局结束仍未跑完者，须开「未跑也可拿王奖金」设置才拿。
     const kingBonus={};
     const tailOk = !!(G.cfg && G.cfg.tailBonus);
     for(let i=0;i<4;i++){
       const s=G.seats[i];
-      const eligible = s.kings>=4 && s.out && (s.outOrder!==4 || tailOk);
+      const eligible = s.kings>=4 && ((s.out && s.outOrder!==4) || (!s.out && tailOk));
       if(eligible){
         const bonus=s.kings-3;
         kingBonus[i]=bonus;
