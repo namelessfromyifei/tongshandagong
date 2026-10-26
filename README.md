@@ -297,18 +297,22 @@ node tools/build-apk.js --server http://8.148.29.231
 
 ## 测试与工具
 
-运行测试前先安装依赖；联机测试需先启动服务器（默认 8080）。
+运行测试前先安装依赖；联机 e2e（mask-check / endseries-check / host-check）会**自动起专用端口的测试服务器**，无需提前启动 8080。
 
 | 命令 | 说明 | 依赖服务端 |
 |---|---|---|
-| `node tests/engine.test.js` | 引擎单测（牌具/牌型/比较/结算/流程/模拟，当前 132 项） | 否 |
+| `npm test` | 一键全量：引擎单测 + AI 单测 + 双副本一致性 + 三个联机 e2e | 否 |
+| `npm run test:engine` | 仅引擎/AI 单测 + 双副本一致性 | 否 |
+| `node tests/engine.test.js` | 引擎单测（牌具/牌型/比较/结算/流程/模拟，当前 179 项） | 否 |
 | `node tests/ai-sanity.js` | AI 行为单测（不乱出王、不炸队友等） | 否 |
-| `node tests/aifill.js` | AI 补位开局集成测试 | 是 |
-| `node tests/multiplayer.js` | 4 真人客户端联机流程、多局与就绪流程 | 是 |
-| `node tests/net-sim.js` | 1 真人 + 3 AI 自动打完整局（联调脚本） | 是 |
-| `node tests/cdp-mobile-check.js` | 移动端布局裁剪检查（需开启调试端口的 Chrome） | 是 |
+| `node tests/check-sync.js` | js/ 与 public/js/ 的引擎/AI 双副本一致性 | 否 |
+| `node tests/mask-check.js` | 快照脱敏 e2e（3 真人 + AI 补位自动打完一局，逐帧校验脱敏/结算） | 否（自动起服务） |
+| `node tests/endseries-check.js` | 提前结束本场（共识收场）e2e | 否（自动起服务） |
+| `node tests/host-check.js` | 房主机制（hostSeat/删房）e2e | 否（自动起服务） |
+| `node tests/net-sim.js` | 1 真人 + 3 AI 自动打完整局（联调脚本，需先起 8080 服务） | 是 |
+| `node tests/cdp-mobile-check.js` | 移动端布局裁剪检查（需调试端口 9224 的 Chrome） | 是 |
 | `node tests/wx-auth.js` | 微信授权（WX_MOCK）流程、Cookie 签名、Socket 身份覆盖 | 否（自起测试服务） |
-| `node tools/voice-pack-check.js` | 校验语音包 manifest 与音频文件是否齐全 | 否 |
+| `node tests/aifill.js` / `tests/multiplayer.js` | 旧联机集成脚本（供参考，未纳入 npm test） | 是 |
 
 联机测试可用 `URL=http://host:port node tests/multiplayer.js` 指定服务器地址。
 
@@ -318,7 +322,7 @@ node tools/build-apk.js --server http://8.148.29.231
 
 - 默认包：`public/voice/tongshan/`（通山真人语音）；`public/voice/default/` 为备用包。
 - 词条映射在 `public/voice/manifest.json`，客户端可用 `localStorage.tsVoicePack` 指定包名。
-- 播放优先走语音包；缺词条时**静默**（`public/js/ui-net.js` 中 `TTS_FALLBACK=false`，改为 `true` 可回退系统 TTS）。
+- 播放优先走语音包；缺词条时兜底到可用的近似词条（如 9+ 王炸词条缺失时报「炸弹」），实在不可播才静默（`public/js/ui-net.js` 中 `TTS_FALLBACK=false`，改为 `true` 可回退系统 TTS）。
 - 新增/替换音频后运行 `node tools/voice-pack-check.js` 检查缺漏。
 
 ---
