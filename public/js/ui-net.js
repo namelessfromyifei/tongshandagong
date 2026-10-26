@@ -677,6 +677,7 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
+  renderSeatReadyPills(); // 局间/场末冻结：各人准备徽标（进行中自行隐藏）
   announceState();
   aiAutoMaybePlay(); // 开了 AI代打：轮到我就自动出牌
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
@@ -785,6 +786,21 @@ function renderReadyIndicators(){
     d.className='readyHint';
     d.innerHTML=`<span class="readyDot ${ready?'on':'off'}"></span><span>${ready?'已准备':'未准备'}</span>`;
     tr.appendChild(d);
+  }
+}
+// 局间 / 本场结束后（G.ended）在各自座位显示准备徽标：挂在座位元素上，
+// 不占用出牌区（出牌区在局末放着摊牌），进行中隐藏。
+function renderSeatReadyPills(){
+  const realOf = v => (mySeat + v) % 4;
+  for(let v=0;v<4;v++){
+    const el=document.querySelector(`.seat[data-seat="${v}"]`);
+    if(!el) continue;
+    let p=el.querySelector('.readyPill');
+    if(G && G.ended && seatTypes[realOf(v)]==='human'){
+      if(!p){ p=document.createElement('div'); p.className='readyPill'; el.appendChild(p); }
+      const ready=!!seatReady[realOf(v)];
+      p.innerHTML=`<span class="readyDot ${ready?'on':'off'}"></span><span>${ready?'已准备':'未准备'}</span>`;
+    } else if(p){ p.remove(); }
   }
 }
 // 显示本场累计分数：改显示在每人 tag 右上侧（局数>1），不再放牌桌上方

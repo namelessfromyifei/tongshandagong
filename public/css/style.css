@@ -231,6 +231,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .readyDot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto;}
 .readyDot.on{background:#1d9c5c;box-shadow:0 0 6px rgba(29,156,92,.8);}
 .readyDot.off{background:#c0392b;box-shadow:0 0 6px rgba(192,57,43,.8);}
+/* 局间 / 本场结束后：各家准备徽标（挂在座位元素上，不占用出牌区、不覆盖局末摊牌） */
+.readyPill{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:bold;color:#e5f0e9;white-space:nowrap;margin:2px 4px;}
+.readyPill .readyDot{width:7px;height:7px;}
 .modalBox h2{color:var(--gold);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
 .modalBox th,.modalBox td{border:1px solid rgba(255,255,255,.18);padding:6px 8px;text-align:left;}
