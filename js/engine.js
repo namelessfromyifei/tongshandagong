@@ -293,10 +293,12 @@ function handHasBomb(hand){
   for(let i=0;i+1<RANKS.length;i++) if((cnt[i]>=4||cnt[i]+wilds>=4)&&(cnt[i+1]>=4||cnt[i+1]+wilds>=4)) return true;
   return false;
 }
-  // 和牌：本局作废重发（返回新的G）
-  function declareRestart(G){
+  // 和牌/毁牌：本局作废重发（返回新的G）。
+  // 必须换发牌：不能用旧 G.seed（否则重发的牌与原局一模一样）；
+  // roundNo 保留（重发仍是同一局），cfg 沿用房间设置（决策 C）。
+  function declareRestart(G, cfg, seed){
     if(!G.confirming) return G;
-    const fresh=newGame(G.seed);
+    const fresh = newGame(seed==null ? ((Math.random()*1e9)|0) : seed, cfg);
     fresh.roundNo=G.roundNo;
     fresh.log=G.log;
     return fresh;

@@ -395,6 +395,20 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   const fresh=TS.declareRestart(G);
   T('和牌：重发新局', fresh!==G && fresh.confirming===true && fresh.seats.every(s=>s.hand.length===28));
 }
+/* ===== 和牌/毁牌重发：保 roundNo、随机换牌、沿用 cfg ===== */
+{
+  const G=newGame(41, {kings:12, fanCap:32});
+  G.roundNo=5;
+  const fresh=TS.declareRestart(G, {kings:12, fanCap:32}, 999);
+  T('重发保留 roundNo', fresh!==G && fresh.roundNo===5);
+  T('重发换了发牌（不再沿用旧种子同牌）', (()=>{
+    const key=g=>g.seats.map(s=>s.hand.map(c=>c.r+':'+c.s).join(',')).join('|');
+    return key(fresh)!==key(G);
+  })());
+  T('重发沿用房间设置（cfg 进入新局）', fresh.cfg && fresh.cfg.kings===12 && fresh.cfg.fanCap===32);
+  const fresh2=TS.declareRestart(G, undefined, 7);
+  T('无 cfg 兜底：仍换牌且保 roundNo', fresh2!==G && fresh2.roundNo===5);
+}
 /* ===== 王奖金 ===== */
 {
   const G=mkGame(51);

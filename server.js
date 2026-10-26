@@ -910,7 +910,9 @@ io.on('connection', (socket)=>{
         if(room.G.seats[seatIdx].choice){ socket.emit('toast','已表态，不能毁牌'); return; }
         if(TS.handHasBomb(room.G.seats[seatIdx].hand)){ socket.emit('toast','你有炸，不能毁牌'); return; }
         logLine(room, `${room.seats[seatIdx].name} 选择【毁牌】`);
-        room.G=TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
+        // 走引擎重发：换随机种子、保留当前 roundNo、沿用房间设置（决策 C）
+        room.G = TS.declareRestart(room.G, makeCfg(room));
+        room.roundSeq++; room.G.seq = room.roundSeq; // 局序号递增：前端据此判别换了新牌
         clearEndVote(room); // 重发新局：进行中的提前收场表决作废
         logLine(room, `—— 重发 · 第 ${room.G.roundNo} 局 ——`);
         logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
