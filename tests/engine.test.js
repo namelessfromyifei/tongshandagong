@@ -618,5 +618,14 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('同番4：五十K大炸压不过王炸', canBeat(king4, cage)===false);
 }
 
+/* ===== handHasBomb：存在炸判据（王/组合按规则计，不重复计入） ===== */
+{
+  T('有炸判据：1×8+1×9+3王 → 有炸（1真8+3王即4张软炸，规则应然）', TS.handHasBomb([mk('8','S'),mk('9','S'),mkj(),mkj(),mkj()])===true);
+  T('有炸判据：4×8 → 有炸', TS.handHasBomb([mk('8','S'),mk('8','H'),mk('8','C'),mk('8','D')])===true);
+  T('有炸判据：1×5+2王 → 有炸（软五十K）', TS.handHasBomb([mk('5','S'),mkj(),mkj()])===true);
+  T('有炸判据：2×5+1王 → 无炸（5,5,王 非五十K）', TS.handHasBomb([mk('5','S'),mk('5','H'),mkj()])===false);
+  T('有炸判据：全是散牌 → 无炸', TS.handHasBomb([mk('3','S'),mk('5','S'),mk('7','S'),mk('9','S'),mk('J','S'),mk('A','S')])===false);
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);

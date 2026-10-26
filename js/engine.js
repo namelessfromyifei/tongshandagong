@@ -292,8 +292,9 @@ function handHasBomb(hand){
   // 五十K：5/10/K 可用癞子补足（至少有两种点数 + 癞子凑第三种）
   const present=(cnt[2]>0?1:0)+(cnt[7]>0?1:0)+(cnt[10]>0?1:0);
   if(present>=1 && present+wilds>=3) return true;
-  // 滚笼：连续两组，每组 真牌+癞子 ≥4
-  for(let i=0;i+1<RANKS.length;i++) if((cnt[i]>=4||cnt[i]+wilds>=4)&&(cnt[i+1]>=4||cnt[i+1]+wilds>=4)) return true;
+  // 滚笼不在本函数单独判：其「每组 真牌+癞子≥4」与上面的同点炸逐 rank 判定完全重叠；
+  // 而且它让同一批王被相邻两组“双重计入”（必要时两组共用，实际凑不出）。由于任一组可成炸时
+  // 同点循环早已命中，该行既是死代码又会双重计数 —— 移除，防止误导与未来重排激活误判。
   return false;
 }
   // 和牌/毁牌：本局作废重发（返回新的G）。
