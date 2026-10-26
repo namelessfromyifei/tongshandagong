@@ -286,6 +286,13 @@ function makeCode(){
   return c;
 }
 
+// 房间号规范化：4 位大写字母/数字白名单；不合法返回 null。
+// create 自定义号与 join/rejoin/deleteRoom 统一入口，从源头掐断房间号注入。
+function roomCodeOf(v){
+  const s=String(v==null?'':v).toUpperCase().trim();
+  return /^[A-Z0-9]{4}$/.test(s) ? s : null;
+}
+
 function createRoom(code){
   code = code || makeCode();
   const room = {
@@ -294,6 +301,7 @@ function createRoom(code){
       {type:'ai', name:'A家'}, {type:'ai', name:'B家'},
       {type:'ai', name:'C家'}, {type:'ai', name:'D家'},
     ],
+    hostSeat: 0,        // 房主座位号（与座位归属解耦：房主移交/退出不再物理挪座位）
     aiFill: false,      // AI 补位开关（默认关，房主手动开）
     humanCount: 0,
     ready: [false,false,false,false], // 每座位是否准备（AI 座位视为自动准备）
@@ -351,13 +359,100 @@ function snapshot(room){
     ready: room.ready,
     settings: Object.assign({aiFill: room.aiFill}, room.settings),
     series: room.series,
+    hostSeat: room.hostSeat, // 房主座位号（与座位归属解耦）：客户端据此显示「你是房主」/设置按钮
     seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, avatar:s.avatar||'', humanCount:room.humanCount})),
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
+    endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
     G: room.G,
   };
 }
+
+/* ---------- 按接收者脱敏 ----------
+ * 原则：局中（未到局末）不派发对方手牌与王数，明鸡未公开前不派发对家身份；
+ *      不派发 seed/rnd（防用种子复刻发牌）；对家/明鸡关系只对本人按 youArePartner 下发；
+ *      局末（G.ended）全量公开（摊牌显示各家剩余牌）。 */
+// 2V2 某玩家的真实队友（观战『队友牌』据此下发，客户端不再本地推算，避免明鸡未公开前的错认）
+function mateOf(G, viewer){
+  if(!G || G.mode==='hard') return -1;
+  if(viewer===G.landlord) return G.partner;
+  if(viewer===G.partner) return G.landlord;
+  for(let i=0;i<4;i++) if(i!==G.landlord && i!==G.partner && i!==viewer) return i;
+  return -1;
+}
+function maskGame(G, seatIdx){
+  if(!G || G.ended) return G; // 局末摊牌：剩余手牌 / 对家归属全公开
+  const c={}; for(const k in G) c[k]=G[k];
+  delete c.seed; delete c.rnd;
+  const is2v2 = G.mode!=='hard';
+  const viewerOut = (seatIdx>=0) ? !!G.seats[seatIdx].out : false;
+  const mate = (is2v2 && viewerOut) ? mateOf(G, seatIdx) : -1;
+  c.seats=G.seats.map((s,i)=>{
+    const sc=Object.assign({}, s);
+    sc.handCount = s.hand.length;
+    if(i===seatIdx || i===mate) return sc;        // 自己 / 出局观战的队友：全程完整
+    sc.hand = [];
+    sc.kings = s.kingPlayed ? s.kings : 0;        // 该家首张王打出（报王）前隐藏王数
+    sc.hardBombBonus = 0;
+    return sc;
+  });
+  if(is2v2 && seatIdx>=0) c._mate = mateOf(G, seatIdx); // 观战『队友牌』用
+  if(G.mode!=='hard' && !(G.revealed || G.ended)){
+    c.partner = -1;                               // 明鸡未公开：对家身份不派发（仅 youArePartner）
+    for(const s of c.seats){ s.isLandlord=null; s.isPartner=null; }
+  }
+  return c;
+}
+function snapshotFor(room, seatIdx){
+  const snap = snapshot(room);
+  const G = room.G;
+  snap.G = G ? maskGame(G, seatIdx) : null;
+  snap.youArePartner = !!(G && seatIdx>=0 && G.partner===seatIdx);
+  if(G && G.ended && room.lastSettle) snap.settle = room.lastSettle;
+  return snap;
+}
+// 按接收者分发脱敏快照：入座者拿本人视角，游离 socket 拿公共视角（全隐藏）
 function broadcast(room){
-  io.to(room.code).emit('state', snapshot(room));
+  const seats=room.seats;
+  const memberIds=io.sockets.adapter.rooms.get(room.code)||[];
+  for(const id of memberIds){
+    const so=io.sockets.sockets.get(id);
+    if(!so) continue;
+    let seatIdx=-1;
+    for(let i=0;i<4;i++){ if(seats[i] && seats[i].socketId===id){ seatIdx=i; break; } }
+    so.emit('state', snapshotFor(room, seatIdx));
+  }
+}
+/* ---------- 提前结束本场（全真人房共识表决） ----------
+ * 规则（决策 A 修订版）：一场未结束时任何人不可被动踢；"场进行中"可经全体真人共识提前收场。
+ * 发起：任何在房真人；其余三人各一票，全部同意才生效；任一人反对或 30 秒未全票 → 作废。
+ * 生效：以已完成局累计收场；若请求时局中，本局直接废弃不计分；随后进入"本场结束"冻结态。
+ * 仅全真人房（无 AI 座位、无人掉线）可发起。 */
+const END_VOTE_MS = 30000;
+function seriesInProgress(room){ return !!(room && room.G && !room.seriesOver); }
+function clearEndVote(room){
+  if(!room || !room.endVote) return;
+  if(room.endVote.timer){ clearTimeout(room.endVote.timer); room.endVote.timer=null; }
+  room.endVote=null;
+}
+function cancelEndVote(room, why){
+  clearEndVote(room);
+  if(why) logLine(room, why);
+  broadcast(room);
+}
+function finalizeEndSeries(room){
+  if(!room || !room.endVote) return;
+  clearEndVote(room);
+  const curGame = (room.G && !room.G.ended) ? room.G : null;
+  if(curGame) logLine(room, '提前收场：本局进行中，直接废弃（不计分）');
+  logLine(room, '══════ 本场提前结束（共识）══════');
+  logLine(room, `已完成局累计：${room.series.totals.map((t,i)=>`${room.seats[i].name} ${t>0?'+':''}${t}分`).join('｜')}`);
+  room.G = null;                                        // 废弃当前局：牌桌不留残局
+  room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
+  room.ready=[false,false,false,false];
+  room.seriesOver=true;
+  clearAllOfflineKicks(room); clearIdleKick(room);
+  scheduleIdleKick(room);                               // 场结束后可闲置解散
+  broadcast(room);
 }
 /* ---------- 应变：本地房间码列表（LOVE/HOME 等常驻房不可删除、不闲置解散） ---------- */
 const PRESERVE_ROOMS = new Set(['LOVE','HOME']);
@@ -388,6 +483,7 @@ function kickIdleRoom(room){
   }
   for(const so of socks){ try{ so.emit('roomClosed'); }catch(e){} }
   rooms.delete(room.code);
+  for(const so of socks){ if(so.data){ so.data.room=null; so.data.seat=-1; } } // 清理成员绑定，防闭包盯住已删房间
   // 断开连接，避免服务端闭包仍指向已删除的房间（客户端会自动重连回大厅）
   for(const so of socks){ try{ so.disconnect(true); }catch(e){} }
 }
@@ -408,33 +504,30 @@ function clearOfflineKick(room, seatIdx){
 function scheduleOfflineKick(room, seatIdx){
   if(!room || !room.offlineTimers || !(OFFLINE_KICK_MS>0)) return;
   clearOfflineKick(room, seatIdx);
-  // 已开局：对局中掉线保留座位等重连（不踢出）
-  if(room.G) return;
+  // 一场（可能多局）未结束时不可踢人：对局中/局间掉线一律保留座位等重连；一场结束后才允许踢。
+  if(room.G && !room.seriesOver) return;
   room.offlineTimers[seatIdx]=setTimeout(()=>{
     delete room.offlineTimers[seatIdx];
     // 房间已删/同号被替换 → 忽略
     if(rooms.get(room.code)!==room) return;
-    // 已开局 → 不再踢（转为对局中掉线等待）
-    if(room.G) return;
+    // 场进行中 → 不再踢（转为等待重连）
+    if(room.G && !room.seriesOver) return;
     const s=room.seats[seatIdx];
     if(!s || s.type!=='human' || !s.offline) return; // 已重连/已离开则作罢
     // 未开局掉线超时：直接踢出（座位恢复为空位，可被新玩家加入；不当作 AI 处理）
     logLine(room, `${s.name} 未开局掉线超时，已移出房间`);
-    const wasHost = (seatIdx===0);
+    const wasHost = (seatIdx===room.hostSeat);
     room.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
-    // 房主掉线被踢：移交房主给剩余真人中座位号最小者
+    // 房主掉线被踢：hostSeat 移交给剩余真人中座位号最小者（不再物理挪座位）
     if(wasHost && room.humanCount>0){
-      for(let j=1;j<4;j++){
+      for(let j=0;j<4;j++){
         if(room.seats[j].type==='human'){
-          const moved=room.seats[j];
-          room.seats[0]=moved;
-          room.seats[j]={type:'ai', name:'空位', avatar:'', openid:''};
-          room.ready[0]=room.ready[j]; room.ready[j]=false;
-          const s2=io.sockets.sockets.get(moved.socketId);
-          if(s2){ s2.emit('promotedHost'); }
-          logLine(room, `${moved.name} 成为房主`);
+          room.hostSeat=j;
+          const s2=io.sockets.sockets.get(room.seats[j].socketId);
+          if(s2){ s2.emit('promotedHost', {hostSeat:j}); }
+          logLine(room, `${room.seats[j].name} 成为房主`);
           break;
         }
       }
@@ -463,19 +556,15 @@ function aiPlayTurn(room){
   if(seat.type!=='ai') return;         // 真人的座位等真人自己动
   room.aiTimer = setTimeout(()=>{
     if(!room.G || room.G.ended || room.G.confirming===false && room.G.turn!==seatIdx) return;
-    // 确认轮：AI 表态
+    // 确认轮：AI 表态（仅在轮到且未表态时生效；过期计时器重复触发会被引擎幂等拒绝，不再记假日志）
     if(room.G.confirming){
+      let did=false, txt='【不明独】';
       if(TS.canDeclareHard(room.G) && Math.random()<0.05 && seatIdx===room.G.landlord){
-        TS.confirmChoice(room.G, seatIdx, 'mingdu');
-        logLine(room, `${seat.name} 选择【明独】`);
-      } else if(Math.random()<0.02 && !TS.handHasBomb(room.G.seats[seatIdx].hand)){
-        // AI 极少毁牌（重发整局）：简化——此处不自动毁牌，避免洗牌混乱
-        TS.confirmChoice(room.G, seatIdx, 'pass');
-        logLine(room, `${seat.name} 选择【不明独】`);
+        did = TS.confirmChoice(room.G, seatIdx, 'mingdu'); txt='【明独】';
       } else {
-        TS.confirmChoice(room.G, seatIdx, 'pass');
-        logLine(room, `${seat.name} 选择【不明独】`);
+        did = TS.confirmChoice(room.G, seatIdx, 'pass');
       }
+      if(did) logLine(room, `${seat.name} 选择${txt}`);
       broadcast(room);
       aiPlayTurn(room);
       return;
@@ -535,8 +624,10 @@ function checkAllReady(room){
 
 function startRound(room){
   clearAllOfflineKicks(room); // 开局后掉线一律保留座位，不再踢出
+  clearEndVote(room);
   clearIdleKick(room);
   room.seriesOver=false;      // 新的一场开始：解除“本场已结束”的冻结状态
+  room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null; // 新的一场：累计/轮数归零
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   room.G.rollcages = room.G.seats.map(()=>[]);
   room.roundSeq++; room.G.seq=room.roundSeq;
@@ -550,6 +641,7 @@ function startRound(room){
 // 开下一局：按上一局一游当庄
 function startNext(room){
   clearAllOfflineKicks(room); // 开局后掉线一律保留座位，不再踢出
+  clearEndVote(room);
   clearIdleKick(room);
   const nextLandlord = (room.G && room.G.firstOut!=null) ? room.G.firstOut : null;
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
@@ -564,7 +656,9 @@ function startNext(room){
 }
 
 function finishRoom(room){
+  clearEndVote(room); // 局结束/本场自然结束：若有进行中的提前收场表决一并废弃
   const s = TS.settleRound(room.G);
+  room.lastSettle = s; // 服务端权威结算结果：随 ended 快照下发，客户端不再本地重算
   markLast(room); // 确保最后一局的标记已带上
   logLine(room, `—— 第 ${room.G.roundNo} 局结算 ——`);
   for(let i=0;i<4;i++){
@@ -581,7 +675,8 @@ function finishRoom(room){
   if(room.series.roundCount >= room.settings.rounds){
     logLine(room, `══════ 本场 ${room.settings.rounds} 局全部结束 ══════`);
     logLine(room, `  累计：${room.seats.map((se,i)=>`${se.name} ${room.series.totals[i]>0?'+':''}${room.series.totals[i]}分`).join('｜')}`);
-    room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
+    room.series.active=false; room.series.lastRound=null;
+    // 累计/轮数保留：冻结屏与计分板继续显示最终累计；新的一场开始时由 startRound 归零
     room.ready=[false,false,false,false]; // 准备重置，下场比赛重新准备
     // 本场结束不清 G：保留最后一局的牌桌，等玩家点【准备】开下一场时再换新局
     room.seriesOver=true;
@@ -599,15 +694,20 @@ function finishRoom(room){
 /* ---------- Socket.IO ---------- */
 io.on('connection', (socket)=>{
   let room=null, mySeat=-1;
+  socket.data = Object.assign({}, socket.data, { room:null, seat:-1 }); // 统一成员绑定：绑定/改名/清退都会同步此处
   // 同一浏览器携带签名 Cookie，服务端据此确认微信身份（不信任客户端传来的昵称/头像）
   const wxSession = sessionFromSocket(socket);
 
+  // 统一兜底：事件处理器抛异常不允许炸进程（记日志并提示玩家），配 data 加固防止任何入口崩溃
+  const on=(ev,fn)=>{ socket.on(ev,(...a)=>{ try{ fn(...a); } catch(e){ console.error(`[socket] ${ev} 异常：`, e&&e.stack?e.stack:e); try{ socket.emit('toast','操作失败，请重试'); }catch(_){} } }); };
+
   // 房间列表（大厅显示）
-  socket.on('listRooms', ()=>{
+  on('listRooms', ()=>{
     // 兜底：常驻房（LOVE/HOME）若缺失（异常删除/旧版本残留）则立即重建
     for(const code of PRESERVE_ROOMS) if(!rooms.has(code)) createRoom(code);
     const list=[];
     rooms.forEach(r=>{
+      const hs=r.hostSeat!=null?r.hostSeat:0; // 房主座位（hostSeat 与座位归属解耦）
       list.push({
         code:r.code,
         humans:r.humanCount,
@@ -615,17 +715,18 @@ io.on('connection', (socket)=>{
         started: !!(r.G && r.G.started && !r.seriesOver),
         hasGame: !!r.G,   // 房间已创建对局（含确认轮），供重连列表判断
         rounds:r.settings.rounds,
-        host: r.seats[0].type==='human' ? r.seats[0].name : null,
+        host: (r.seats[hs] && r.seats[hs].type==='human') ? r.seats[hs].name : null,
       });
     });
     socket.emit('rooms', list);
   });
 
-  socket.on('create', (data)=>{
+  on('create', (data)=>{
     if(room){ socket.emit('toast','你已在房间中'); return; }
     data = data||{};
-    // 自定义房间号（可选，4位字母数字）；不填则随机
-    let custom = (data.code||'').toUpperCase();
+    // 自定义房间号（可选，4 位大写字母/数字）；不填则随机
+    const custom = (data.code != null && String(data.code).trim()) ? roomCodeOf(data.code) : '';
+    if(custom===null){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
     if(custom && rooms.has(custom)){ socket.emit('toast','房间号已被占用'); return; }
     const r=createRoom(custom);
     const seatIdx=0;
@@ -636,6 +737,7 @@ io.on('connection', (socket)=>{
     // 房主可带初始设置
     if(data.settings) r.settings=Object.assign(r.settings, data.settings);
     room=r; mySeat=seatIdx;
+    socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
     // 创建后房主直接进牌桌（房间仍在列表，其他玩家可加入）
     socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
@@ -644,9 +746,10 @@ io.on('connection', (socket)=>{
   });
 
   // 房主调整牌局设置
-  socket.on('setSettings', (data)=>{
-    if(!room || mySeat!==0){ socket.emit('toast','只有房主能设置'); return; }
+  on('setSettings', (data)=>{
+    if(!room || mySeat!==room.hostSeat){ socket.emit('toast','只有房主能设置'); return; }
     if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
+    data = data||{};
     const s=room.settings;
     if(data.rounds!=null){ const n=Number(data.rounds); if(n>=1&&n<=20) s.rounds=Math.floor(n); }
     if(data.showRemain!=null) s.showRemain=!!data.showRemain;
@@ -661,7 +764,7 @@ io.on('connection', (socket)=>{
     if(data.aiAuto!=null) s.aiAuto=!!data.aiAuto;
     // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
     const wantStart = (data.start===true);
-    if(wantStart) room.ready[0]=true;
+    if(wantStart) room.ready[room.hostSeat]=true;  // 房主自己标记准备（hostSeat 与座位 0 解耦）
     broadcast(room);
     if(wantStart){
       const started=checkAllReady(room);
@@ -671,9 +774,10 @@ io.on('connection', (socket)=>{
     }
   });
 
-  socket.on('join', (data)=>{
+  on('join', (data)=>{
     if(room){ socket.emit('toast','你已在房间中'); return; }
-    const code=(data&&data.code||'').toUpperCase();
+    const code = roomCodeOf(data && data.code);
+    if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
     if(!wxSession && !String((data&&data.name)||'').trim()){ socket.emit('toast','请输入昵称'); return; }
     const ident=identityOf(data, wxSession);
     const name=ident.name;
@@ -693,6 +797,7 @@ io.on('connection', (socket)=>{
     r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
     r.humanCount++;
     room=r; mySeat=seatIdx;
+    socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
     broadcast(r);
@@ -700,11 +805,12 @@ io.on('connection', (socket)=>{
   });
 
   // 重连：房间号 + 玩家姓名 归位
-  socket.on('rejoin', (data)=>{
+  on('rejoin', (data)=>{
     data=data||{};
-    const code=(data.code||'').toUpperCase();
+    const code = roomCodeOf(data && data.code);
     const name=(data.name||'').trim();
     if(!wxSession && !name){ socket.emit('toast','请输入昵称'); return; }
+    if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
     // 若本 socket 已绑定房间：直接确认进桌（创建后点自己的房间进入）
     if(room){
       if(room.code===code){
@@ -740,15 +846,17 @@ io.on('connection', (socket)=>{
     if(ident.openid) seat.openid=ident.openid;
     clearOfflineKick(r, seatIdx); // 重连成功：取消未开局掉线踢出计时器
     room=r; mySeat=seatIdx;
+    socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name:seat.name, avatar:seat.avatar||''});
     broadcast(r);
     socket.emit('toast', `重连成功，你坐回 ${seat.name}`);
   });
 
-  // 房主（seat 0）切换 AI 补位
-  socket.on('toggleAI', ()=>{
+  // 房主切换 AI 补位
+  on('toggleAI', ()=>{
     if(!room) return;
+    if(mySeat!==room.hostSeat){ socket.emit('toast','只有房主能设置'); return; }
     if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
     room.aiFill = !room.aiFill;
     socket.emit('toast', `AI 补位已${room.aiFill?'开启':'关闭'}`);
@@ -756,7 +864,7 @@ io.on('connection', (socket)=>{
   });
 
   // 玩家准备/取消准备（对局配置由房主在弹窗调整；全员准备后自动开局）
-  socket.on('toggleReady', ()=>{
+  on('toggleReady', ()=>{
     if(!room || (room.G && !room.seriesOver)) return;
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     room.ready[mySeat]=!room.ready[mySeat];
@@ -765,7 +873,7 @@ io.on('connection', (socket)=>{
   });
 
   // 开局（房主点击"对局配置"后由设置弹窗确认，不再直接 start；保留 start 兼容）
-  socket.on('start', ()=>{
+  on('start', ()=>{
     if(!room) return;
     if(room.G && !room.seriesOver) return;
     if(!room.aiFill && room.humanCount<4){
@@ -775,7 +883,7 @@ io.on('connection', (socket)=>{
     startRound(room);
   });
 
-  socket.on('nextRound', ()=>{
+  on('nextRound', ()=>{
     if(!room || !room.G || !room.G.ended) return; // 上一局尚未结束时忽略
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     room.ready[mySeat]=true;
@@ -784,20 +892,26 @@ io.on('connection', (socket)=>{
   });
 
   // 玩家动作
-  socket.on('act', (data)=>{
+  on('act', (data)=>{
     if(!room || !room.G) return;
+    data = data||{};
     const seatIdx=Number(data.seat);
-    if(seatIdx!==mySeat){ socket.emit('toast','不是你的座位'); return; }
+    if(!Number.isInteger(seatIdx) || seatIdx!==mySeat){ socket.emit('toast','不是你的座位'); return; }
     if(room.G.confirming){
       if(data.type==='confirm'){
+        if(seatIdx!==room.G.turn){ socket.emit('toast','还没轮到你'); return; }
+        if(room.G.seats[seatIdx].choice){ socket.emit('toast','你已表态，不能重复'); return; }
         const choice=data.choice==='mingdu'?'mingdu':'pass';
-        TS.confirmChoice(room.G, seatIdx, choice);
+        if(!TS.confirmChoice(room.G, seatIdx, choice)){ socket.emit('toast','当前不能表态'); return; }
         logLine(room, `${room.seats[seatIdx].name} 选择【${choice==='mingdu'?'明独':'不明独'}】`);
       } else if(data.type==='restart'){
-        // 毁牌：无炸时才允许，整局重发
+        // 毁牌：仅当前轮次、未表态且无炸时才能发起（整局重发）
+        if(seatIdx!==room.G.turn){ socket.emit('toast','还没轮到你'); return; }
+        if(room.G.seats[seatIdx].choice){ socket.emit('toast','已表态，不能毁牌'); return; }
         if(TS.handHasBomb(room.G.seats[seatIdx].hand)){ socket.emit('toast','你有炸，不能毁牌'); return; }
         logLine(room, `${room.seats[seatIdx].name} 选择【毁牌】`);
         room.G=TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
+        clearEndVote(room); // 重发新局：进行中的提前收场表决作废
         logLine(room, `—— 重发 · 第 ${room.G.roundNo} 局 ——`);
         logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
         broadcast(room);
@@ -811,7 +925,9 @@ io.on('connection', (socket)=>{
     // 出牌阶段
     if(seatIdx!==room.G.turn){ socket.emit('toast','还没轮到你'); return; }
     if(data.type==='play'){
-      const r=TS.doPlay(room.G, seatIdx, data.cards||[]);
+      if(!Array.isArray(data.cards)){ socket.emit('toast','出牌参数非法'); return; }
+      if(data.cards.length>128){ socket.emit('toast','出牌参数非法'); return; }
+      const r=TS.doPlay(room.G, seatIdx, data.cards);
       if(!r.ok){ socket.emit('toast', r.why); return; }
       logLine(room, `${room.seats[seatIdx].name} 出 ${describe(data.cards)}`);
       // 打出第一张王且开局 ≥4 王 → 通知大家
@@ -831,39 +947,71 @@ io.on('connection', (socket)=>{
     aiPlayTurn(room);
   });
 
+  // 提前结束本场（全真人房共识）：发起
+  on('endSeries', ()=>{
+    if(!room) return;
+    if(!seriesInProgress(room)){ socket.emit('toast','当前没有进行中的本场'); return; }
+    if(room.endVote){ socket.emit('toast','已有人发起提前结束，请先表决'); return; }
+    if(mySeat<0 || room.seats[mySeat].type!=='human') return;
+    for(let i=0;i<4;i++){
+      const st=room.seats[i];
+      if(st.type!=='human' || st.offline){ socket.emit('toast','需要 4 位在线真人才能提前结束本场'); return; }
+    }
+    room.endVote={ requester:mySeat, agree:new Set([mySeat]), timer:null };
+    room.endVote.timer=setTimeout(()=>{
+      if(room && room.endVote) cancelEndVote(room, '提前结束表决超时（30 秒内未全票同意），请求作废');
+    }, END_VOTE_MS);
+    logLine(room, `${room.seats[mySeat].name} 发起【提前结束本场】，请其他玩家在 30 秒内表决`);
+    io.to(room.code).emit('endSeriesAsk', {requester:mySeat, name:room.seats[mySeat].name});
+    broadcast(room);
+  });
+
+  // 提前结束本场：其他三人表决
+  on('endSeriesVote', (data)=>{
+    if(!room || !room.endVote || mySeat<0) return;
+    if(mySeat===room.endVote.requester){ socket.emit('toast','你是发起方，等待其他人表决'); return; }
+    const st=room.seats[mySeat];
+    if(st.type!=='human' || st.offline) return;
+    if(room.endVote.agree.has(mySeat)){ socket.emit('toast','你已表决'); return; }
+    if(!(data && data.vote)){ cancelEndVote(room, `${st.name} 不同意，提前结束请求作废`); return; }
+    room.endVote.agree.add(mySeat);
+    logLine(room, `${st.name} 同意提前结束`);
+    if(room.endVote.agree.size>=4) finalizeEndSeries(room);
+    else broadcast(room);
+  });
+
   // 主动退出房间（对局中视作掉线保留座位；未开局才真正退出）
-  socket.on('leave', ()=>{
+  on('leave', ()=>{
     if(!room || mySeat<0){ return; }
     const seatIdx=mySeat;
     const r=room;
+    clearEndVote(r); // 有人退出：进行中的共识表决作废
     // 对局已创建（含确认轮）：点退出视作掉线（保留座位，等重连）
     if(r.G){
       logLine(r, `${r.seats[seatIdx].name} 退出（对局中，视作掉线等待重连）`);
       r.seats[seatIdx].offline=true;
       socket.leave(r.code);
       room=null; mySeat=-1;
+      socket.data.room=null; socket.data.seat=-1;
       broadcast(r);
       return;
     }
     logLine(r, `${r.seats[seatIdx].name} 退出房间`);
-    const wasHost = (seatIdx===0);
+    const wasHost = (seatIdx===r.hostSeat);
     r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx], avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
     r.ready[seatIdx]=false;
     socket.leave(r.code);
     room=null; mySeat=-1;
-    // 房主退出：把房主（座位0）移交给剩余真人中座位号最小者
+    socket.data.room=null; socket.data.seat=-1;
+    // 房主退出：hostSeat 移交给剩余真人中座位号最小者（不再物理挪座位）
     if(wasHost && r.humanCount>0){
-      for(let j=1;j<4;j++){
+      for(let j=0;j<4;j++){
         if(r.seats[j].type==='human'){
-          const moved=r.seats[j];
-          r.seats[0]=moved;
-          r.seats[j]={type:'ai', name:['A家','B家','C家','D家'][j], avatar:'', openid:''};
-          r.ready[0]=r.ready[j]; r.ready[j]=false;
-          // 通知新房主：其座位变 0
-          const s=io.sockets.sockets.get(moved.socketId);
-          if(s){ s.emit('promotedHost'); }
-          logLine(r, `${moved.name} 成为房主`);
+          r.hostSeat=j;
+          const s=io.sockets.sockets.get(r.seats[j].socketId);
+          if(s){ s.emit('promotedHost', {hostSeat:j}); }
+          logLine(r, `${r.seats[j].name} 成为房主`);
           break;
         }
       }
@@ -875,25 +1023,35 @@ io.on('connection', (socket)=>{
 
   // 删除房间（房主可删自己的房间）
   // 删除房间：未开局房间任意可删；已开局仅房主可删
-  socket.on('deleteRoom', (data)=>{
-    const code=(data&&data.code||'').toUpperCase();
+  on('deleteRoom', (data)=>{
+    const code = roomCodeOf(data && data.code);
+    if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
     if(isPreserve(code)){ socket.emit('toast', `${code} 是常驻房间，不能删除`); return; }
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
-    if(r.G && r.G.started){
-      // 已开局：仅房主（seat0 的真人）可删
-      if(!room || mySeat!==0 || room!==r){ socket.emit('toast','对局已开始，仅房主可删除'); return; }
-    }
+    // 决策 B：无论是否开局（含确认轮、未开局），仅房主可删
+    if(!room || room!==r || mySeat!==room.hostSeat){ socket.emit('toast','仅房主可删除'); return; }
+    // 清房：结束表决/闲置与离线计时器/aiTimer，并清理其他成员绑定（防闭包盯住已删房间、旧 aiTimer 串房）
+    clearEndVote(r); clearIdleKick(r); clearAllOfflineKicks(r);
+    if(r.aiTimer){ clearTimeout(r.aiTimer); r.aiTimer=null; }
     io.to(r.code).emit('roomClosed');
-    clearIdleKick(r);
     rooms.delete(code);
-    socket.leave(code);
-    if(room===r){ room=null; mySeat=-1; }
+    const memberIds=io.sockets.adapter.rooms.get(r.code)||[];
+    for(const id of memberIds){
+      const so=io.sockets.sockets.get(id);
+      if(so){ so.data.room=null; so.data.seat=-1; }
+    }
+    for(const id of memberIds){
+      const so=io.sockets.sockets.get(id);
+      if(so){ try{ so.disconnect(true); }catch(e){} }
+    }
+    socket.data.room=null; socket.data.seat=-1;
   });
 
   // 断线
-  socket.on('disconnect', ()=>{
+  on('disconnect', ()=>{
     if(!room || mySeat<0) return;
+    clearEndVote(room); // 有人在表决中掉线：共识作废
     room.seats[mySeat].offline=true;
     logLine(room, `${room.seats[mySeat].name} 掉线，等待重连`);
     broadcast(room);

@@ -173,6 +173,7 @@
             <button id="btnHe" class="btn danger">毁牌（重发）</button>
             <button id="btnSettle" class="btn" style="display:none">计分板</button>
             <button id="btnNext" class="btn gold" style="display:none">下一局</button>
+            <button id="btnEndSeries" class="btn" style="display:none">提前结束本场</button>
           </div>
           <!-- 手牌行：信息框（左）、手牌（中）、排序按钮（右）；左右两列等宽以保证手牌居中 -->
           <div class="handRow">
@@ -226,6 +227,18 @@
           <div class="mBtn">
             <button id="btnSetGo" class="btn gold">开始对局</button>
             <button id="btnSetBack" class="btn">返回</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 提前结束本场：共识表决弹窗（其余三家接票；发起方不弹） -->
+      <div id="endAskModal" class="overlay" hidden>
+        <div class="modalBox">
+          <h2>提前结束本场？</h2>
+          <p id="endAskText" style="color:#a8c8b8;line-height:1.6">有人发起提前结束本场</p>
+          <div class="mBtn">
+            <button id="btnEndAgree" class="btn gold">同意</button>
+            <button id="btnEndReject" class="btn">拒绝</button>
           </div>
         </div>
       </div>

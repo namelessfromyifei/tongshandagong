@@ -13,6 +13,7 @@ let roomCache=[]; // 最近一次服务器房间列表（加入/重连弹窗复�
 let me=null;      // 微信授权身份 {nickname, avatar}
 let wxConfig={enabled:false, mock:false, wechat:false};
 let authReady=false;
+let endAskRequester=-1; // 当前提前收场表决的发起方座位（-1=无）
 
 const $=id=>document.getElementById(id);
 
@@ -48,6 +49,10 @@ function toast(msg){
   if(el) el.textContent=msg;
   setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
 }
+// HTML 转义：任何来自服务器/用户的名字、房间号在拼 innerHTML 前必须过这里（服务端已加 4 位白名单，双保险）
+function esc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 /* ---------- 连接 ---------- */
 function connect(){
@@ -74,21 +79,28 @@ function connect(){
     // 记住房间+姓名，刷新后自动重连
     try{ localStorage.setItem('tsRoom', JSON.stringify({code:d.code, name:d.name})); }catch(e){}
     $('roomCode').textContent = '房间号：'+d.code;
-    $('mySeatInfo').textContent = `你是 ${d.name}（${d.seat===0?'房主':'第 '+d.seat+' 位玩家'}）`;
+    $('mySeatInfo').textContent = `你是 ${d.name}（座位 ${d.seat}）`; // 房主标识随后按 hostSeat 精确更新
     enterTable();
   });
 
   socket.on('state', (snap)=>{
     inGame = !!(snap.G);  // 有 G（对局已创建）视为对局中
+    // 提前收场表决已结束/作废 → 收起弹窗
+    if(endAskRequester!==-1 && !snap.endVote){
+      const m=$('endAskModal'); if(m) m.hidden=true; endAskRequester=-1;
+    }
     applySettings(snap.settings);
     // AI 补位复选框：用 snap.aiFill（顶层字段）同步，避免 settings 覆盖
     if(snap.aiFill!=null && $('setAIFill')) $('setAIFill').checked=!!snap.aiFill;
     // 准备状态同步
     const readyArr = snap.ready || [];
     UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr, snap.seats.map(s=>s.avatar||''));
-    // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置
-    const canConfig = mySeat===0 && (!snap.G || snap.G.ended);
-    if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
+    // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置（hostSeat 与座位解耦）
+    if(snap.hostSeat!=null){
+      if($('mySeatInfo')) $('mySeatInfo').textContent = `你是 ${myName}（${mySeat===snap.hostSeat?'房主':'第 '+mySeat+' 位玩家'}）`;
+      const canConfig = mySeat===snap.hostSeat && (!snap.G || snap.G.ended);
+      if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
+    }
     // 准备按钮：对局进行中（含确认轮、出牌轮）隐藏；未开始或一局结束才显示
     if($('btnReady')){
       const isReady = !!readyArr[mySeat];
@@ -106,16 +118,28 @@ function connect(){
 
   socket.on('log', (line)=>{ UI.addLog(line); });
 
-  // 被提升为房主（原房主退出）
+  // 被提升为房主（原房主退出）：hostSeat 与座位解耦，座位不变，仅提示
   socket.on('promotedHost', ()=>{
-    mySeat=0;
-    if($('mySeatInfo')) $('mySeatInfo').textContent=`你是 ${myName}（房主）`;
     toast('你已成为房主');
+    if($('mySeatInfo')) $('mySeatInfo').textContent=`你是 ${myName}（房主）`;
   });
 
   socket.on('roomClosed', ()=>{ roomClosed(); });
 
   socket.on('toast', (m)=>{ toast(m); });
+
+  // 提前结束本场：收到他人表决请求 → 弹窗（发起方不弹）
+  socket.on('endSeriesAsk', (d)=>{
+    endAskRequester = (d && Number.isInteger(d.requester)) ? d.requester : -1;
+    if(endAskRequester===mySeat) return;
+    const m=$('endAskModal'); if(!m) return;
+    const txt=$('endAskText');
+    if(txt){
+      const who=(d && d.name) || '有玩家';
+      txt.textContent=`${who} 发起【提前结束本场】。需要其他三家在 30 秒内全部同意才生效；若本局进行中会直接废弃。`;
+    }
+    m.hidden=false;
+  });
 
   socket.on('disconnect', ()=>{ toast('与服务器断开，尝试重连…'); });
 }
@@ -254,7 +278,7 @@ function renderRoomList(list){
     const item=document.createElement('div');
     item.className='roomItem'+(canJoin||isMineHost?'':' roomFull');
     const status = r.started?'对局中':`${r.humans}/4人`;
-    item.innerHTML = `<span class="roomCodeLbl">${r.code}</span> · ${status}`;
+    item.innerHTML = `<span class="roomCodeLbl">${esc(r.code)}</span> · ${status}`;
     // 进入：未开局缺人 → join；自己的房间 → rejoin 归位
     if(canJoin || isMineHost){
       item.title='点击进入';
@@ -269,8 +293,8 @@ function renderRoomList(list){
     } else {
       item.title = r.started?'对局已开始':'房间已满';
     }
-    // 删除按钮：未开局房间任意玩家可删（常驻房 LOVE/HOME 除外，不显示删除按钮）
-    if(!r.started && r.code!=='LOVE' && r.code!=='HOME'){
+    // 删除按钮：仅房主可删（决策 B，无关是否开局）；常驻房不显示
+    if(r.host===myName && r.code!=='LOVE' && r.code!=='HOME'){
       const del=document.createElement('button');
       del.className='btn small roomDel';
       del.textContent='删除';
@@ -293,7 +317,7 @@ function renderJoinPick(){
   list.forEach(r=>{
     const d=document.createElement('div');
     d.className='roomPick';
-    d.innerHTML=`<b>${r.code}</b> <span class="rpStatus">${r.humans}/4人</span>`;
+    d.innerHTML=`<b>${esc(r.code)}</b> <span class="rpStatus">${r.humans}/4人</span>`;
     d.onclick=()=>{
       const n=requireName(); if(!n) return;
       myName=n; connect();
@@ -311,7 +335,7 @@ function renderRejoinPick(){
   list.forEach(r=>{
     const d=document.createElement('div');
     d.className='roomPick';
-    d.innerHTML=`<b>${r.code}</b> <span class="rpStatus">对局中</span>`;
+    d.innerHTML=`<b>${esc(r.code)}</b> <span class="rpStatus">对局中</span>`;
     d.onclick=()=>{
       const n=requireName(); if(!n) return;
       myName=n; connect();
@@ -339,6 +363,7 @@ function bindLobby(){
     const n=requireName(); if(!n) return;
     myName=n;
     const code=($('createCode').value||'').trim().toUpperCase();
+    if(code && !/^[A-Z0-9]{4}$/.test(code)){ toast('房间号需为 4 位字母或数字'); return; }
     const m=$('createModal'); if(m) m.hidden=true;
     connect();
     socket.emit('create', {name:n, code: code||undefined, settings: collectSettings()});
@@ -356,6 +381,7 @@ function bindLobby(){
   $('btnJoinGo').onclick=()=>{
     const code=($('joinInput').value||'').trim().toUpperCase();
     if(!code){ toast('请输入房间号'); return; }
+    if(!/^[A-Z0-9]{4}$/.test(code)){ toast('房间号需为 4 位字母或数字'); return; }
     connect();
     socket.emit('join', {code, name:myName});
   };
@@ -375,6 +401,7 @@ function bindLobby(){
     myName=n;
     const code=($('rejoinCode').value||'').trim().toUpperCase();
     if(!code){ toast('请输入房间号'); return; }
+    if(!/^[A-Z0-9]{4}$/.test(code)){ toast('房间号需为 4 位字母或数字'); return; }
     connect();
     socket.emit('rejoin', {code, name:myName});
   };
@@ -396,6 +423,10 @@ function bindLobby(){
   };
   $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };
+  // 提前结束本场（全真人房共识）
+  const es=$('btnEndSeries'); if(es) es.onclick=()=>{ if(socket) socket.emit('endSeries'); };
+  const ea=$('btnEndAgree'); if(ea) ea.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:true}); };
+  const er=$('btnEndReject'); if(er) er.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:false}); };
   // 刷新按钮（牌桌内）：等同浏览器刷新页面（重新加载游戏）
   const rf=$('btnRefresh'); if(rf) rf.onclick=()=>{ location.reload(); };
   // 刷新列表按钮（大厅右上角）：重新拉取房间列表（非整页刷新）
