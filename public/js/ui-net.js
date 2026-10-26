@@ -52,6 +52,8 @@ let pendingPlay=false;      // 本次"出牌"是否已发送（成功后清空�
 let hintDblIdx=-1, hintDblAt=0; // 双击单牌快捷出牌的最近点击记录
 // 拖动选牌：按下记录、移动判定、抬起后抑制随后的 click（避免拖动再切换）
 let downInfo=null, clickSuppress=false;
+let lastHandSig='';    // #26 手牌差量：视图签名未变则跳过重建（省去反复拼 28 张牌）
+let renderCornerKey=''; // #26 信息框缓存：设置内容未变不重建
 function snapSeatOffline(i){ return !!seatOffline[i]; }
 
 /* ---------- 排序（与单机版一致） ---------- */
@@ -1040,14 +1042,19 @@ function renderCorner(){
   // 同步给牌桌：信息框隐藏时，标题/房间号/我是谁 靠左，不占用信息框的位置
   const table=c.closest ? c.closest('.table') : document.querySelector('.table');
   if(table) table.classList.toggle('cornerOn', show);
-  c.innerHTML='';
-  const mkChip=(label,val)=>`<div class="cornerRow"><span style="color:#a8c8b8">${label}</span><b>${val||'—'}</b></div>`;
-  c.innerHTML += mkChip('局数', `${settings.rounds||1} 局`);
-  c.innerHTML += mkChip('王总数', `${settings.kings||8} 个`);
-  c.innerHTML += mkChip('王单出', settings.jokerValue===2 ? '算 2' : '算 3');
-  c.innerHTML += mkChip('半边', `${settings.halfFan||1} 分`);
-  c.innerHTML += mkChip('笼数封顶', settings.fanCap ? `${settings.fanCap} 笼` : '不封顶');
-  c.innerHTML += mkChip('未跑奖', settings.tailBonus ? '可拿王奖' : '不拿');
+  // #26 仅当设置内容变化时才重建 DOM（避免每次广播都刷信息框）
+  const sk=JSON.stringify(settings);
+  if(renderCornerKey!==sk){
+    renderCornerKey=sk;
+    c.innerHTML='';
+    const mkChip=(label,val)=>`<div class="cornerRow"><span style="color:#a8c8b8">${label}</span><b>${val||'—'}</b></div>`;
+    c.innerHTML += mkChip('局数', `${settings.rounds||1} 局`);
+    c.innerHTML += mkChip('王总数', `${settings.kings||8} 个`);
+    c.innerHTML += mkChip('王单出', settings.jokerValue===2 ? '算 2' : '算 3');
+    c.innerHTML += mkChip('半边', `${settings.halfFan||1} 分`);
+    c.innerHTML += mkChip('笼数封顶', settings.fanCap ? `${settings.fanCap} 笼` : '不封顶');
+    c.innerHTML += mkChip('未跑奖', settings.tailBonus ? '可拿王奖' : '不拿');
+  }
 }
 function cardHTML(c,cls){
   if(c.j) return `<div class="card jk ${cls||''}"><span class="tl">王</span><span class="br">王</span><span class="ctr">王</span></div>`;
@@ -1061,9 +1068,32 @@ function cardHTML(c,cls){
     `<span class="br"><span class="rk${ten}">${rn}</span><br>${ch}</span>`+
     `<span class="ctr">${ch}</span></div>`;
 }
+// #26 手牌视图签名：视图依赖数据没变就跳过重建（含出局观战队友牌）
+function handViewSig(){
+  const s=G.seats[mySeat];
+  if(s.out){
+    let mate=-1;
+    if(!G.ended && G.mode!=='hard'){
+      const m=(G._mate!=null)?G._mate:-1;
+      if(m>=0 && !G.seats[m].out) mate=m;
+    }
+    return ['o', G.ended?'e':'-', mate,
+            mate>=0?seatNames[mate]:'',
+            (mate>=0&&G.revealed)?'r':'',
+            mate>=0?G.seats[mate].hand.map(c=>c.id).join(','):''].join('|');
+  }
+  return ['i', sortMode, G.ended?'e':'i',
+          [...selected].sort((a,b)=>a-b).join(','),
+          s.hand.map(c=>c.id).join(',')].join('|');
+}
 function renderHand(){
-  const handEl=$('hand'); handEl.innerHTML='';
-  if(!G||mySeat<0){ return; }
+  const handEl=$('hand');
+  if(!G||mySeat<0){ if(handEl) handEl.innerHTML=''; return; }
+  // #26 差量：手牌视图没变时直接复用现有 DOM（对手出牌等帧免去重拼 28 张牌）
+  const sig=handViewSig();
+  if(sig===lastHandSig && handEl && handEl.childNodes.length>0){ return; }
+  lastHandSig=sig;
+  handEl.innerHTML='';
   const s=G.seats[mySeat];
   if(s.out){
     if(G.ended) return; // 本局已结束：桌面不再显示“已出局”
@@ -1444,7 +1474,18 @@ function positionPlayBtns(){
 /* ---------- 手牌行布局同步 ----------
  * 1) 窄屏或手牌+工具列放不下 → 紧凑模式（手牌横向滚动）
  * 2) 信息框、出牌按钮组随牌面位置/大小重新定位 */
+let __layoutRaf=0;
 function syncHandLayout(){
+  // #26 布局节流：同一帧内多次调用合并为一次（render/applyState/resize 常赶在同帧）；
+  // 无 requestAnimationFrame 环境退回直接执行（行为同旧版）。
+  if(typeof requestAnimationFrame==='function'){
+    if(__layoutRaf) return;
+    __layoutRaf=requestAnimationFrame(()=>{ __layoutRaf=0; syncHandLayoutCore(); });
+    return;
+  }
+  syncHandLayoutCore();
+}
+function syncHandLayoutCore(){
   const row=document.querySelector('.handRow');
   if(!row) return;
   layoutActionButtons();
