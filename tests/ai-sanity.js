@@ -73,5 +73,14 @@ const pickAI=(hand, leadPlay)=>{
   T('对手即将跑完时用炸拦截', !!ch && TS.isBomb(ch.play), {play:ch&&ch.play});
 }
 
+/* 6) 明独局：三个对手不能把明独者当队友 —— 明独者领出单3，AI 手有 A 要压 */
+{
+  const hand=[mk('A'),mk('3'),mk('4'),mk('5'),mk('6'),mk('7'),mk('8'),mk('9')];
+  const G=pickAI(hand, {type:'single',val:TS.RANK_OF['3']});
+  G.mode='hard'; G.hardSeat=0; G.lastSeat=0; // 明独者在 0 号领出单 3
+  const ch=TSAI.aiChoose(G,2);
+  T('明独局：AI 压明独者的单3（不再当他队友而"过"）', !!ch && ch.cards.length===1, {ch:ch&&ch.play});
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);

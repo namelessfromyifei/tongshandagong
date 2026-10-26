@@ -340,7 +340,8 @@ function handHasBomb(hand){
   }
 
   function teamOf(G,seatIdx){
-    if(G.mode==='hard') return [G.hardSeat];
+    // 明独：明独者一人成队；其余三家为另一队（别再让三个对手把明独者当队友）
+    if(G.mode==='hard') return seatIdx===G.hardSeat ? [G.hardSeat] : [0,1,2,3].filter(i=>i!==G.hardSeat);
     if(seatIdx===G.landlord||seatIdx===G.partner) return [G.landlord,G.partner];
     return [0,1,2,3].filter(i=>i!==G.landlord&&i!==G.partner);
   }

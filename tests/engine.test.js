@@ -502,5 +502,16 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('确认轮结束后不能再表态', TS.confirmChoice(G, G.landlord, 'pass')===false);
 }
 
+/* ===== 明独（硬牌）队伍归属（teamOf） ===== */
+{
+  const G=newGame(31); G.mode='hard'; G.hardSeat=1;
+  T('明独：明独者一人成队', (()=>{ const t=TS.teamOf(G,G.hardSeat); return t.length===1 && t[0]===G.hardSeat; })());
+  for(const i of [0,2,3]){
+    const t=TS.teamOf(G,i);
+    const exp=[0,1,2,3].filter(k=>k!==G.hardSeat);
+    T('明独：非明独者与其余三家成队(i='+i+')', t.length===3 && exp.every(k=>t.includes(k)));
+  }
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);
