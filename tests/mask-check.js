@@ -208,11 +208,26 @@ function connect(port){
       if(snap.settle){
         T('结算字段类型正确', typeof snap.settle.perFen[0] === 'number' && Array.isArray(snap.settle.winnerSeats));
       }
-      if(snap.settle){
-        T('结算字段类型正确', typeof snap.settle.perFen[0] === 'number' && Array.isArray(snap.settle.winnerSeats));
-      }
       T('局末摊牌：未跑完的家剩余手牌被公开', G.seats.some(s => s.hand && s.hand.length > 0));
       T('局末系列累计完整下发', !!(snap.series && Array.isArray(snap.series.totals) && snap.series.totals.length===4 && snap.series.totals.every(n=>typeof n==='number')));
+      // #10 幂等：局末补发陈旧 act 不得二次结算
+      {
+        const tt = snap.series.totals.slice(), rc = snap.series.roundCount;
+        const victim = clients.find(cl => cl.seat===G.turn);
+        if(victim){
+          victim.c.emit('act', {seat:G.turn, type:'pass'});
+          victim.c.emit('act', {seat:G.turn, type:'play', cards:[]});
+        }
+        await wait(300);
+        // mask-check 的客户端字段名为 cl.snap（wire 内同时写 cl.G / cl.snap）
+        const stale = clients.filter(cl => !(cl.snap && cl.snap.series) || cl.snap.series.roundCount!==rc || !cl.snap.series.totals.every((n,i)=>n===tt[i]));
+        T('局末补发陈旧 act 不重复结算', stale.length===0, stale.map(cl=>({
+          seat:cl.seat, rc:cl.snap&&cl.snap.series&&cl.snap.series.roundCount,
+          tt:cl.snap&&cl.snap.series&&cl.snap.series.totals,
+          Gend: cl.snap && cl.snap.G && cl.snap.G.ended,
+          keys: cl.snap ? Object.keys(cl.snap).join(',') : 'null',
+        })));
+      }
     }
 
     // 换一个房间码再看一眼：创建端与加入端拿到的房间码一致（顺带回归）

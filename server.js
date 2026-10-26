@@ -656,6 +656,8 @@ function startNext(room){
 }
 
 function finishRoom(room){
+  if(!room.G || room.G._settled) return; // 幂等：同一局只结算一次（防重复 act/过期 AI 计时器二次累计）
+  room.G._settled = true;
   clearEndVote(room); // 局结束/本场自然结束：若有进行中的提前收场表决一并废弃
   const s = TS.settleRound(room.G);
   room.lastSettle = s; // 服务端权威结算结果：随 ended 快照下发，客户端不再本地重算
@@ -897,6 +899,8 @@ io.on('connection', (socket)=>{
     data = data||{};
     const seatIdx=Number(data.seat);
     if(!Number.isInteger(seatIdx) || seatIdx!==mySeat){ socket.emit('toast','不是你的座位'); return; }
+    if(room.G.ended) return; // 已结束：重复/迟到的 act 一律忽略（防二次结算）
+    if(room.G.ended) return; // 已结束：重复/迟到的 act 一律忽略（防二次结算/二次广播）
     if(room.G.confirming){
       if(data.type==='confirm'){
         if(seatIdx!==room.G.turn){ socket.emit('toast','还没轮到你'); return; }
