@@ -1232,7 +1232,7 @@ function finishLocal(settle){
         `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
     }
     // 说明 + 轮累计
-    const noteTxt = `牌面笼数 + 滚笼 + 奖金 = 本局分`;
+    const noteTxt = `牌面笼数 + 滚笼 + 奖金 = 番数；番数 × 2 × 半番 = 本局分（半番默认1 → ×2）`;
     if(series && series.active && settings.rounds>1){
       tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${esc(seatNames[i])} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
     } else {
