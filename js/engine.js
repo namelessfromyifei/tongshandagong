@@ -44,6 +44,8 @@
 
   /* ---------- 牌型识别 ---------- */
   function analyzePlay(cards, cfg){
+    if(!Array.isArray(cards)) return null;
+    for(const c of cards){ if(!c || typeof c!=='object') return null; } // 防 null/原始值混入
     const n=cards.length;
     if(n===0) return null;
     cfg = cfg||{};
@@ -304,6 +306,8 @@ function handHasBomb(hand){
   // 若有人选明独 → 确认轮立即结束，明独者 1 打 3 先出牌，另三家自动成队
   function confirmChoice(G, seatIdx, choice){
     if(!G.confirming) return false;
+    if(seatIdx!==G.turn) return false;                    // 未轮到该家表态
+    if(G.seats[seatIdx] && G.seats[seatIdx].choice) return false; // 已表态过 → 幂等拒绝（防重复/乱序）
     G.confirms.push(seatIdx);
     G.seats[seatIdx].choice = choice;
     if(choice==='mingdu' && G.mingduSeat===-1) G.mingduSeat=seatIdx;
@@ -322,7 +326,7 @@ function handHasBomb(hand){
       return true; // 确认轮结束
     }
     G.turn=nextActive(G,seatIdx);
-    return false;
+    return true; // 表态已被接受（确认轮是否结束请看 G.confirming）
   }
   // 兼容：不语（普通参加）
   function confirmAdvance(G, seatIdx){ return confirmChoice(G, seatIdx, 'pass'); }
@@ -342,19 +346,37 @@ function handHasBomb(hand){
   }
   function activeSeats(G){ const r=[]; for(let i=0;i<4;i++) if(!G.seats[i].out) r.push(i); return r; }
 
+  // 按 id 规范化出牌：只认手牌里的真实对象。
+  // 伪造字段({id:…,r:…}改值)、重复 id、缺 id、不在手牌、混入 null → 一律拒绝，
+  // 杜绝用客户端传来的牌对象做牌型分析/扣牌（同 id 反复复制可凑炸、改 r 可改点数）。
+  function canonicalizeIds(hand, cards){
+    const byId=new Map(); for(const c of hand) byId.set(c.id,c);
+    const seen=new Set(), out=[];
+    for(const c of cards){
+      const id=(c && Number(c.id));
+      if(!Number.isFinite(id)) return null;
+      if(seen.has(id)) return null;     // 同一张牌出现两次 → 拒绝
+      const real=byId.get(id);
+      if(!real) return null;            // 不在手牌 → 拒绝
+      seen.add(id); out.push(real);
+    }
+    return out;
+  }
+
   function doPlay(G, seatIdx, cards){
     if(G.ended) return {ok:false,why:'游戏已结束'};
     if(G.confirming) return {ok:false,why:'确认轮中，先表态'};
     if(seatIdx!==G.turn) return {ok:false,why:'还没轮到你'};
+    if(!Array.isArray(cards)) return {ok:false,why:'出牌参数非法'};
+    const S=G.seats[seatIdx];
+    const canon=canonicalizeIds(S.hand, cards);
+    if(!canon) return {ok:false,why:'你没有这些牌'};
+    cards=canon;                        // 后续分析/扣牌一律用手牌里的真实对象
     const p=analyzePlay(cards, G.cfg);
     if(!p) return {ok:false,why:'不能这样出牌'};
     const isLead = !G.lastPlay; // 新一轮第一手（刚获得出牌权）
     if(G.lastPlay && !canBeat(G.lastPlay,p)) return {ok:false,why:'压不过'};
     if(isLead && !legalLead(G,p)) return {ok:false,why:'无笼炸不能领出'};
-    // 领手里必须真的有这些牌
-    const S=G.seats[seatIdx];
-    const have=new Map(); for(const c of S.hand) have.set(c.id,c);
-    for(const c of cards) if(!have.has(c.id)) return {ok:false,why:'你没有这些牌'};
     // 获得新出牌权并打出第一手时，才清掉桌面上家出的旧牌（新一轮未出新牌前保留显示）
     if(isLead){ for(const s of G.seats){ s.lastCards=[]; s.passed=false; s.choice=null; } }
     const ids=new Set(cards.map(c=>c.id));

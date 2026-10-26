@@ -453,5 +453,54 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('硬牌：都没跑未结束', TS.modeEnded(G)===false);
 }
 
+/* ===== 出牌规范化 / 去重（防牌对象伪造） ===== */
+{
+  const G=newGame(7); passConfirm(G);
+  const seat=G.turn, S=G.seats[seat];
+  const one=S.hand[0];
+  T('去重：同一张 id 出两次被拒', doPlay(G,seat,[one,one]).ok===false);
+  const forged=Object.assign({},one,{r:12,s:3}); // 伪造字段：把真实牌改成“2”
+  const rf=doPlay(G,seat,[forged]);
+  T('伪造字段：按手里真实牌判定(不受 r 修改影响)', rf.ok===true && G.seats[seat].lastCards[0]===one);
+  T('规范化：不在手牌的 id 被拒', doPlay(G,seat,[{id:999999,r:12,s:0,j:false}]).ok===false);
+  T('规范化：缺 id 的牌被拒', doPlay(G,seat,[{r:12,s:0,j:false}]).ok===false);
+  T('规范化：非数组被拒', doPlay(G,seat,'x').ok===false);
+  T('规范化：空数组不能出', doPlay(G,seat,[]).ok===false);
+}
+{
+  T('规范化：混入 null 被拒', (()=>{
+    const G2=newGame(9); passConfirm(G2);
+    const s2=G2.turn;
+    return doPlay(G2,s2,[G2.seats[s2].hand[0],null]).ok===false;
+  })());
+  T('analyzePlay：非数组→null', analyzePlay(null)===null);
+  T('analyzePlay：混入 null→null', analyzePlay([mk('3','S'),null])===null);
+}
+
+/* ===== 确认轮：回合与幂等（防乱序/重复表态） ===== */
+{
+  {
+    const G=newGame(3);
+    const first=G.turn, other=(first+1)%4;
+    T('确认轮：未轮到的人表态被拒', TS.confirmChoice(G, other, 'pass')===false);
+    T('确认轮：被拒后 confirms 不变', G.confirms.length===0);
+  }
+  {
+    const G=newGame(4);
+    const s=G.turn;
+    TS.confirmChoice(G, s, 'pass');
+    T('确认轮：同一人重复表态被拒', TS.confirmChoice(G, s, 'pass')===false && G.confirms.length===1);
+  }
+  {
+    const G=newGame(22);
+    const s=G.turn;
+    T('确认轮：轮到的人可表态', TS.confirmChoice(G, s, 'pass')===true);
+  }
+}
+{
+  const G=newGame(23); passConfirm(G);
+  T('确认轮结束后不能再表态', TS.confirmChoice(G, G.landlord, 'pass')===false);
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);
