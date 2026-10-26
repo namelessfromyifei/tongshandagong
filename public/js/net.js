@@ -46,10 +46,23 @@ function enterTable(){
 }
 
 function toast(msg){
+  const app=document.getElementById('app');
+  const inTable = !!(app && app.classList.contains('inTable'));
+  if(inTable){ showTableToast(String(msg)); return; } // 牌桌内：浮动 toast
   const el=$('status');
   if(el) el.textContent=msg;
   setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
 }
+// 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见
+function showTableToast(msg){
+  const t=document.getElementById('tableToast');
+  if(!t) return;
+  t.textContent=String(msg);
+  t.classList.add('show');
+  if(t._tt){ clearTimeout(t._tt); t._tt=null; }
+  t._tt=setTimeout(()=>{ t.classList.remove('show'); }, 3200);
+}
+window.showTableToast = showTableToast;
 // HTML 转义：任何来自服务器/用户的名字、房间号在拼 innerHTML 前必须过这里（服务端已加 4 位白名单，双保险）
 function esc(s){
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');

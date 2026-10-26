@@ -231,6 +231,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .readyDot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto;}
 .readyDot.on{background:#1d9c5c;box-shadow:0 0 6px rgba(29,156,92,.8);}
 .readyDot.off{background:#c0392b;box-shadow:0 0 6px rgba(192,57,43,.8);}
+/* 牌桌内浮动提示：进桌后第三方提示（还没轮到你/请先选牌 等）都显示在这里 */
+#tableToast{display:none;position:fixed;top:12%;left:50%;transform:translateX(-50%);z-index:60;max-width:min(84vw,560px);box-sizing:border-box;background:rgba(8,18,15,.88);color:#eaf6ef;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:8px 16px;font-size:14px;text-align:center;pointer-events:none;white-space:normal;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,.35);}
+#tableToast.show{display:block;}
 /* 局间 / 本场结束后：各家准备徽标（挂在座位元素上，不占用出牌区、不覆盖局末摊牌） */
 .readyPill{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:bold;color:#e5f0e9;white-space:nowrap;margin:2px 4px;}
 .readyPill .readyDot{width:7px;height:7px;}

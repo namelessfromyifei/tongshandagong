@@ -1255,7 +1255,11 @@ function finishLocal(settle){
 
 /* ---------- 日志 ---------- */
 function log(msg){ const el=$('log'); const d=document.createElement('div'); d.textContent=msg; el.appendChild(d); el.scrollTop=el.scrollHeight; }
-function flashMsg(m){ $('msg').textContent=m; }
+function flashMsg(m){
+  // 牌桌内提示先投给浮动 toast（#msg 被 CSS 隐藏、桌上看不见）；无 toast 时退回 #msg
+  if(window.showTableToast){ window.showTableToast(m); return; }
+  $('msg').textContent=m;
+}
 function addLog(msg){ log(msg); }
 
 /* ---------- 网络回调用（net.js 调用） ---------- */
