@@ -13,6 +13,7 @@
     "test:engine": "node tests/engine.test.js && node tests/ai-sanity.js && node tests/check-sync.js"
   },
   "dependencies": {
+    "compression": "^1.8.2",
     "express": "^4.21.2",
     "socket.io": "^4.8.1"
   },

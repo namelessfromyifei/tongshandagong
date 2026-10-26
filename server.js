@@ -10,6 +10,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
+const compression = require('compression');
 const { Server } = require('socket.io');
 const TS = require('./js/engine.js');
 const TSAI = require('./js/ai.js');
@@ -43,18 +44,41 @@ if (WX_ENABLED && !WX_MOCK && !WX_OAUTH_BASE) {
   console.warn('[wx] 未设置 WX_OAUTH_BASE，将按请求 Host 推导回调地址；请确认与公众号「网页授权域名」一致');
 }
 
+/* ---------- CORS / 来源白名单 ----------
+ * ALLOWED_ORIGINS（逗号分隔）配置后启用白名单模式；未配置保持 *（向后兼容）。
+ * 白名单模式：浏览器跨域只放行列出的来源；无 Origin 头的非浏览器
+ * （Native App / Node 测试客户端）始终放行（浏览器跨站请求必然携带 Origin）。
+ * 本地开发与 Capacitor App（webview origin=https://localhost）默认放行。 */
+const ALLOWED_ORIGINS = new Set((process.env.ALLOWED_ORIGINS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean));
+const CORS_RESTRICTED = ALLOWED_ORIGINS.size>0;
+const CORS_LOCAL = new Set(['https://localhost','http://localhost','http://localhost:80','http://localhost:8080','capacitor://localhost']);
+function originAllowed(origin){
+  if(!origin) return true;          // 无 Origin 头：非浏览器客户端
+  if(!CORS_RESTRICTED) return true; // 未启用白名单：保持开放
+  const o=String(origin).toLowerCase();
+  return CORS_LOCAL.has(o) || ALLOWED_ORIGINS.has(o);
+}
+if(CORS_RESTRICTED) console.log('[cors] 启用来源白名单：' + [...ALLOWED_ORIGINS].join(', '));
+else console.warn('[cors] 未设置 ALLOWED_ORIGINS，CORS 保持开放（生产可配置收紧）');
+
 const app = express();
 app.set('trust proxy', 1); // 反向代理（Nginx）下正确识别 https
+app.use(compression());    // gzip 静态/JSON（Socket.IO 报文自身已压缩）
 const server = http.createServer(app);
 // 缩短心跳，断线更快被发现（默认 ping 约 25s）
-const io = new Server(server, { pingInterval: 5000, pingTimeout: 5000, cors: { origin: '*' } });
+const io = new Server(server, {
+  pingInterval: 5000, pingTimeout: 5000,
+  cors: { origin: (origin, cb) => cb(null, originAllowed(origin)), credentials: false },
+});
 
 /* ---------- CORS：Android App 从 https://localhost 读取 API ----------
  * App 的页面在本地资源包里，origin 是 https://localhost，与本站不同源。
- * App 不使用 Cookie（身份走手动昵称），所以允许 * 且不带凭据即可。
- * 浏览器端同源访问，不受影响。 */
+ * App 不使用 Cookie（身份走手动昵称），允许不带凭据的跨域即可。
+ * 来源白名单见上方 CORS 配置（未设 ALLOWED_ORIGINS 时仍开放）。 */
 app.use('/api', (req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  if(!originAllowed(origin)){ res.status(403).send('跨域来源不被允许'); return; }
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Max-Age', '86400');
@@ -693,6 +717,32 @@ function finishRoom(room){
   // 不自动开下一局，等所有玩家就绪
 }
 
+/* ---------- 动作限流：每 socket 每类动作滑窗计数，防脚本刷请求 ---------- */
+const RATE_LIMITS = {
+  create:       [60000, 20],
+  join:         [10000, 10],
+  rejoin:       [10000, 10],
+  deleteRoom:   [60000, 20],
+  act:          [1000, 100],  // 防暴雨洪但留足真实峰值空间（AI 快速联机合法可超 25/s）
+  setSettings:  [10000, 20],
+  endSeries:    [10000, 3],
+  endSeriesVote:[10000, 10],
+  toggleAI:     [5000, 4],
+  toggleReady:  [3000, 4],
+  nextRound:    [3000, 4],
+  listRooms:    [5000, 8],
+};
+function permit(socket, key){
+  const cfg=RATE_LIMITS[key]||[60000, 120];
+  const win=cfg[0], max=cfg[1], t=Date.now();
+  socket.data.rates = socket.data.rates || {};
+  const arr = socket.data.rates[key] = socket.data.rates[key] || [];
+  while(arr.length && arr[0] <= t - win) arr.shift();
+  if(arr.length >= max){ try{ socket.emit('toast','操作太频繁，请稍后再试'); }catch(e){} return false; }
+  arr.push(t);
+  return true;
+}
+
 /* ---------- Socket.IO ---------- */
 io.on('connection', (socket)=>{
   let room=null, mySeat=-1;
@@ -704,7 +754,7 @@ io.on('connection', (socket)=>{
   const on=(ev,fn)=>{ socket.on(ev,(...a)=>{ try{ fn(...a); } catch(e){ console.error(`[socket] ${ev} 异常：`, e&&e.stack?e.stack:e); try{ socket.emit('toast','操作失败，请重试'); }catch(_){} } }); };
 
   // 房间列表（大厅显示）
-  on('listRooms', ()=>{
+  on('listRooms', ()=>{ if(!permit(socket,'listRooms')) return;
     // 兜底：常驻房（LOVE/HOME）若缺失（异常删除/旧版本残留）则立即重建
     for(const code of PRESERVE_ROOMS) if(!rooms.has(code)) createRoom(code);
     const list=[];
@@ -723,7 +773,7 @@ io.on('connection', (socket)=>{
     socket.emit('rooms', list);
   });
 
-  on('create', (data)=>{
+  on('create', (data)=>{ if(!permit(socket,'create')) return;
     if(room){ socket.emit('toast','你已在房间中'); return; }
     data = data||{};
     // 自定义房间号（可选，4 位大写字母/数字）；不填则随机
@@ -748,7 +798,7 @@ io.on('connection', (socket)=>{
   });
 
   // 房主调整牌局设置
-  on('setSettings', (data)=>{
+  on('setSettings', (data)=>{ if(!permit(socket,'setSettings')) return;
     if(!room || mySeat!==room.hostSeat){ socket.emit('toast','只有房主能设置'); return; }
     if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
     data = data||{};
@@ -776,7 +826,7 @@ io.on('connection', (socket)=>{
     }
   });
 
-  on('join', (data)=>{
+  on('join', (data)=>{ if(!permit(socket,'join')) return;
     if(room){ socket.emit('toast','你已在房间中'); return; }
     const code = roomCodeOf(data && data.code);
     if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
@@ -807,7 +857,7 @@ io.on('connection', (socket)=>{
   });
 
   // 重连：房间号 + 玩家姓名 归位
-  on('rejoin', (data)=>{
+  on('rejoin', (data)=>{ if(!permit(socket,'rejoin')) return;
     data=data||{};
     const code = roomCodeOf(data && data.code);
     const name=(data.name||'').trim();
@@ -856,7 +906,7 @@ io.on('connection', (socket)=>{
   });
 
   // 房主切换 AI 补位
-  on('toggleAI', ()=>{
+  on('toggleAI', ()=>{ if(!permit(socket,'toggleAI')) return;
     if(!room) return;
     if(mySeat!==room.hostSeat){ socket.emit('toast','只有房主能设置'); return; }
     if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
@@ -866,7 +916,7 @@ io.on('connection', (socket)=>{
   });
 
   // 玩家准备/取消准备（对局配置由房主在弹窗调整；全员准备后自动开局）
-  on('toggleReady', ()=>{
+  on('toggleReady', ()=>{ if(!permit(socket,'toggleReady')) return;
     if(!room || (room.G && !room.seriesOver)) return;
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     room.ready[mySeat]=!room.ready[mySeat];
@@ -885,7 +935,7 @@ io.on('connection', (socket)=>{
     startRound(room);
   });
 
-  on('nextRound', ()=>{
+  on('nextRound', ()=>{ if(!permit(socket,'nextRound')) return;
     if(!room || !room.G || !room.G.ended) return; // 上一局尚未结束时忽略
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     room.ready[mySeat]=true;
@@ -894,7 +944,7 @@ io.on('connection', (socket)=>{
   });
 
   // 玩家动作
-  on('act', (data)=>{
+  on('act', (data)=>{ if(!permit(socket,'act')) return;
     if(!room || !room.G) return;
     data = data||{};
     const seatIdx=Number(data.seat);
@@ -954,7 +1004,7 @@ io.on('connection', (socket)=>{
   });
 
   // 提前结束本场（全真人房共识）：发起
-  on('endSeries', ()=>{
+  on('endSeries', ()=>{ if(!permit(socket,'endSeries')) return;
     if(!room) return;
     if(!seriesInProgress(room)){ socket.emit('toast','当前没有进行中的本场'); return; }
     if(room.endVote){ socket.emit('toast','已有人发起提前结束，请先表决'); return; }
@@ -973,7 +1023,7 @@ io.on('connection', (socket)=>{
   });
 
   // 提前结束本场：其他三人表决
-  on('endSeriesVote', (data)=>{
+  on('endSeriesVote', (data)=>{ if(!permit(socket,'endSeriesVote')) return;
     if(!room || !room.endVote || mySeat<0) return;
     if(mySeat===room.endVote.requester){ socket.emit('toast','你是发起方，等待其他人表决'); return; }
     const st=room.seats[mySeat];
@@ -1029,7 +1079,7 @@ io.on('connection', (socket)=>{
 
   // 删除房间（房主可删自己的房间）
   // 删除房间：未开局房间任意可删；已开局仅房主可删
-  on('deleteRoom', (data)=>{
+  on('deleteRoom', (data)=>{ if(!permit(socket,'deleteRoom')) return;
     const code = roomCodeOf(data && data.code);
     if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
     if(isPreserve(code)){ socket.emit('toast', `${code} 是常驻房间，不能删除`); return; }
