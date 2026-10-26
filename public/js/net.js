@@ -491,6 +491,7 @@ function applySettings(s){
   if($('setShowCorner')) $('setShowCorner').checked = s.showCorner === true;
   if($('setShowLog')) $('setShowLog').checked = s.showLog === true;
   if($('setAIFill')) $('setAIFill').checked=!!s.aiFill;
+  if($('setAIAuto')) $('setAIAuto').checked=!!s.aiAuto; // 漏同步：换房主/重进后勾选应跟服务器一致
 }
 
 window.NET = { connect, act, nextRound, start, toggleAI, get roomCode(){return roomCode;} };
