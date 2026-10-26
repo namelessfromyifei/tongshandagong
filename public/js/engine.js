@@ -203,6 +203,9 @@
     if(next.type==='fiftyCage' && prev.type==='fiftyCage'){
       return next.t!==prev.t ? next.t>prev.t : false;
     }
+    // 决策 E：同番时「五十K大炸」压过单点番炸与滚笼（仍小于王炸，走上面的王炸分支）
+    if(next.type==='fiftyCage') return true;
+    if(prev.type==='fiftyCage') return false;
     const ga=groupsOf(next), gb=groupsOf(prev);
     const m=Math.min(ga.length,gb.length);
     for(let i=0;i<m;i++){ if(ga[i]!==gb[i]) return ga[i]>gb[i]; }

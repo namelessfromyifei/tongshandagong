@@ -604,5 +604,19 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('终局手：本手分数结给最后出牌者', r.ok && r.end===true && G.seats[0].caught===5 && G.trickPoints===0);
 }
 
+/* ===== 同番跨类：五十K大炸 > 单点番炸/滚笼，< 王炸（决策 E） ===== */
+{
+  const cage  = {type:'fiftyCage', t:4, size:12, soft:false, fan:4, top:10};
+  const bomb8 = {type:'bomb', size:8, rank:12, soft:false, fan:4};
+  const roll  = {type:'rollcage', s:5, k:2, start:0, len:2, top:1, soft:false, fan:4};
+  const king4 = {type:'kingBomb', size:4, fan:4};
+  T('同番4：五十K大炸压过8张单点炸', canBeat(bomb8, cage)===true);
+  T('同番4：8张单点炸压不过五十K大炸', canBeat(cage, bomb8)===false);
+  T('同番4：五十K大炸压过滚笼', canBeat(roll, cage)===true);
+  T('同番4：滚笼压不过五十K大炸', canBeat(cage, roll)===false);
+  T('同番4：王炸压过五十K大炸', canBeat(cage, king4)===true);
+  T('同番4：五十K大炸压不过王炸', canBeat(king4, cage)===false);
+}
+
 console.log(`\n结果：${pass} 通过, ${fail} 失败`);
 process.exit(fail?1:0);
