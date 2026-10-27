@@ -987,11 +987,11 @@ function renderSeats(){
       const d=document.createElement('div');
       d.textContent = s.choice==='mingdu' ? '明独' : '不明独';
       d.style.cssText = s.choice==='mingdu'
-        ? 'color:#ffe9b0;font-size:19px;font-weight:bold;padding:8px 0;'
-        : 'color:#ffe9b0;font-size:18px;font-weight:bold;padding:8px 0;';
+        ? 'color:#fff;font-size:19px;font-weight:bold;padding:8px 0;'
+        : 'color:#fff;font-size:18px;font-weight:bold;padding:8px 0;';
       tr.appendChild(d);
     } else if(s.passed){
-      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#ffe9b0;font-size:21px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
+      const d=document.createElement('div'); d.textContent='不要'; d.style.cssText='color:#fff;font-size:21px;font-weight:bold;padding:8px 0;'; tr.appendChild(d);
     } else if(s.lastCards&&s.lastCards.length){
       // 出到桌面的牌按点数理顺展示（不改变实际牌，仅排列顺序）：王放最后，其余按 3->2 升序
       const deskCards=[...s.lastCards].sort((a,b)=>{
@@ -1326,7 +1326,9 @@ function positionSideTricks(){
   // 旋转兜底（landscapeCompat）也走同一套计算：offset* 是布局坐标，不受 #app 旋转影响，
   // 之前直接交给 CSS 的 180px 兜底会让东西家牌区离信息框约 70px，不够贴近。
   // CSS 里的 180px 仅作为 JS 执行前的初始兜底，随后会被这里的 inline 定位覆盖。
-  const gap=6, tableW=table.clientWidth;
+  // gap 加大：左右玩家出牌区往外侧移（西→右、东→左各 10px），
+  // 避免压住信息框外侧下方显示的 xx游/插底提示。
+  const gap=16, tableW=table.clientWidth;
   // 西家：紧贴信息框右侧
   tw.style.left=(w.offsetLeft + w.offsetWidth + gap)+'px';
   tw.style.right='auto';
