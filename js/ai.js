@@ -197,7 +197,8 @@
     if(whole) return {cards:hand, play:whole};
 
     // 1) 手牌少：优先一次大甩、接近跑完（省王优先）；不给对手拖的机会
-    if(hand.length<=8){
+    //    跑窗放宽到 10 张：“想尽办法跑掉”——中盘也优先大甩加速跑
+    if(hand.length<=10){
       let best=null, bestKey=null;
       for(const it of cands){
         const rest=hand.length-it.cards.length;
@@ -278,8 +279,8 @@
     const g0=pickBest(goOut);
     if(g0) return {cards:g0.cards, play:g0.play};
 
-    // C) 自己也快跑完（剩≤2）：大甩清仓
-    if(hand.length<=6){
+    // C) 自己也快跑完（剩≤2）：大甩清仓（近跑窗同步放宽到 ≤8）
+    if(hand.length<=8){
       const near=beats.filter(it=>hand.length-it.cards.length<=2);
       const n0=pickBest(near);
       if(n0) return {cards:n0.cards, play:n0.play};
