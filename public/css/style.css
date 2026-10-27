@@ -83,8 +83,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 四家出牌区：摆在桌面各朝向，不套方框；牌像手牌一样叠起来，JS 每排 7 张自动换行成两排 */
 .trick.trickN{position:absolute;left:50%;top:157px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
 .trick.trickS{position:absolute;left:50%;bottom:169px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
-.trick.trickW{position:absolute;left:234px;top:43%;transform:translateY(-50%);margin-top:0;}
-.trick.trickE{position:absolute;right:234px;top:43%;transform:translateY(-50%);margin-top:0;}
+.trick.trickW{position:absolute;left:234px;top:41%;transform:translateY(-50%);margin-top:0;}
+.trick.trickE{position:absolute;right:234px;top:41%;transform:translateY(-50%);margin-top:0;}
 .trick.trickN,.trick.trickS,.trick.trickW,.trick.trickE{flex-direction:column;align-items:center;}
 .trickRow{display:flex;}
 .trickRow .card{width:44px!important;height:62px!important;margin-left:-30px!important;box-shadow:0 2px 4px rgba(0,0,0,.35)!important;min-width:0!important;}
@@ -520,7 +520,7 @@ body.landscapeCompat .seatN{top:2px;}
 body.landscapeCompat .seatW{left:3px;}
 body.landscapeCompat .seatE{right:3px;}
 /* 兜底下南家信息框：抓分/已打笼较长时仍自适应撑宽，不被 150px 上限截掉 */
-body.landscapeCompat .handRow .seatS{max-width:78%;}
+body.landscapeCompat .handRow .seatS{max-width:37%;min-width:0;} /* 旋转兜底同窄屏：信息框不盖住出牌按钮/手牌 */
 body.landscapeCompat .avatar{width:24px;height:24px;font-size:15px;}
 body.landscapeCompat .head{gap:4px;margin-bottom:3px;}
 body.landscapeCompat .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
