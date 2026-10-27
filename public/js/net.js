@@ -118,7 +118,7 @@ function connect(){
   });
 
   socket.on('state', (snap)=>{
-    inGame = !!(snap.G);  // 有 G（对局已创建）视为对局中
+    inGame = !!(snap.G && !snap.G.ended);  // 仅"本局进行中"视为对局中：局末/场末退出即真退（不再视作掉线）
     curG = snap.G || null; curSeriesOver = !!snap.seriesOver; curHostSeat = (snap.hostSeat!=null ? snap.hostSeat : -1);
     syncSetLock(); // 一场未结束 → 对局配置弹窗只读（除“返回”外全部禁用）
     // 提前收场表决已结束/作废 → 收起弹窗
@@ -140,9 +140,8 @@ function connect(){
     // 准备按钮：对局进行中（含确认轮、出牌轮）隐藏；未开始或一局结束才显示
     if($('btnReady')){
       const isReady = !!readyArr[mySeat];
-      // 只要还有当前局（含已结束、等待“下一局”），就不显示“准备”；
-      // 本场最后一局结束后服务端会把 G 清空，此时才显示“准备”开新场。
-      // 本场结束时服务端保留 G（牌桌冻结），此时也要显示【准备】
+      // 只要还有当前局（含已结束、等待”下一局”），就不显示”准备”；
+      // 本场结束时服务端保留 G（牌桌冻结），此时才显示【准备】开下一场
       $('btnReady').style.display = (snap.G && !snap.seriesOver) ? 'none' : 'inline-block';
       $('btnReady').textContent = isReady ? '取消准备' : '准备';
       $('btnReady').classList.toggle('gold', isReady);
@@ -199,7 +198,12 @@ function toggleAI(){
 }
 // 退出房间回大厅
 function leaveRoom(){
-  roomCode=''; // 退出标记：杜绝“点了退出后网络闪断又被自动 rejoin 回桌”
+  // 局末（非末局）：不可退出房间，只能【结束场次】提前收场（含手机返回键触发的退出，一律拦下）
+  if(curG && curG.ended && !curSeriesOver){
+    toast('本局尚未结束，只能点【结束场次】提前收场');
+    return;
+  }
+  roomCode=''; // 退出标记：杜绝”点了退出后网络闪断又被自动 rejoin 回桌”
   if(socket) socket.emit('leave', {});
   // 对局中退出：保留 localStorage（可用同昵称重连）；未开局才清除
   if(inGame){

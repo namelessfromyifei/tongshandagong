@@ -725,12 +725,14 @@ function applyState(snap){
   }
   else {
     setBtn(false);
+    // 我已出完（看队友手牌）：出牌/提示/不要 全部隐藏
+    const meOut = !!G.seats[mySeat].out;
     // 出牌轮恢复“出牌/提示/不要”，避免沿用确认轮的文字和显隐
-    $('btnPlay').style.display='inline-block';
-    $('btnHint').style.display='inline-block';
-    $('btnPass').style.display='inline-block';
+    $('btnPlay').style.display = meOut ? 'none' : 'inline-block';
+    $('btnHint').style.display = meOut ? 'none' : 'inline-block';
+    $('btnPass').style.display = meOut ? 'none' : 'inline-block';
     $('btnPass').textContent='不要';
-    if(G.turn===mySeat) enablePlayer();
+    if(G.turn===mySeat && !meOut) enablePlayer();
   }
   voiceGate(); // 语音播报未结束时保持按钮禁用
   syncHandLayout(); // 按钮显隐/换容器后重新定位（明独/不明独居中）
@@ -863,9 +865,9 @@ function renderSeats(){
       el.classList.remove('plain');
       $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
     } else {
-      // 明鸡未出（或是硬牌局）：庄家红（teamA），其他三家灰（plain）
-      el.classList.toggle('teamA', i===G.landlord);
-      el.classList.toggle('teamB', false);
+      // 硬牌局：硬牌玩家红（teamA）、其他三家蓝（teamB）；2V2 明鸡未出：庄家红，其他三家灰（plain）
+      el.classList.toggle('teamA', G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord));
+      el.classList.toggle('teamB', G.mode==='hard' && i!==G.hardSeat);
       el.classList.toggle('plain', G.mode!=='hard' && i!==G.landlord);
       $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
     }
@@ -1263,7 +1265,7 @@ function finishLocal(settle){
     const roundTxt = `（第${G.roundNo||1}局/共${settings.rounds||1}局）`;
     $('mTitle').textContent = `${lastRoundWasLast?'本场结束':'本局结束'} · ${G.mode==='hard'
       ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
-      : `赢${s.winnerSeats.map(i=>seatNames[i]).join('、')}`}${roundTxt}`;
+      : `${s.winnerSeats.map(i=>seatNames[i]).join('、')}赢`}${roundTxt}`;
     const close=$('btnClose');
     if(close) close.textContent = lastRoundWasLast ? '本场结束' : '下一局';
     // 场末（最后一局结束）：计分板中不放「下一局」按钮（只留「关闭计分板」），连同按钮行隐藏
@@ -1272,14 +1274,14 @@ function finishLocal(settle){
       const mb=close.parentElement;
       if(mb) mb.style.display = lastRoundWasLast ? 'none' : '';
     }
-    tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面笼数</th><th>滚笼</th><th>奖金</th><th>本局(分)</th><th>本场(分)</th></tr>`;
+    tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面(笼)</th><th>滚笼(笼)</th><th>奖金(笼)</th><th>本局(分)</th><th>本场(分)</th></tr>`;
     for(let v=0;v<4;v++){
       const i=(mySeat+v)%4, fv=s.perFen[i];
       const bs=baseCageOf(s,i);              // 牌面笼数（番，带符号，半笼=0.5）
       const cageC = (s.perSeatNoBonus?.[i]??s.perSeat[i])-bs; // 滚笼（不含奖金的差额）
       const bonusC = bonusNetOf(s,i); // 奖金净额（王奖/硬炸奖），单位=笼
       const gs=G.seats[i];
-      const place = gs.out ? ['一','二','三','四'][gs.outOrder-1]+'游' : '—';
+      const place = gs.out ? ['一','二','三','四'][gs.outOrder-1]+'游' : ''; // 没跑的玩家顺序留空，不用占位符
       const kb = s.kingBonus&&s.kingBonus[i] ? `（王奖${s.kingBonus[i]}笼×3）` : '';
       const bb = s.bombBonus&&s.bombBonus[i] ? `（硬炸奖${s.bombBonus[i]}笼×3）` : '';
       // 抓分：优先用引擎归属后的值（尾游的抓分归对面队伍），旧缓存引擎回退到原始值
@@ -1291,7 +1293,7 @@ function finishLocal(settle){
         `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
     }
     // 说明 + 轮累计
-    const noteTxt = `牌面笼数 + 滚笼 + 奖金 = 番数；番数 × 2 × 半番 = 本局分（半番默认1 → ×2）`;
+    const noteTxt = `牌面(笼) + 滚笼(笼) + 奖金(笼) = 番数；番数 × 2 × 半番 = 本局分（半番默认1 → ×2）`;
     if(series && series.active && settings.rounds>1){
       tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${esc(seatNames[i])} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
     } else {

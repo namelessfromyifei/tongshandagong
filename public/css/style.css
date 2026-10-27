@@ -24,6 +24,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .btn:hover{background:#3a9167;}
 .btn.gold{background:#b8860b;border-color:#d4a017;}
 .btn.danger{background:#8a3a2e;border-color:#a85345;}
+/* 全屏 / 退出房间：与「下一局」(.btn.gold) 同色 */
+#btnFullscreen, #btnLeave{background:#b8860b;border-color:#d4a017;}
+/* 第x局/共x局文字改白 */
+#lblRound{color:#fff;}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
 
 /* ===== 桌面 ===== */
@@ -233,7 +237,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .readyDot.off{background:#c0392b;box-shadow:0 0 6px rgba(192,57,43,.8);}
 /* 牌桌内浮动提示：随出牌排锚定在「出牌」按钮左侧，无底色纯文字；
  * 挂在出牌排内部，天然跟随旋转/窄屏布局（不用 fixed/视口坐标，避免被 #app 旋转搞乱） */
-.playBtns #tableToast{display:none;position:absolute;right:calc(100% + 8px);bottom:6px;width:max-content;max-width:min(70vw,420px);z-index:60;box-sizing:border-box;color:#fff;font-size:12px;text-align:right;pointer-events:none;white-space:normal;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.65);}
+.playBtns #tableToast{display:none;position:absolute;right:calc(100% + 8px);bottom:6px;width:max-content;max-width:min(70vw,420px);z-index:60;box-sizing:border-box;color:#fff;font-size:12px;text-align:right;pointer-events:none;white-space:normal;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.65);background:rgba(0,0,0,.45);border-radius:6px;padding:2px 8px;}
 .playBtns #tableToast.show{display:block;}
 .modalBox h2{color:var(--gold);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}

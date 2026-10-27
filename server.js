@@ -697,6 +697,11 @@ function startRound(room){
   clearIdleKick(room);
   room.seriesOver=false;      // 新的一场开始：解除“本场已结束”的冻结状态
   room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null; // 新的一场：累计/轮数归零
+  // 开局即清 ready：消除 setSettings(wantStart) 遗留在房主座位上的就绪标记。
+  // 否则首局全程 snap.ready[房主]=true，局末 ended 帧会把"上一局的就绪残留"
+  // 误判为"已点准备"→ 没点任何按钮就提前清掉牌桌（局末/场末直接清空）。
+  //（startNext 一直这么清；startRound 之前漏了，两败由此统一。）
+  room.ready=[false,false,false,false];
   room.G = TS.newGame(Math.floor(Math.random()*1e9), makeCfg(room));
   room.G.rollcages = room.G.seats.map(()=>[]);
   room.roundSeq++; room.G.seq=room.roundSeq;
@@ -1087,14 +1092,19 @@ io.on('connection', (socket)=>{
     const seatIdx=mySeat;
     const r=room;
     clearEndVote(r); // 有人退出：进行中的共识表决作废
-    // 对局已创建（含确认轮）：点退出视作掉线（保留座位，等重连）
-    if(r.G){
+    // 对局进行中（本局未结束，含确认轮）：点退出视作掉线（保留座位，等重连）
+    if(r.G && !r.G.ended){
       logLine(r, `${r.seats[seatIdx].name} 退出（对局中，视作掉线等待重连）`);
       r.seats[seatIdx].offline=true;
       socket.leave(r.code);
       room=null; mySeat=-1;
       socket.data.room=null; socket.data.seat=-1;
       broadcast(r);
+      return;
+    }
+    // 局末（非末局，等大家点【下一局】）：不允许直接退出，只能【结束场次】提前收场
+    if(r.G && r.G.ended && !r.seriesOver){
+      socket.emit('toast','本局尚未结束，请点【结束场次】提前收场');
       return;
     }
     logLine(r, `${r.seats[seatIdx].name} 退出房间`);
