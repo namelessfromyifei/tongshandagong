@@ -9,9 +9,10 @@
 
 ```
 tongshandagong/
-├── server.js          # 服务器（Express + Socket.IO）
+├── server.js          # 服务器（Express + Socket.IO，含 /webhook 自动部署）
 ├── package.json
-├── deploy.sh          # 服务器一键部署脚本
+├── deploy.sh          # 服务器一键部署脚本（首次安装）
+├── redeploy.sh        # 增量重部署脚本（Webhook push 触发）
 ├── js/                # 引擎/AI（服务端 Node 复用，浏览器也加载）
 ├── public/            # 前端静态资源（浏览器加载）
 │   ├── index.html     # 房间/大厅 + 牌桌
@@ -73,6 +74,20 @@ sudo npm i -g pm2
 sudo pm2 start server.js --name tongshandagong
 sudo pm2 save && sudo pm2 startup
 ```
+
+### 方式 C：GitHub Webhook 自动部署（push 后自动更新）
+
+1. **配置密钥**：在 `/opt/tongshandagong/ecosystem.config.js`（复制自 `ecosystem.config.example.js`）的 `env` 中设置 `WEBHOOK_SECRET`（与 GitHub 后台一致），然后 `pm2 restart tongshandagong` 使生效。
+2. **GitHub 添加 Webhook**：仓库 → Settings → Webhooks → Add webhook
+   - Payload URL：`https://你的域名/webhook`
+   - Content type：`application/json`
+   - Secret：`REPLACE_WITH_YOUR_WEBHOOK_SECRET`
+   - Events：仅选「Push」（默认已含）
+3. **验证**：`curl -s https://你的域名/webhook` 应返回 `{"webhook":"ready",...}`。
+4. **效果**：push 到 `main`（或 `master`）后，服务器校验签名 → 执行 `redeploy.sh`（git pull → npm install --production → pm2 restart），数十秒内生效。
+
+> 说明：`redeploy.sh` 只做增量更新；首次部署仍用 `deploy.sh` 或方式 B。
+> 签名校验失败返回 401 且不触发；部署进行中重复触发会被忽略（409）。
 
 ---
 

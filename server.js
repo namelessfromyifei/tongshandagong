@@ -12,6 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 const compression = require('compression');
 const { Server } = require('socket.io');
+const { execFile } = require('child_process');
 const TS = require('./js/engine.js');
 const TSAI = require('./js/ai.js');
 
@@ -85,6 +86,50 @@ app.use('/api', (req, res, next) => {
   if(req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+/* ---------- GitHub Webhook：push 自动部署 ----------
+ * GitHub → 仓库 → Settings → Webhooks → Add webhook：
+ *   Payload URL: https://你的域名/webhook
+ *   Content type: application/json；Secret: WEBHOOK_SECRET（见 ecosystem.config.js）
+ *   事件：仅 Push（默认已含）
+ * 服务端用 X-Hub-Signature-256（HMAC-SHA256）校验，main/master 分支 push 触发 redeploy.sh。 */
+const WEBHOOK_SECRET = (process.env.WEBHOOK_SECRET || '').trim();
+if(!WEBHOOK_SECRET) console.warn('[webhook] 未设置 WEBHOOK_SECRET，/webhook 自动部署校验已关闭');
+function verifyWebhookSig(raw, header){
+  if(!WEBHOOK_SECRET || !raw || !raw.length) return false;
+  const sig = String(header || '').replace(/^sha256=/i, '').trim();
+  if(!/^[0-9a-f]{64}$/i.test(sig)) return false;
+  const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(raw).digest('hex');
+  const a = Buffer.from(sig, 'hex'), b = Buffer.from(expected, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+let _deployBusy = false;
+function triggerDeploy(){
+  if(_deployBusy){ console.warn('[webhook] 部署进行中，忽略本次触发'); return false; }
+  _deployBusy = true;
+  const script = path.join(__dirname, 'redeploy.sh');
+  const child = execFile('sh', [script], { cwd: __dirname }, (err) => {
+    _deployBusy = false;
+    console.log('[webhook] 部署' + (err ? ('失败：' + err.message) : '完成'));
+  });
+  if(child.stdout) child.stdout.on('data', d => console.log('[deploy]', String(d).trim()));
+  if(child.stderr) child.stderr.on('data', d => console.error('[deploy]', String(d).trim()));
+  return true;
+}
+app.post('/webhook', express.raw({ type: ['application/json', 'application/*+json', '*/*'], limit: '1mb' }), (req, res) => {
+  const sig = req.headers['x-hub-signature-256'] || req.headers['x-hub-signature'];
+  if(!verifyWebhookSig(req.body, sig)){ res.status(401).json({ ok:false, error:'signature mismatch' }); return; }
+  const event = String(req.headers['x-github-event'] || '');
+  let payload = {}; try{ payload = JSON.parse((req.body || '').toString('utf8') || '{}'); }catch(e){}
+  const ref = payload && payload.ref ? String(payload.ref) : '';
+  if(event === 'push' && /^refs\/heads\/(main|master)$/.test(ref)){
+    const started = triggerDeploy();
+    res.status(started ? 200 : 409).json({ ok:true, deploying:started });
+  } else {
+    res.json({ ok:true, ignored:true });
+  }
+});
+app.get('/webhook', (req, res) => res.json({ ok:true, webhook:'ready', secret: !!WEBHOOK_SECRET }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 

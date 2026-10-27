@@ -22,6 +22,12 @@ module.exports = {
       // 固定随机字符串：openssl rand -hex 32
       SESSION_SECRET: 'REPLACE_WITH_OPENSSL_RAND_HEX_32',
 
+      // GitHub Webhook 签名密钥（/webhook 自动部署校验，需与 GitHub 后台配置一致）
+      WEBHOOK_SECRET: 'REPLACE_WITH_YOUR_WEBHOOK_SECRET',
+
+      // 可选：跨域来源白名单（逗号分隔；留空=开放）
+      // ALLOWED_ORIGINS: 'https://www.zhangyuning.xyz',
+
       // 可选：保持默认即可
       ROOM_IDLE_KICK_MS: 300000,
       OFFLINE_KICK_MS: 180000,
