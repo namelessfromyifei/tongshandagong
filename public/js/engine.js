@@ -7,7 +7,7 @@
  *   - 结算：队内同输同赢、全额不除二；Δ=W−L 不封底
  *   - 王：任意组合内可癞子并指定花色，仅单出算 3
  *   - 含王牌型自动取最强解释（5+王+王 记五十K 而非三条），不做人工指定
- *   - 无番炸（4/5/6 张同牌）：不能领出，只能压牌
+ *   - 无番炸（4/5/6 张同牌）：可领出、也可压牌（原屋规不可领出，按需求已放开）
  *   - 叫牌：庄家两张同牌在手则跳过重叫
  * ========================================================= */
 (function (global) {
@@ -384,7 +384,7 @@ function handHasBomb(hand){
     if(!p) return {ok:false,why:'不能这样出牌'};
     const isLead = !G.lastPlay; // 新一轮第一手（刚获得出牌权）
     if(G.lastPlay && !canBeat(G.lastPlay,p)) return {ok:false,why:'压不过'};
-    if(isLead && !legalLead(G,p)) return {ok:false,why:'无笼炸不能领出'};
+    if(isLead && !legalLead(G,p)) return {ok:false,why:'该牌型当前不能领出'};
     // 获得新出牌权并打出第一手时，才清掉桌面上家出的旧牌（新一轮未出新牌前保留显示）
     if(isLead){ for(const s of G.seats){ s.lastCards=[]; s.passed=false; s.choice=null; } }
     const ids=new Set(cards.map(c=>c.id));

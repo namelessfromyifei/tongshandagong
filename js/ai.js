@@ -70,7 +70,7 @@
       for(const nw of needA){ for(let i=0;i<nw;i++) cs.push(jokers[taken++]); }
       tryAdd(cs);
     }
-    // 同牌炸 4 张起（含王补，可超过 8 张）—— 无番(4-6)不能领出，但压牌可用
+    // 同牌炸 4 张起（含王补，可超过 8 张）—— 无番(4-6)按现行规则也可领出（屋规原为不可领出，已放开）
     for(let r=0;r<TS.RANKS.length;r++){
       for(let sz=4;sz<=cnt[r]+wilds;sz++){
         const have=cnt[r];
