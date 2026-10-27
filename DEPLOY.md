@@ -81,7 +81,7 @@ sudo pm2 save && sudo pm2 startup
 2. **GitHub 添加 Webhook**：仓库 → Settings → Webhooks → Add webhook
    - Payload URL：`https://你的域名/webhook/deploy`
    - Content type：`application/json`
-   - Secret：`REPLACE_WITH_YOUR_WEBHOOK_SECRET`
+   - Secret：与上面 `ecosystem.config.js` 里设置的 `WEBHOOK_SECRET` 保持一致（可用 `openssl rand -hex 16` 生成）
    - Events：仅选「Push」（默认已含）
 3. **验证**：`curl -s https://你的域名/webhook` 应返回 `{"webhook":"ready",...}`。
 4. **效果**：push 到 `main`（或 `master`）后，服务器校验签名 → 执行 `redeploy.sh`（git pull → npm install --production → pm2 restart），数十秒内生效。

@@ -22,7 +22,8 @@ module.exports = {
       // 固定随机字符串：openssl rand -hex 32
       SESSION_SECRET: 'REPLACE_WITH_OPENSSL_RAND_HEX_32',
 
-      // GitHub Webhook 签名密钥（/webhook 自动部署校验，需与 GitHub 后台配置一致）
+      // GitHub Webhook 签名密钥（/webhook/deploy 自动部署校验，需与 GitHub 后台配置一致）
+      // 复制为 ecosystem.config.js 时填入真实值（该文件已在 .gitignore 中，不会提交到仓库）
       WEBHOOK_SECRET: 'REPLACE_WITH_YOUR_WEBHOOK_SECRET',
 
       // 可选：跨域来源白名单（逗号分隔；留空=开放）
