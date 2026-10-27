@@ -31,7 +31,7 @@ module.exports = {
       // ALLOWED_ORIGINS: 'https://www.zhangyuning.xyz',
 
       // 可选：保持默认即可
-      ROOM_IDLE_KICK_MS: 300000,
+      ROOM_IDLE_KICK_MS: 1800000, // 未开局/场结束 30 分钟闲置解散；局间（等下一局）不超时
       OFFLINE_KICK_MS: 180000,
       AI_TURN_MS: 1500,
     },

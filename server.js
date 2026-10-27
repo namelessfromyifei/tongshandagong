@@ -18,7 +18,7 @@ const TSAI = require('./js/ai.js');
 
 const PORT = process.env.PORT || 8080;
 // 牌局结束后房间闲置超时自动解散（毫秒）；设为 0 可关闭。默认 5 分钟。
-const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 5*60*1000);
+const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 30*60*1000); // 闲置解散仅限「未开局/场结束」且 30 分钟；局间（等下一局）不超时
 // 未开局时真人掉线超过该时长（毫秒）→ 踢出座位还原为 AI；默认 3 分钟。
 const OFFLINE_KICK_MS = Number(process.env.OFFLINE_KICK_MS || 3*60*1000);
 // AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
@@ -756,14 +756,14 @@ function finishRoom(room){
     room.ready=[false,false,false,false]; // 准备重置，下场比赛重新准备
     // 本场结束不清 G：保留最后一局的牌桌，等玩家点【准备】开下一场时再换新局
     room.seriesOver=true;
+    // 仅场末起闲置解散计时；局间（等【下一局】）不超时
+    scheduleIdleKick(room);
   } else {
     // 非最后一局：等所有玩家点【下一局】就绪后自动开下一局
     room.ready=[false,false,false,false];
     logLine(room, `请各玩家点击【下一局】就绪，全员就绪自动开下一局`);
   }
   broadcast(room);
-  // 牌局结束后开始闲置计时：超时仍未退出则自动解散房间
-  scheduleIdleKick(room);
   // 不自动开下一局，等所有玩家就绪
 }
 
@@ -844,6 +844,7 @@ io.on('connection', (socket)=>{
     // 创建后房主直接进牌桌（房间仍在列表，其他玩家可加入）
     socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
     broadcast(r);
+    scheduleIdleKick(r); // 未开场的等待房：30 分钟闲置解散（开局时由 startRound 清除）
     socket.emit('toast', `已创建房间 ${r.code}，等待其他玩家加入`);
   });
 
@@ -903,6 +904,7 @@ io.on('connection', (socket)=>{
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
     broadcast(r);
+    scheduleIdleKick(r); // 有人加入＝房间有活动：重置闲置解散计时
     socket.emit('toast', `已加入房间 ${r.code}，你是第 ${r.humanCount} 位玩家`);
   });
 
@@ -971,6 +973,7 @@ io.on('connection', (socket)=>{
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     room.ready[mySeat]=!room.ready[mySeat];
     socket.emit('toast', room.ready[mySeat]?'已准备':'已取消准备');
+    scheduleIdleKick(room); // 未开局/场末点准备＝房间有活动：重置闲置解散计时
     checkAllReady(room);
   });
 

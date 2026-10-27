@@ -24,8 +24,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .btn:hover{background:#3a9167;}
 .btn.gold{background:#b8860b;border-color:#d4a017;}
 .btn.danger{background:#8a3a2e;border-color:#a85345;}
-/* 全屏 / 退出房间：与「下一局」(.btn.gold) 同色 */
-#btnFullscreen, #btnLeave{background:#b8860b;border-color:#d4a017;}
+/* 全屏 / 结束场次：与「退出房间」(.btn.danger) 同色 */
+#btnFullscreen, #btnEndSeries{background:#8a3a2e;border-color:#a85345;}
 /* 第x局/共x局文字改白 */
 #lblRound{color:#fff;}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
