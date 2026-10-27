@@ -89,7 +89,7 @@ app.use('/api', (req, res, next) => {
 
 /* ---------- GitHub Webhook：push 自动部署 ----------
  * GitHub → 仓库 → Settings → Webhooks → Add webhook：
- *   Payload URL: https://你的域名/webhook
+ *   Payload URL: https://你的域名/webhook/deploy
  *   Content type: application/json；Secret: WEBHOOK_SECRET（见 ecosystem.config.js）
  *   事件：仅 Push（默认已含）
  * 服务端用 X-Hub-Signature-256（HMAC-SHA256）校验，main/master 分支 push 触发 redeploy.sh。 */
@@ -116,7 +116,7 @@ function triggerDeploy(){
   if(child.stderr) child.stderr.on('data', d => console.error('[deploy]', String(d).trim()));
   return true;
 }
-app.post('/webhook', express.raw({ type: ['application/json', 'application/*+json', '*/*'], limit: '1mb' }), (req, res) => {
+app.post('/webhook/deploy', express.raw({ type: ['application/json', 'application/*+json', '*/*'], limit: '1mb' }), (req, res) => {
   const sig = req.headers['x-hub-signature-256'] || req.headers['x-hub-signature'];
   if(!verifyWebhookSig(req.body, sig)){ res.status(401).json({ ok:false, error:'signature mismatch' }); return; }
   const event = String(req.headers['x-github-event'] || '');

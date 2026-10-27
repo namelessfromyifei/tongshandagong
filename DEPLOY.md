@@ -79,7 +79,7 @@ sudo pm2 save && sudo pm2 startup
 
 1. **配置密钥**：在 `/opt/tongshandagong/ecosystem.config.js`（复制自 `ecosystem.config.example.js`）的 `env` 中设置 `WEBHOOK_SECRET`（与 GitHub 后台一致），然后 `pm2 restart tongshandagong` 使生效。
 2. **GitHub 添加 Webhook**：仓库 → Settings → Webhooks → Add webhook
-   - Payload URL：`https://你的域名/webhook`
+   - Payload URL：`https://你的域名/webhook/deploy`
    - Content type：`application/json`
    - Secret：`REPLACE_WITH_YOUR_WEBHOOK_SECRET`
    - Events：仅选「Push」（默认已含）
