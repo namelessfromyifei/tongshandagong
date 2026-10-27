@@ -514,11 +514,13 @@ function broadcast(room){
     so.emit('state', snapshotFor(room, seatIdx));
   }
 }
-/* ---------- 提前结束本场（全真人房共识表决） ----------
- * 规则（决策 A 修订版）：一场未结束时任何人不可被动踢；"场进行中"可经全体真人共识提前收场。
- * 发起：任何在房真人；其余三人各一票，全部同意才生效；任一人反对或 30 秒未全票 → 作废。
- * 生效：以已完成局累计收场；若请求时局中，本局直接废弃不计分；随后进入"本场结束"冻结态。
- * 仅全真人房（无 AI 座位、无人掉线）可发起。 */
+/* ---------- 提前结束本场（在线真人共识表决） ----------
+ * 规则：一场未结束时任何人不可被动踢；"场进行中"可经在线真人共识提前收场。
+ * 满员真人房（4 座皆真人）：维持决策 A——4 位真人且全员在线才可发起，全票同意才生效。
+ * 含 AI 座/真人不足 4 的房：门禁放宽——任意在线真人可发起，票数门槛 = 发起时「在线真人
+ *   人数」（离线真人座与 AI 座不占票、不阻塞）；仅一名在线真人时发起即收场。
+ * 任一人反对或 30 秒未全票 → 作废。生效以已完成局累计收场；请求时局中则本局废弃不计分，
+ * 随后进入"本场结束"冻结态。 */
 const END_VOTE_MS = 30000;
 function seriesInProgress(room){ return !!(room && room.G && !room.seriesOver); }
 function clearEndVote(room){
@@ -1088,17 +1090,25 @@ io.on('connection', (socket)=>{
     if(room.endVote){ socket.emit('toast','已有人发起提前结束，请先表决'); return; }
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
-    for(let i=0;i<4;i++){
-      const st=room.seats[i];
-      if(st.type!=='human' || st.offline){ socket.emit('toast','需要 4 位在线真人才能提前结束本场'); return; }
+    // 满员真人房维持决策 A：4 位真人且全员在线才可发起；
+    // 含 AI 座/真人不足 4 的房：门禁放宽为「在线真人全票」——离线真人座与 AI 座不占票、不阻塞
+    if(room.humanCount===4){
+      for(let i=0;i<4;i++){
+        const st=room.seats[i];
+        if(st.type!=='human' || st.offline){ socket.emit('toast','需要 4 位在线真人才能提前结束本场'); return; }
+      }
     }
-    room.endVote={ requester:mySeat, agree:new Set([mySeat]), timer:null };
+    // 票数门槛 = 发起时在线真人人数（含发起者），表决中按此收敛，而不是写死 4 票
+    const need = room.seats.filter(s=>s.type==='human' && !s.offline).length;
+    room.endVote={ requester:mySeat, need, agree:new Set([mySeat]), timer:null };
     room.endVote.timer=setTimeout(()=>{
       if(room && room.endVote) cancelEndVote(room, '提前结束表决超时（30 秒内未全票同意），请求作废');
     }, END_VOTE_MS);
-    logLine(room, `${room.seats[mySeat].name} 发起【提前结束本场】，请其他玩家在 30 秒内表决`);
+    logLine(room, `${room.seats[mySeat].name} 发起【提前结束本场】，请各在线真人在 30 秒内表决`);
     io.to(room.code).emit('endSeriesAsk', {requester:mySeat, name:room.seats[mySeat].name});
     broadcast(room);
+    // 门槛=1（该房仅一名在线真人）时发起即达成 → 直接收场（finalize 会带出真正的场末帧）
+    if(room.endVote && room.endVote.agree.size >= room.endVote.need) finalizeEndSeries(room);
   });
 
   // 提前结束本场：其他三人表决
@@ -1112,7 +1122,7 @@ io.on('connection', (socket)=>{
     if(!(data && data.vote)){ cancelEndVote(room, `${st.name} 不同意，提前结束请求作废`); return; }
     room.endVote.agree.add(mySeat);
     logLine(room, `${st.name} 同意提前结束`);
-    if(room.endVote.agree.size>=4) finalizeEndSeries(room);
+    if(room.endVote.agree.size>=room.endVote.need) finalizeEndSeries(room);
     else broadcast(room);
   });
 
@@ -1132,9 +1142,9 @@ io.on('connection', (socket)=>{
       broadcast(r);
       return;
     }
-    // 局末（非末局，等大家点【下一局】）：仅 4 位满员真人房不允许直接退出（只能【结束场次】提前收场）；
-    // 含 AI 座/真人不足 4 的房放行走人（决策 Q2：AI 补位房玩家不能被锁到本场打完）
-    if(r.G && r.G.ended && !r.seriesOver && r.humanCount===4){
+    // 局末（非末局，等大家点【下一局】）：不允许直接退出，只能【结束场次】提前收场；
+    // 要中途离开先进【结束场次】收场（AI 房同样适用：在线真人共识即生效）
+    if(r.G && r.G.ended && !r.seriesOver){
       socket.emit('toast','本局尚未结束，请点【结束场次】提前收场');
       return;
     }

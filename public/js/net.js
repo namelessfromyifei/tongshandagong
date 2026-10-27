@@ -16,7 +16,6 @@ let wxConfig={enabled:false, mock:false, wechat:false};
 let authReady=false;
 let endAskRequester=-1; // 当前提前收场表决的发起方座位（-1=无）
 let curG=null, curSeriesOver=false, curHostSeat=-1; // 最近一次快照的状态（对局配置锁定/房主判断用）
-let curHuman=-1; // 最近一次快照的真人座位数（局末退出口径：满员=4 才拦）
 
 const $=id=>document.getElementById(id);
 
@@ -121,7 +120,6 @@ function connect(){
   socket.on('state', (snap)=>{
     inGame = !!(snap.G && !snap.G.ended);  // 仅"本局进行中"视为对局中：局末/场末退出即真退（不再视作掉线）
     curG = snap.G || null; curSeriesOver = !!snap.seriesOver; curHostSeat = (snap.hostSeat!=null ? snap.hostSeat : -1);
-    curHuman = (snap.seats || []).filter(s => s.type==='human').length;
     syncSetLock(); // 一场未结束 → 对局配置弹窗只读（除“返回”外全部禁用）
     // 提前收场表决已结束/作废 → 收起弹窗
     if(endAskRequester!==-1 && !snap.endVote){
@@ -200,9 +198,8 @@ function toggleAI(){
 }
 // 退出房间回大厅
 function leaveRoom(){
-  // 局末（非末局）：满员真人房不可退出，只能【结束场次】提前收场（含手机返回键触发的退出，一律拦下）；
-  // 含 AI 座/真人不足 4 的房服务端会放行走人（决策 Q2），这里也放
-  if(curG && curG.ended && !curSeriesOver && curHuman===4){
+  // 局末（非末局）：不可退出房间，只能【结束场次】提前收场（含手机返回键触发的退出，一律拦下）
+  if(curG && curG.ended && !curSeriesOver){
     toast('本局尚未结束，请点【结束场次】提前收场');
     return;
   }
