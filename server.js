@@ -1114,6 +1114,10 @@ io.on('connection', (socket)=>{
     const wasHost = (seatIdx===r.hostSeat);
     r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx], avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
+    // 最后一位在线玩家退出：清空残局 G（牌局信息）。
+    // 普通房随后解散无影响；常驻房（LOVE/HOME）不删，残局一并清除，
+    // 避免"场末退出后再进房仍显示上一场的牌局信息"。
+    if(r.humanCount===0 && r.G) r.G=null;
     r.ready[seatIdx]=false;
     socket.leave(r.code);
     room=null; mySeat=-1;

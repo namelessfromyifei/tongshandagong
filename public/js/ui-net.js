@@ -657,10 +657,10 @@ function applyState(snap){
     renderSeatNames();
     renderReadyIndicators();
     setBtn(false);
-    // 未开局恢复出牌轮按钮的显隐与文字（确认轮曾隐藏）
-    $('btnPlay').style.display='inline-block';
-    $('btnHint').style.display='inline-block';
-    $('btnPass').style.display='inline-block';
+    // 刚进房间/等开局：不显示 出牌/提示/不要（开局后由出牌轮分支恢复）
+    $('btnPlay').style.display='none';
+    $('btnHint').style.display='none';
+    $('btnPass').style.display='none';
     $('btnPass').textContent='不要';
     // 准备按钮居中（此时 G 为空，btnReady 挪到中间位置）
     layoutActionButtons();
