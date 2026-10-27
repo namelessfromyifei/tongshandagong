@@ -17,7 +17,8 @@ const TS = require('./js/engine.js');
 const TSAI = require('./js/ai.js');
 
 const PORT = process.env.PORT || 8080;
-// 牌局结束后房间闲置超时自动解散（毫秒）；设为 0 可关闭。默认 5 分钟。
+// 房间闲置自动解散（毫秒）；设为 0 可关闭。仅「未开局/场结束」计时，默认 30 分钟；
+// 局间（等下一局）不超时；create/join/准备会重置计时。
 const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 30*60*1000); // 闲置解散仅限「未开局/场结束」且 30 分钟；局间（等下一局）不超时
 // 未开局时真人掉线超过该时长（毫秒）→ 踢出座位还原为 AI；默认 3 分钟。
 const OFFLINE_KICK_MS = Number(process.env.OFFLINE_KICK_MS || 3*60*1000);
@@ -207,7 +208,12 @@ function requestBaseUrl(req){
   return `${isSecureReq(req) ? 'https' : req.protocol}://${req.get('host')}`;
 }
 function cleanNickname(raw){
-  let s = String(raw == null ? '' : raw).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  // 双保险（与客户端 esc() 配合）：昵称会出现在多个渲染面，这里顺带剥掉 HTML 敏感字符，
+  // 防止任何渲染路径把昵称当标签结构解析（详见审计：#tableMsg innerHTML 反弹点）。
+  let s = String(raw == null ? '' : raw)
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[<>"&]/g, '')
+    .trim();
   if(!s) return '玩家';
   const chars = Array.from(s);
   if(chars.length > 24) s = chars.slice(0, 24).join('');
@@ -415,6 +421,23 @@ function makeCfg(room){
     halfFan: room.settings.halfFan,
   };
 }
+// 逐键白名单应用对局设置（create 带初始设置与 setSettings 共用，防非法值 / __proto__ 污染；
+// 未知键一律忽略，不 Object.assign 整份对象）
+function applySettings(r, data){
+  if(!r || !data || typeof data !== 'object') return;
+  const s = r.settings;
+  if(data.rounds!=null){ const n=Number(data.rounds); if(n>=1&&n<=20) s.rounds=Math.floor(n); }
+  if(data.showRemain!=null) s.showRemain=!!data.showRemain;
+  if(data.showCorner!=null) s.showCorner=!!data.showCorner;
+  if(data.showLog!=null) s.showLog=!!data.showLog;
+  if(data.kings!=null) s.kings=[8,10,12].includes(Number(data.kings))?Number(data.kings):8;
+  if(data.jokerValue!=null) s.jokerValue=Number(data.jokerValue)===2?2:3;
+  if(data.tailBonus!=null) s.tailBonus=!!data.tailBonus;
+  if(data.fanCap!=null){ const n=Number(data.fanCap); s.fanCap=[32,64,128,0].includes(n)?n:32; }
+  if(data.halfFan!=null){ const n=Math.round(Number(data.halfFan)); s.halfFan=Math.min(50,Math.max(1,n||1)); }
+  if(data.aiFill!=null) r.aiFill=!!data.aiFill;
+  if(data.aiAuto!=null) s.aiAuto=!!data.aiAuto;
+}
 // 标记"刚结束的这局是否为一场的最后一局"，随快照带给客户端（避免客户端猜错）
 function markLast(room){
   if(room.G && room.G.ended && room.G.lastSeries===undefined){
@@ -589,10 +612,10 @@ function scheduleOfflineKick(room, seatIdx){
     room.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
-    // 房主掉线被踢：hostSeat 移交给剩余真人中座位号最小者（不再物理挪座位）
+    // 房主掉线被踢：hostSeat 移交给剩余真人中座位号最小且在线者（不再物理挪座位）
     if(wasHost && room.humanCount>0){
       for(let j=0;j<4;j++){
-        if(room.seats[j].type==='human'){
+        if(room.seats[j].type==='human' && !room.seats[j].offline){
           room.hostSeat=j;
           const s2=io.sockets.sockets.get(room.seats[j].socketId);
           if(s2){ s2.emit('promotedHost', {hostSeat:j}); }
@@ -767,7 +790,9 @@ function finishRoom(room){
   // 不自动开下一局，等所有玩家就绪
 }
 
-/* ---------- 动作限流：每 socket 每类动作滑窗计数，防脚本刷请求 ---------- */
+/* ---------- 动作限流：每 socket 每类动作滑窗计数，防脚本刷请求 ----------
+ * 已知局限：按 socket（连接）计数而非按 IP——重连/多开可绕开预算，属姿态性防御，
+ * 用于挡自动脚本的明显噪音，不视为关键资源的强保护。 */
 const RATE_LIMITS = {
   create:       [60000, 20],
   join:         [10000, 10],
@@ -780,6 +805,7 @@ const RATE_LIMITS = {
   toggleAI:     [5000, 4],
   toggleReady:  [3000, 4],
   nextRound:    [3000, 4],
+  start:        [10000, 5],
   listRooms:    [5000, 8],
 };
 function permit(socket, key){
@@ -836,8 +862,8 @@ io.on('connection', (socket)=>{
     const name=ident.name;
     r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
     r.humanCount++;
-    // 房主可带初始设置
-    if(data.settings) r.settings=Object.assign(r.settings, data.settings);
+    // 房主可带初始设置（逐键白名单：防非法值进引擎 / Object.assign 的 __proto__ 污染）
+    if(data.settings) applySettings(r, data.settings);
     room=r; mySeat=seatIdx;
     socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
@@ -853,18 +879,8 @@ io.on('connection', (socket)=>{
     if(!room || mySeat!==room.hostSeat){ socket.emit('toast','只有房主能设置'); return; }
     if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
     data = data||{};
-    const s=room.settings;
-    if(data.rounds!=null){ const n=Number(data.rounds); if(n>=1&&n<=20) s.rounds=Math.floor(n); }
-    if(data.showRemain!=null) s.showRemain=!!data.showRemain;
-    if(data.showCorner!=null) s.showCorner=!!data.showCorner;
-    if(data.showLog!=null) s.showLog=!!data.showLog;
-    if(data.kings!=null) s.kings=[8,10,12].includes(Number(data.kings))?Number(data.kings):8;
-    if(data.jokerValue!=null) s.jokerValue=Number(data.jokerValue)===2?2:3;
-    if(data.tailBonus!=null) s.tailBonus=!!data.tailBonus;
-    if(data.fanCap!=null){ const n=Number(data.fanCap); s.fanCap=[32,64,128,0].includes(n)?n:32; }
-    if(data.halfFan!=null){ const n=Math.round(Number(data.halfFan)); s.halfFan=Math.min(50,Math.max(1,n||1)); }
-    if(data.aiFill!=null) room.aiFill=!!data.aiFill;
-    if(data.aiAuto!=null) s.aiAuto=!!data.aiAuto;
+    // 逐键白名单（与 create 共用 applySettings）；wantStart 在下方单独处理
+    applySettings(room, data);
     // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
     const wantStart = (data.start===true);
     if(wantStart) room.ready[room.hostSeat]=true;  // 房主自己标记准备（hostSeat 与座位 0 解耦）
@@ -894,11 +910,14 @@ io.on('connection', (socket)=>{
       return s.name===name;
     });
     if(sameHuman){ socket.emit('toast','你已在该房间，可直接重连'); return; }
-    // 找空座位（真人空位或 AI 位）
-    let seatIdx=r.seats.findIndex(s=>s.type==='ai');
+    // 找空座位：优先顶替 offline 真人座（仅场末/未开局可达——对局进行中已被上面的守卫拦截；决策 Q3）
+    let seatIdx=r.seats.findIndex(s=>s.type==='human' && s.offline);
+    const takeOver = seatIdx>=0;
+    if(seatIdx<0) seatIdx=r.seats.findIndex(s=>s.type==='ai');
     if(seatIdx<0){ socket.emit('toast','房间已满'); return; }
+    clearOfflineKick(r, seatIdx); // 入座/顶替：取消该座的离线踢出计时器
     r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
-    r.humanCount++;
+    if(!takeOver) r.humanCount++; // 顶替：座位上真人仍在，人数不变
     room=r; mySeat=seatIdx;
     socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
@@ -971,26 +990,31 @@ io.on('connection', (socket)=>{
   on('toggleReady', ()=>{ if(!permit(socket,'toggleReady')) return;
     if(!room || (room.G && !room.seriesOver)) return;
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
+    if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
     room.ready[mySeat]=!room.ready[mySeat];
     socket.emit('toast', room.ready[mySeat]?'已准备':'已取消准备');
     scheduleIdleKick(room); // 未开局/场末点准备＝房间有活动：重置闲置解散计时
     checkAllReady(room);
   });
 
-  // 开局（房主点击"对局配置"后由设置弹窗确认，不再直接 start；保留 start 兼容）
-  on('start', ()=>{
+  // 开局（房主点击"对局配置"后由设置弹窗确认，不再直接 start；保留 start 兼容但同样收权：
+// 房主专属 + 限流 + 走全员就绪门槛，消除旧客户端可越权开局/刷局的问题）
+  on('start', ()=>{ if(!permit(socket,'start')) return;
     if(!room) return;
     if(room.G && !room.seriesOver) return;
+    if(mySeat!==room.hostSeat){ socket.emit('toast','只有房主能开始'); return; }
     if(!room.aiFill && room.humanCount<4){
       socket.emit('toast', `AI补位未开，还差 ${4-room.humanCount} 位真人才能开始；或先开启AI补位`);
       return;
     }
-    startRound(room);
+    const started=checkAllReady(room); // 与 setSettings wantStart 同口径：全员就绪才开
+    socket.emit('toast', started? '开始对局！' : '已准备，等待其他玩家就绪后开局');
   });
 
   on('nextRound', ()=>{ if(!permit(socket,'nextRound')) return;
     if(!room || !room.G || !room.G.ended) return; // 上一局尚未结束时忽略
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
+    if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
     room.ready[mySeat]=true;
     socket.emit('toast','已就绪，等待其他玩家');
     checkAllReady(room);
@@ -1002,7 +1026,8 @@ io.on('connection', (socket)=>{
     data = data||{};
     const seatIdx=Number(data.seat);
     if(!Number.isInteger(seatIdx) || seatIdx!==mySeat){ socket.emit('toast','不是你的座位'); return; }
-    if(room.G.ended) return; // 已结束：重复/迟到的 act 一律忽略（防二次结算）
+    // 旧标签/旧连接发的请求：座位当前 socketId 不再属于本 socket → 忽略（防迟到 act 误操作）
+    if(room.seats[seatIdx].socketId !== socket.id) return;
     if(room.G.ended) return; // 已结束：重复/迟到的 act 一律忽略（防二次结算/二次广播）
     if(room.G.confirming){
       if(data.type==='confirm'){
@@ -1062,6 +1087,7 @@ io.on('connection', (socket)=>{
     if(!seriesInProgress(room)){ socket.emit('toast','当前没有进行中的本场'); return; }
     if(room.endVote){ socket.emit('toast','已有人发起提前结束，请先表决'); return; }
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
+    if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
     for(let i=0;i<4;i++){
       const st=room.seats[i];
       if(st.type!=='human' || st.offline){ socket.emit('toast','需要 4 位在线真人才能提前结束本场'); return; }
@@ -1080,6 +1106,7 @@ io.on('connection', (socket)=>{
     if(!room || !room.endVote || mySeat<0) return;
     if(mySeat===room.endVote.requester){ socket.emit('toast','你是发起方，等待其他人表决'); return; }
     const st=room.seats[mySeat];
+    if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
     if(st.type!=='human' || st.offline) return;
     if(room.endVote.agree.has(mySeat)){ socket.emit('toast','你已表决'); return; }
     if(!(data && data.vote)){ cancelEndVote(room, `${st.name} 不同意，提前结束请求作废`); return; }
@@ -1105,8 +1132,9 @@ io.on('connection', (socket)=>{
       broadcast(r);
       return;
     }
-    // 局末（非末局，等大家点【下一局】）：不允许直接退出，只能【结束场次】提前收场
-    if(r.G && r.G.ended && !r.seriesOver){
+    // 局末（非末局，等大家点【下一局】）：仅 4 位满员真人房不允许直接退出（只能【结束场次】提前收场）；
+    // 含 AI 座/真人不足 4 的房放行走人（决策 Q2：AI 补位房玩家不能被锁到本场打完）
+    if(r.G && r.G.ended && !r.seriesOver && r.humanCount===4){
       socket.emit('toast','本局尚未结束，请点【结束场次】提前收场');
       return;
     }
@@ -1122,10 +1150,10 @@ io.on('connection', (socket)=>{
     socket.leave(r.code);
     room=null; mySeat=-1;
     socket.data.room=null; socket.data.seat=-1;
-    // 房主退出：hostSeat 移交给剩余真人中座位号最小者（不再物理挪座位）
+    // 房主退出：hostSeat 移交给剩余真人中座位号最小且在线者（不再物理挪座位）
     if(wasHost && r.humanCount>0){
       for(let j=0;j<4;j++){
-        if(r.seats[j].type==='human'){
+        if(r.seats[j].type==='human' && !r.seats[j].offline){
           r.hostSeat=j;
           const s=io.sockets.sockets.get(r.seats[j].socketId);
           if(s){ s.emit('promotedHost', {hostSeat:j}); }
@@ -1170,8 +1198,12 @@ io.on('connection', (socket)=>{
   on('disconnect', ()=>{
     if(!room || mySeat<0) return;
     clearEndVote(room); // 有人在表决中掉线：共识作废
-    room.seats[mySeat].offline=true;
-    logLine(room, `${room.seats[mySeat].name} 掉线，等待重连`);
+    const seat = room.seats[mySeat];
+    // 旧连接的迟到 disconnect（心跳检测有 ~10s 级延迟）：期间玩家已 rejoin、
+    // 座位 socketId 已被新连接接管 → 忽略，不再把已重连的座位误标回 offline
+    if(!seat || seat.socketId !== socket.id) return;
+    seat.offline=true;
+    logLine(room, `${seat.name} 掉线，等待重连`);
     broadcast(room);
     // 未开局：超时（默认3分钟）后踢出座位；已开局则由掉线保留逻辑处理
     scheduleOfflineKick(room, mySeat);
