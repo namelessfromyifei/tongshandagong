@@ -706,9 +706,9 @@ function applyState(snap){
   // 按钮：确认轮 / 出牌轮
   if(G.ended){
     setBtn(false);
-    layoutActionButtons(); // 本场结束后：准备/计分板放到出牌排（准备在「不要」槽位，计分板在左）
-    // 本场结束：计分板按钮保留在出牌排（弹窗未开时可见），可重开计分板
-    if(seriesOver){ const b=$('btnSettle'); if(b && $('modal').hidden) b.style.display='inline-block'; }
+    layoutActionButtons(); // 场末：准备/计分板；局间：下一局/计分板 → 都放到出牌排（计分板在左）
+    // 局末/场末：关闭计分板后，计分板按钮保留在出牌排（弹窗未开时可见），可重开
+    const _stB=$('btnSettle'); if(_stB && $('modal').hidden) _stB.style.display='inline-block';
     // 局末：出牌 / 提示 / 不要 / 牌大小 四个按钮不再显示
     ['btnPlay','btnHint','btnPass','btnSize'].forEach(id=>{ const b=$(id); if(b) b.style.display='none'; });
     return;
@@ -1266,6 +1266,12 @@ function finishLocal(settle){
       : `赢${s.winnerSeats.map(i=>seatNames[i]).join('、')}`}${roundTxt}`;
     const close=$('btnClose');
     if(close) close.textContent = lastRoundWasLast ? '本场结束' : '下一局';
+    // 场末（最后一局结束）：计分板中不放「下一局」按钮（只留「关闭计分板」），连同按钮行隐藏
+    if(close){
+      close.style.display = lastRoundWasLast ? 'none' : '';
+      const mb=close.parentElement;
+      if(mb) mb.style.display = lastRoundWasLast ? 'none' : '';
+    }
     tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面笼数</th><th>滚笼</th><th>奖金</th><th>本局(分)</th><th>本场(分)</th></tr>`;
     for(let v=0;v<4;v++){
       const i=(mySeat+v)%4, fv=s.perFen[i];
@@ -1409,6 +1415,17 @@ function layoutActionButtons(){
       // HTMLCollection 无 indexOf：用 Array 化再比，确保 计分板 在 准备 左边
       const kids=[...right.children];
       if(kids.indexOf(st) > kids.indexOf(ready)) right.insertBefore(st, ready);
+    }
+    return;
+  }
+  if(G.ended && !seriesOver){ // 一局结束（非末局）：计分板 + 下一局 放到出牌排（计分板在左）
+    const nx=$('btnNext');
+    const st=$('btnSettle');
+    if(nx && nx.parentElement!==right) right.appendChild(nx);
+    if(st){
+      if(st.parentElement!==right) right.appendChild(st);
+      const kids=[...right.children];
+      if(nx && kids.indexOf(st) > kids.indexOf(nx)) right.insertBefore(st, nx);
     }
     return;
   }
