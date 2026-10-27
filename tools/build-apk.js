@@ -33,6 +33,51 @@ function run(cmd, cwd){
   if(r.status !== 0) throw new Error('命令执行失败：' + cmd);
 }
 
+/* Capacitor 7 需要 JDK 21+。gradle.properties 里不再写死本机路径，
+ * 这里自动找一个可用的 JDK 21+（当前 JAVA_HOME 不合格时），保证 npm run apk 开箱能跑。 */
+function javaMajor(home){
+  try{
+    const r = spawnSync(path.join(home, 'bin', 'java'), ['-version'], { encoding: 'utf8' });
+    const s = String(r.stderr || '') + String(r.stdout || '');
+    const m = s.match(/version "(\d+)/);
+    return m ? Number(m[1]) : 0;
+  }catch(e){ return 0; }
+}
+function resolveJavaHome(){
+  const cur = process.env.JAVA_HOME;
+  if(cur && javaMajor(cur) >= 21) return cur;
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const candidates = [];
+  // ~/.jdks/*（IntelliJ 下载的 JDK 常在这里）
+  try{
+    for(const d of fs.readdirSync(path.join(home, '.jdks'))) candidates.push(path.join(home, '.jdks', d));
+  }catch(e){}
+  // 常见安装位置
+  const extra = process.platform === 'win32'
+    ? ['C:/Program Files/Java', 'D:/Program Files/Java', 'C:/Program Files/Eclipse Adoptium']
+    : ['/usr/lib/jvm', '/Library/Java/JavaVirtualMachines'];
+  for(const base of extra){
+    try{
+      for(const d of fs.readdirSync(base)){
+        const p = path.join(base, d);
+        candidates.push(p);
+        candidates.push(path.join(p, 'Contents', 'Home')); // macOS 的 .jdk 包
+      }
+    }catch(e){}
+  }
+  for(const c of candidates){
+    if(javaMajor(c) >= 21) return c;
+  }
+  return null;
+}
+const javaHome = resolveJavaHome();
+if(!javaHome){
+  console.error('[build-apk] 找不到 JDK 21+，请先安装并设置 JAVA_HOME');
+  process.exit(1);
+}
+process.env.JAVA_HOME = javaHome;
+console.log('[build-apk] Java: ' + javaHome);
+
 let target = null;
 const raw = argValue('--server');
 if(raw){
