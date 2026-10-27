@@ -20,3 +20,6 @@ android/captures/
 dist/
 *.jks
 *.keystore
+
+# 联调截图（不入库）
+shots/
