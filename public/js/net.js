@@ -113,7 +113,7 @@ function connect(){
     // 记住房间+姓名，刷新后自动重连
     try{ localStorage.setItem('tsRoom', JSON.stringify({code:d.code, name:d.name})); }catch(e){}
     $('roomCode').textContent = '房间号：'+d.code;
-    $('mySeatInfo').textContent = `你是 ${d.name}（座位 ${d.seat}）`; // 房主标识随后按 hostSeat 精确更新
+    $('mySeatInfo').textContent = d.name; // 房主标识随后按 hostSeat 精确更新
     enterTable();
   });
 
@@ -133,7 +133,7 @@ function connect(){
     UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr, snap.seats.map(s=>s.avatar||''));
     // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置（hostSeat 与座位解耦）
     if(snap.hostSeat!=null){
-      if($('mySeatInfo')) $('mySeatInfo').textContent = `你是 ${myName}（${mySeat===snap.hostSeat?'房主':'第 '+mySeat+' 位玩家'}）`;
+      if($('mySeatInfo')) $('mySeatInfo').textContent = (mySeat===snap.hostSeat) ? `${myName} 是房主` : `${myName}`;
       const canConfig = mySeat===snap.hostSeat && (!snap.G || snap.seriesOver); // 仅未开局或本场结束后可配置/开局
       if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
     }
@@ -156,22 +156,28 @@ function connect(){
   // 被提升为房主（原房主退出）：hostSeat 与座位解耦，座位不变，仅提示
   socket.on('promotedHost', ()=>{
     toast('你已成为房主');
-    if($('mySeatInfo')) $('mySeatInfo').textContent=`你是 ${myName}（房主）`;
+    if($('mySeatInfo')) $('mySeatInfo').textContent=`${myName} 是房主`;
   });
 
   socket.on('roomClosed', ()=>{ roomClosed(); });
 
   socket.on('toast', (m)=>{ toast(m); });
 
-  // 提前结束本场：收到他人表决请求 → 弹窗（发起方不弹）
+  // 提前结束本场：发起方显示「等待表决」，其他三家显示同意/拒绝
   socket.on('endSeriesAsk', (d)=>{
     endAskRequester = (d && Number.isInteger(d.requester)) ? d.requester : -1;
-    if(endAskRequester===mySeat) return;
     const m=$('endAskModal'); if(!m) return;
     const txt=$('endAskText');
-    if(txt){
+    const a=$('btnEndAgree'), r=$('btnEndReject'), c=$('btnEndClose');
+    const mine = endAskRequester===mySeat;
+    if(a) a.style.display = mine ? 'none' : '';
+    if(r) r.style.display = mine ? 'none' : '';
+    if(c) c.style.display = mine ? '' : 'none';
+    if(mine){
+      if(txt) txt.textContent='你已发起【提前结束本场】，等待其他三家在 30 秒内同意…';
+    } else {
       const who=(d && d.name) || '有玩家';
-      txt.textContent=`${who} 发起【提前结束本场】。需要其他三家在 30 秒内全部同意才生效；若本局进行中会直接废弃。`;
+      if(txt) txt.textContent=`${who} 发起【提前结束本场】。需要其他三家在 30 秒内全部同意才生效；若本局进行中会直接废弃。`;
     }
     m.hidden=false;
   });
@@ -475,6 +481,7 @@ function bindLobby(){
   const es=$('btnEndSeries'); if(es) es.onclick=()=>{ if(socket) socket.emit('endSeries'); };
   const ea=$('btnEndAgree'); if(ea) ea.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:true}); };
   const er=$('btnEndReject'); if(er) er.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:false}); };
+  const ec=$('btnEndClose'); if(ec) ec.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; };
   // 刷新按钮（牌桌内）：等同浏览器刷新页面（重新加载游戏）
   const rf=$('btnRefresh'); if(rf) rf.onclick=()=>{ location.reload(); };
   // 刷新列表按钮（大厅右上角）：重新拉取房间列表（非整页刷新）
@@ -542,6 +549,6 @@ function applySettings(s){
   if($('setAIAuto')) $('setAIAuto').checked=!!s.aiAuto; // 漏同步：换房主/重进后勾选应跟服务器一致
 }
 
-window.NET = { connect, act, nextRound, start, toggleAI, get roomCode(){return roomCode;} };
+window.NET = { connect, act, nextRound, start, toggleAI, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, get roomCode(){return roomCode;} };
 window.addEventListener('DOMContentLoaded', bindLobby);
 })();

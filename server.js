@@ -454,6 +454,7 @@ function snapshot(room){
     hostSeat: room.hostSeat, // 房主座位号（与座位归属解耦）：客户端据此显示「你是房主」/设置按钮
     seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, avatar:s.avatar||'', humanCount:room.humanCount})),
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
+    endVote: room.endVote ? { requester: room.endVote.requester, need: room.endVote.need, agree: room.endVote.agree.size } : null,
     endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
     G: room.G,
   };
@@ -540,7 +541,10 @@ function finalizeEndSeries(room){
   if(curGame) logLine(room, '提前收场：本局进行中，直接废弃（不计分）');
   logLine(room, '══════ 本场提前结束（共识）══════');
   logLine(room, `已完成局累计：${room.series.totals.map((t,i)=>`${room.seats[i].name} ${t>0?'+':''}${t}分`).join('｜')}`);
-  room.G = null;                                        // 废弃当前局：牌桌不留残局
+  // 局间结束：保留已结束的 G，牌桌冻结（各家剩余牌照常摊在桌面），
+  // 点【准备】或【退出房间】时才清空。局中结束仍直接废弃，避免把未完成的一局当成结果展示。
+  if(curGame) room.G = null;
+  else if(room.G) room.G.lastSeries = true; // 局间结束：标记为「本场最后一局」，客户端显示本场结束
   room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
   room.ready=[false,false,false,false];
   room.seriesOver=true;
@@ -621,6 +625,7 @@ function scheduleOfflineKick(room, seatIdx){
           room.hostSeat=j;
           const s2=io.sockets.sockets.get(room.seats[j].socketId);
           if(s2){ s2.emit('promotedHost', {hostSeat:j}); }
+          io.to(room.code).emit('toast', `房主切换为${room.seats[j].name}`);
           logLine(room, `${room.seats[j].name} 成为房主`);
           break;
         }
@@ -990,7 +995,8 @@ io.on('connection', (socket)=>{
 
   // 玩家准备/取消准备（对局配置由房主在弹窗调整；全员准备后自动开局）
   on('toggleReady', ()=>{ if(!permit(socket,'toggleReady')) return;
-    if(!room || (room.G && !room.seriesOver)) return;
+    // 未开局 / 本场已结束 / 本局已结束（局末等下一局）都可切换准备；对局进行中不允许
+    if(!room || (room.G && !room.G.ended && !room.seriesOver)) return;
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
     room.ready[mySeat]=!room.ready[mySeat];
@@ -1119,8 +1125,13 @@ io.on('connection', (socket)=>{
     if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
     if(st.type!=='human' || st.offline) return;
     if(room.endVote.agree.has(mySeat)){ socket.emit('toast','你已表决'); return; }
-    if(!(data && data.vote)){ cancelEndVote(room, `${st.name} 不同意，提前结束请求作废`); return; }
+    if(!(data && data.vote)){
+      io.to(room.code).emit('toast', `${st.name} 拒绝结束本场，请求作废`);
+      cancelEndVote(room, `${st.name} 不同意，提前结束请求作废`);
+      return;
+    }
     room.endVote.agree.add(mySeat);
+    io.to(room.code).emit('toast', `${st.name} 同意结束本场`);
     logLine(room, `${st.name} 同意提前结束`);
     if(room.endVote.agree.size>=room.endVote.need) finalizeEndSeries(room);
     else broadcast(room);
@@ -1167,6 +1178,7 @@ io.on('connection', (socket)=>{
           r.hostSeat=j;
           const s=io.sockets.sockets.get(r.seats[j].socketId);
           if(s){ s.emit('promotedHost', {hostSeat:j}); }
+          io.to(r.code).emit('toast', `房主切换为${r.seats[j].name}`);
           logLine(r, `${r.seats[j].name} 成为房主`);
           break;
         }

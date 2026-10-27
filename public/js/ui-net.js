@@ -656,7 +656,6 @@ function applyState(snap){
     if($('tableMsg')) $('tableMsg').textContent='';
     for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
     renderSeatNames();
-    renderReadyIndicators();
     setBtn(false);
     // 刚进房间/等开局：不显示 出牌/提示/不要（开局后由出牌轮分支恢复）
     $('btnPlay').style.display='none';
@@ -675,6 +674,7 @@ function applyState(snap){
     }
     const _ts=$('trickScore'); if(_ts) _ts.textContent='';
     boardCleared=false;
+    renderReadyIndicators(true); // 清完出牌区后再画准备提示（场初显示在出牌区）
     return;
   }
   // 发牌后显示排序/牌大小
@@ -706,13 +706,17 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
-  if(G && G.ended && boardCleared) renderReadyIndicators(); // 准备后：各家准备圆点显示在牌桌上
+  if(G && G.ended) renderReadyIndicators(false); // 局末/场末：各家准备状态常显在座位旁
   // 场末计分板按钮兜底：本场结束且计分板弹窗未开时始终可见，可重开计分板
   if(G && G.ended && seriesOver){ const b=$('btnSettle'); if(b && $('modal').hidden) b.style.display='inline-block'; }
   announceState();
   aiAutoMaybePlay(); // 开了 AI代打：轮到我就自动出牌
   // 牌桌上的"下一局"按钮：仅本局结束后显示（关闭计分板后也能进入下一局）
-  if($('btnNext')) $('btnNext').style.display = (G && G.ended && !seriesOver) ? 'inline-block' : 'none';
+  if($('btnNext')){
+    $('btnNext').style.display = (G && G.ended && !seriesOver) ? 'inline-block' : 'none';
+    // 局末已点过准备 → 按钮变成「取消准备」
+    $('btnNext').textContent = (G && G.ended && seatReady[mySeat]) ? '取消准备' : '下一局';
+  }
   // 按钮：确认轮 / 出牌轮
   if(G.ended){
     setBtn(false);
@@ -810,18 +814,22 @@ function renderSeatNames(){
   }
 }
 // 把「已准备 / 未准备」显示在各家自己的出牌区（牌桌上），绿色/红色圆点
-function renderReadyIndicators(){
+// 准备提示：场初放在各座位的出牌区；局末/场末改放信息框旁的 hint 区，
+// 这样场末冻结的牌桌不会被清掉。
+function renderReadyIndicators(inTrick){
   const realOf = v => (mySeat + v) % 4;
   for(let v=0;v<4;v++){
-    const tr=$('t'+v); if(!tr) continue;
-    tr.innerHTML='';
+    const host = inTrick ? $('t'+v) : $('hint'+v);
+    if(!host) continue;
+    if(inTrick) host.innerHTML='';
+    else host.querySelectorAll('.readyHint').forEach(n=>n.remove()); // 只清自己追加的，保留游/插底/叫牌
     const i=realOf(v);
     if(seatTypes[i]!=='human') continue; // AI 空位不显示
     const ready=!!seatReady[i];
     const d=document.createElement('div');
     d.className='readyHint';
     d.innerHTML=`<span class="readyDot ${ready?'on':'off'}"></span><span>${ready?'已准备':'未准备'}</span>`;
-    tr.appendChild(d);
+    host.appendChild(d);
   }
 }
 // 准备提示改由 renderReadyIndicators 显示在牌桌（出牌区）上：#13 座位徽标方案已弃用
@@ -886,6 +894,10 @@ function renderSeats(){
     if(boardCleared){
       const tr=$('t'+v); if(tr) tr.innerHTML='';
       const hc=$('h'+v); if(hc) hc.innerHTML='';
+      const he=$('hint'+v); if(he) he.innerHTML='';   // 叫牌小卡/游/插底一并清掉
+      const tg=$('tag'+v); if(tg) tg.innerHTML='';    // 其他三家的叫牌小卡挂在 tag 上，这里也清掉
+      const av=$('av'+v); if(av) av.querySelectorAll('.kingBadge').forEach(n=>n.remove()); // 4王标记
+      el.querySelectorAll('.cumSco,.roundSco').forEach(n=>n.remove()); // 笼数/积分徽标
       pEl.textContent='';
       continue;
     }
@@ -1708,6 +1720,8 @@ $('btnClose').onclick=()=>{
   const nx=$('btnNext'); if(nx) nx.onclick=()=>{
     $('modal').hidden=true;
     showSettleBtn(false);
+    // 已经准备过（局末点了下一局）→ 再点即取消准备
+    if(G && G.ended && !seriesOver && seatReady[mySeat]){ getNET().toggleReady(); return; }
     if(!lastRoundWasLast) getNET().nextRound();
   };
 })();

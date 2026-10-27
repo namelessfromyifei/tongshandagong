@@ -134,7 +134,8 @@ function connect(port){
     T('AI 房可发起提前结束（不要求 4 真人；无人报「需要 4 位在线真人」）',
       voteSeen && !clients[0].toasts.some(t => /需要 4 位在线真人/.test(t)));
     clients[2].c.emit('endSeriesVote', { vote: true });
-    const s1Ended = await until(() => clients.some(x => x.lastSnap && x.lastSnap.seriesOver && !x.lastSnap.G), 10000);
+    // 局间结束：保留已结束的 G（牌桌冻结，等准备/退出才清）
+    const s1Ended = await until(() => clients.some(x => x.lastSnap && x.lastSnap.seriesOver && !!x.lastSnap.G), 10000);
     T('AI 房在线真人全票 → 场结束（离线 c1 不阻塞）', s1Ended);
 
     // 场末（收场后）：退出放行；c0 退出后在线人类减到 2（c2 + 离线 c1）
@@ -226,7 +227,7 @@ function connect(port){
     clients[2].c.emit('endSeriesVote', { vote: true });
     await wait(200);
     r3.emit('endSeriesVote', { vote: true });
-    const s2Ended = await until(() => clients.some(x => x.lastSnap && x.lastSnap.seriesOver && !x.lastSnap.G), 10000);
+    const s2Ended = await until(() => clients.some(x => x.lastSnap && x.lastSnap.seriesOver && !!x.lastSnap.G), 10000);
     T('四人全票 → 场结束（决策 A 原路径仍通）', s2Ended);
 
     // 场末全员退出 → 房间清空（大厅列表不再有 roomB）
