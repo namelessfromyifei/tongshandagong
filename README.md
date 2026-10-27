@@ -197,17 +197,19 @@ tongshandagong/
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `8080` | 监听端口 |
-| `ROOM_IDLE_KICK_MS` | `300000`（5 分钟） | 牌局结束后房间闲置自动解散；`0` 关闭 |
+| `ROOM_IDLE_KICK_MS` | `1800000`（30 分钟） | 闲置解散仅限「未开局/场末」；局间（等下一局）不超时；`0` 关闭 |
 | `OFFLINE_KICK_MS` | `180000`（3 分钟） | 未开局时真人掉线超时移出座位；`0` 关闭 |
 | `AI_TURN_MS` | `1500` | AI 每手间隔（留出语音播报时间） |
 | `WX_APPID` / `WX_APPSECRET` | 空 | 已认证服务号 AppID / AppSecret（配置后启用微信网页授权） |
 | `WX_OAUTH_BASE` | 按请求 Host 推导 | OAuth 回调基地址，如 `https://game.example.com`；必须与公众号「网页授权域名」一致 |
 | `SESSION_SECRET` | 启动时随机 | 微信登录 Cookie 的签名密钥；生产必须固定设置，否则重启后登录态失效 |
+| `WEBHOOK_SECRET` | 空 | `/webhook/deploy` 自动部署的 HMAC 验签密钥（需与 GitHub Webhook 一致）；空 = 验签关闭 |
+| `ALLOWED_ORIGINS` | 空 | 逗号分隔的跨域来源白名单（`http://localhost` 与 App 的 `https://localhost` 已内置放行）；空 = 不限制来源 |
 | `WX_MOCK` | 关闭 | `1` 时启用本地模拟授权（仅非 production），用于无公众号时联调 |
 
 - **常驻房间**：`LOVE`、`HOME` 固定存在，不会因闲置或无人被解散，也不能删除。
 - **重连**：输入房间号 + 原昵称即可回座；开局后不允许新玩家中途加入。
-- **掉线**：未开局超时被移出，座位还原为空位，房主掉线时房主身份移交；对局中掉线保留座位等待重连（不会由 AI 接管）。
+- **掉线**：未开局超时被移出，座位还原为空位，房主掉线时房主身份移交；对局中掉线保留座位等待重连（不会由 AI 接管、也没有超时代打，重连是唯一恢复路径；一场未结束时任何人不可被踢）。
 - **服务端持局**：每次状态变更广播全量快照；客户端渲染所需的叫牌、手牌、当前轮次、结算等均以快照为准。
 
 ### 微信头像昵称授权
@@ -237,7 +239,9 @@ WX_MOCK=1 SESSION_SECRET=dev-secret node server.js
 
 ```bash
 # 服务器上（Ubuntu/Debian）
-GIT_URL=git@github.com:<账号>/tongshandagong.git sudo ./deploy.sh
+# 注意：sudo 默认会剥掉自定义环境变量，`GIT_URL=… sudo ./deploy.sh` 拿不到值；先 export 再 sudo
+export GIT_URL=git@github.com:<账号>/tongshandagong.git
+sudo ./deploy.sh
 ```
 
 脚本会安装 Node 20+ / PM2、拉代码、装依赖并守护进程；需在云控制台安全组放行 TCP 8080。
@@ -297,18 +301,19 @@ node tools/build-apk.js --server http://8.148.29.231
 
 ## 测试与工具
 
-运行测试前先安装依赖；联机 e2e（mask-check / endseries-check / host-check）会**自动起专用端口的测试服务器**，无需提前启动 8080。
+运行测试前先安装依赖；联机 e2e（mask-check / endseries-check / host-check / exit-check）会**自动起专用端口的测试服务器**，无需提前启动 8080。
 
 | 命令 | 说明 | 依赖服务端 |
 |---|---|---|
-| `npm test` | 一键全量：引擎单测 + AI 单测 + 双副本一致性 + 三个联机 e2e | 否 |
+| `npm test` | 一键全量：引擎单测 + AI 单测 + 双副本一致性 + 四个联机 e2e | 否 |
 | `npm run test:engine` | 仅引擎/AI 单测 + 双副本一致性 | 否 |
-| `node tests/engine.test.js` | 引擎单测（牌具/牌型/比较/结算/流程/模拟，当前 179 项） | 否 |
+| `node tests/engine.test.js` | 引擎单测（牌具/牌型/比较/结算/流程/模拟；断言数随用例增减，不再写死） | 否 |
 | `node tests/ai-sanity.js` | AI 行为单测（不乱出王、不炸队友等） | 否 |
 | `node tests/check-sync.js` | js/ 与 public/js/ 的引擎/AI 双副本一致性 | 否 |
 | `node tests/mask-check.js` | 快照脱敏 e2e（3 真人 + AI 补位自动打完一局，逐帧校验脱敏/结算） | 否（自动起服务） |
 | `node tests/endseries-check.js` | 提前结束本场（共识收场）e2e | 否（自动起服务） |
 | `node tests/host-check.js` | 房主机制（hostSeat/删房）e2e | 否（自动起服务） |
+| `node tests/exit-check.js` | 局末退出口径 / 离线顶替 / start 收权 e2e | 否（自动起服务） |
 | `node tests/net-sim.js` | 1 真人 + 3 AI 自动打完整局（联调脚本，需先起 8080 服务） | 是 |
 | `node tests/cdp-mobile-check.js` | 移动端布局裁剪检查（需调试端口 9224 的 Chrome） | 是 |
 | `node tests/wx-auth.js` | 微信授权（WX_MOCK）流程、Cookie 签名、Socket 身份覆盖 | 否（自起测试服务） |

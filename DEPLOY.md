@@ -79,6 +79,9 @@ sudo pm2 save && sudo pm2 startup
 ### 方式 C：GitHub Webhook 自动部署（push 后自动更新）
 
 1. **配置密钥**：在 `/home/admin/tongshandagong/ecosystem.config.js`（复制自 `ecosystem.config.example.js`）的 `env` 中设置 `WEBHOOK_SECRET`（与 GitHub 后台一致），然后 `pm2 restart tongshandagong` 使生效。
+   > ⚠️ 若进程是由 `pm2 start server.js` 直接启动的（方式 A/B/deploy.sh），它**不会读取 ecosystem.config.js**——仅 `pm2 restart` 加载不到新 env。首次需重建进程：
+   > `cd /home/admin/tongshandagong && sudo pm2 delete tongshandagong && sudo pm2 start ecosystem.config.js && sudo pm2 save`
+   > 之后对 ecosystem.config.js 的修改 `pm2 restart tongshandagong` 即可生效。
 2. **GitHub 添加 Webhook**：**推送目标仓库**（当前为 `zhanghan4141-oss/tongshandagong`）→ Settings → Webhooks → Add webhook
    - Payload URL：`https://www.zhangyuning.xyz/webhook/deploy`
    - Content type：`application/json`
