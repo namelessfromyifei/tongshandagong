@@ -666,6 +666,15 @@ function applyState(snap){
     // 准备按钮居中（此时 G 为空，btnReady 挪到中间位置）
     layoutActionButtons();
     positionMidBtns();
+    // G 被清空（提前收场/清残局等）时：上一局手牌/出牌区/本轮分数一并清掉。
+    // 此前这里直接 return，renderHand/renderCenter 不会执行，#hand 手牌区没人清 → 残留上一局牌面
+    const _h=$('hand'); if(_h) _h.innerHTML='';
+    for(let k=0;k<4;k++){
+      const _tr=$('t'+k); if(_tr) _tr.innerHTML='';
+      const _hc=$('h'+k); if(_hc) _hc.innerHTML='';
+    }
+    const _ts=$('trickScore'); if(_ts) _ts.textContent='';
+    boardCleared=false;
     return;
   }
   // 发牌后显示排序/牌大小
