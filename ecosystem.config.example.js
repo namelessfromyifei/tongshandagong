@@ -27,6 +27,7 @@ module.exports = {
       WEBHOOK_SECRET: 'REPLACE_WITH_YOUR_WEBHOOK_SECRET',
 
       // 可选：跨域来源白名单（逗号分隔；留空=开放）
+      // 上线域名后建议启用（待玩家全部切到域名再开，否则 http://IP:8080 直连会被拒）：
       // ALLOWED_ORIGINS: 'https://www.zhangyuning.xyz',
 
       // 可选：保持默认即可
