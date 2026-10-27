@@ -59,7 +59,7 @@ git push -u origin main
 # 上传 deploy.sh 到服务器后
 sudo ./deploy.sh   # 会装 Node/PM2、拉代码、装依赖、起服务
 ```
-> 脚本里 `GIT_URL` 未设时跳过克隆，需手动把代码放到 `/opt/tongshandagong`。
+> 脚本里 `GIT_URL` 未设时跳过克隆，需手动把代码放到 `/home/admin/tongshandagong`。
 > 推荐在脚本顶部填好你的 `GIT_URL` 后执行。
 
 ### 方式 B：手动
@@ -67,8 +67,8 @@ sudo ./deploy.sh   # 会装 Node/PM2、拉代码、装依赖、起服务
 # 1. 装 Node 20
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - && sudo apt-get install -y nodejs
 # 2. 拉代码
-sudo git clone git@github.com:你的用户名/tongshandagong.git /opt/tongshandagong
-cd /opt/tongshandagong && sudo npm install --production
+sudo git clone git@github.com:你的用户名/tongshandagong.git /home/admin/tongshandagong
+cd /home/admin/tongshandagong && sudo npm install --production
 # 3. PM2 守护
 sudo npm i -g pm2
 sudo pm2 start server.js --name tongshandagong
@@ -77,7 +77,7 @@ sudo pm2 save && sudo pm2 startup
 
 ### 方式 C：GitHub Webhook 自动部署（push 后自动更新）
 
-1. **配置密钥**：在 `/opt/tongshandagong/ecosystem.config.js`（复制自 `ecosystem.config.example.js`）的 `env` 中设置 `WEBHOOK_SECRET`（与 GitHub 后台一致），然后 `pm2 restart tongshandagong` 使生效。
+1. **配置密钥**：在 `/home/admin/tongshandagong/ecosystem.config.js`（复制自 `ecosystem.config.example.js`）的 `env` 中设置 `WEBHOOK_SECRET`（与 GitHub 后台一致），然后 `pm2 restart tongshandagong` 使生效。
 2. **GitHub 添加 Webhook**：仓库 → Settings → Webhooks → Add webhook
    - Payload URL：`https://你的域名/webhook/deploy`
    - Content type：`application/json`

@@ -8,7 +8,7 @@ module.exports = {
   apps: [{
     name: 'tongshandagong',
     script: 'server.js',
-    cwd: '/opt/tongshandagong',
+    cwd: '/home/admin/tongshandagong',
     env: {
       NODE_ENV: 'production',
       PORT: 8080,

@@ -4,7 +4,7 @@
 set -e
 
 PORT="${PORT:-8080}"
-APP_DIR="${APP_DIR:-/opt/tongshandagong}"
+APP_DIR="${APP_DIR:-/home/admin/tongshandagong}"
 GIT_URL="${GIT_URL:-}"   # 例：git@github.com:你的用户名/tongshandagong.git 或 https://…
 
 echo "==> 1/5 安装 Node.js 20+"
