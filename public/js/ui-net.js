@@ -633,12 +633,16 @@ function applyState(snap){
   } else {
     lastSettle = null;
   }
-  // 右上角二选一：场进行中显示「结束场次」（点击发起共识收场），否则显示「退出房间」
+  // 右上角二选一：场进行中显示「结束场次」（点击发起共识收场），否则显示「退出房间」；
+  // 局末（非末局）：满员真人房只留【结束场次】（服务端拦退出）；含 AI 座/真人不足 4 的房
+  // 改放行走人（决策 Q2），此时显示【退出房间】
   const lv=$('btnLeave'), esB=$('btnEndSeries');
   if(lv && esB){
     const inPlay = !!(G && !seriesOver);
-    lv.style.display = inPlay ? 'none' : '';
-    esB.style.display = inPlay ? 'inline-block' : 'none';
+    const gap = !!(G && G.ended && !seriesOver); // 局末等待下一局
+    const nHuman = seatTypes.filter(t=>t==='human').length;
+    lv.style.display = (gap && nHuman===4) ? 'none' : '';
+    esB.style.display = (inPlay && !(gap && nHuman<4)) ? 'inline-block' : 'none';
   }
   hintCursor=0; hintList=[];
   if(!G){
@@ -1199,7 +1203,8 @@ function renderCenter(){
   if(tm){
     const m=$('msg');
     const head=(m && m.textContent) ? m.textContent : '';
-    tm.innerHTML = (head ? `<span class="m1">${head}</span>` : '') +
+    // #tableMsg 是 innerHTML 直插：head 里的昵称（对家/硬牌者）必须转义，防 textContent→innerHTML 反弹 XSS
+    tm.innerHTML = (head ? `<span class="m1">${esc(head)}</span>` : '') +
       `<span class="m2">本轮分数 <b>${G.trickPoints}</b> 分</span>`;
   }
 }
@@ -1754,6 +1759,7 @@ $('btnClose').onclick=()=>{
     const t=e.target;
     if(!t||!t.closest) return;
     if(t.closest('.hcard')||t.closest('button')||t.closest('input')) return;
+    if(clickSuppress) return; // 拖动选牌刚落合的合成 click：不触发「点桌面收回选牌」
     if(selected.size){ selected.clear(); render(); }
   });
 })();
