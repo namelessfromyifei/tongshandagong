@@ -30,6 +30,7 @@ let seatReady = [];        // 服务器座位准备标记
 let settings = {};         // 房间设置
 let series = null;         // 轮结算累计
 let seriesOver = false;    // 本场已结束（服务端保留 G，牌桌冻结，等玩家准备）
+let earlyEnded = false;    // 本场系「提前结束」收场（局间共识收场）：局数/标题文案改「本场(已)提前结束」
 let aiAutoOn = false;      // 玩家自己开启的「AI出牌」代打
 let aiAutoKey = '';        // 已经代打过的回合标识，防止同一回合重复出牌
 let aiAutoTimer = null;
@@ -600,6 +601,7 @@ function applyState(snap){
   G = snap.G || null;
   window.__lastG = G; // 供联调工具读取（tests/cdp-mobile-check.js 的 enterRoom 检查 hasG）
   seriesOver = !!snap.seriesOver;
+  earlyEnded = !!snap.earlyEnded; // 提前收场标记（服务端 finalizeEndSeries 置 true，startRound 清 false）
   // 点「准备/下一局」清空上局牌桌：新一局开始恢复桌面；我准备（场未结束）则清空并显示准备圆点
   if(G && !G.ended){ boardCleared=false; }
   else if(G && G.ended && snap.ready && snap.ready[mySeat]){ boardCleared=true; }
@@ -762,7 +764,8 @@ function renderTop(){
   $('lblMode').textContent = G.mode==='hard'?('硬牌 · '+seatNames[G.hardSeat]):'2V2';
   // 局数直接用服务端下发的 G.roundNo：进行中即显示当前局，不再等本局结算后才 +1
   const total=settings.rounds||1;
-  $('lblRound').textContent = `第 ${G.roundNo||1}/${total} 局`;
+  // 提前收场（局间共识收场，场末冻结）：局数文案改「本场提前结束」；其余（局中/局末/自然场末）照常第 x/y 局
+  $('lblRound').textContent = (seriesOver && earlyEnded) ? '本场提前结束' : `第 ${G.roundNo||1}/${total} 局`;
   updateSeriesInfo();
 }
 // 头像：有微信头像时显示图片，否则显示文字（昵称首字/庄标）
@@ -1254,10 +1257,10 @@ function baseCageOf(st,i){
   if(st.mode==='hard') return (i===st.hardSeat?6:2)*sign;
   return st.basePer*sign; // 半番×输方没跑人数
 }
-function teamDotHtml(i){
-  // 身份列：红/绿圆圈标识队伍（庄队绿、客队红；硬牌＝硬牌者绿、三家红）
-  const green = G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord||i===G.partner);
-  return `<span class="teamDot ${green?'g':'r'}"></span>`;
+function teamDotHtml(s,i){
+  // 身份列：红/绿圆圈按本局胜负（胜队绿、败队红）——此前按庄/客写死颜色，以胜队视角看像随机
+  const win = !!(s && s.winnerSeats && s.winnerSeats.includes(i));
+  return `<span class="teamDot ${win?'g':'r'}"></span>`;
 }
 // 奖金净额（王奖/硬炸奖，单位=笼）：我是获奖者从三家各收 → +奖×3；每有他人获奖我付一份 → −奖。
 // 不依赖 perSeatNoBonus 减法，旧版/新版 engine 都正确（修复旧缓存下奖金恒 0 的问题）
@@ -1295,8 +1298,10 @@ function finishLocal(settle){
     const tb=$('mTable');
     // 是否本场最后一局：由服务器标记（避免客户端根据已累计的局数猜错）
     lastRoundWasLast = !!G.lastSeries;
-    // 标题右侧直接带局数：（第2局/共3局）
-    const roundTxt = `（第${G.roundNo||1}局/共${settings.rounds||1}局）`;
+    // 标题右侧直接带局数：（第2局/共3局）；提前收场 → （第2局/本场已提前结束）
+    const roundTxt = (seriesOver && earlyEnded)
+      ? `（第${G.roundNo||1}局/本场已提前结束）`
+      : `（第${G.roundNo||1}局/共${settings.rounds||1}局）`;
     $('mTitle').textContent = `${lastRoundWasLast?'本场结束':'本局结束'} · ${G.mode==='hard'
       ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
       : `${s.winnerSeats.map(i=>seatNames[i]).join('、')}赢`}${roundTxt}`;
@@ -1321,7 +1326,7 @@ function finishLocal(settle){
       // 抓分：优先用引擎归属后的值（尾游的抓分归对面队伍），旧缓存引擎回退到原始值
       const caughtVal = (s.effCaught && s.effCaught[i]!=null) ? s.effCaught[i] : gs.caught;
       tb.innerHTML+=`<tr><td>${esc(seatNames[i])}</td>`+
-        `<td>${place}</td><td>${teamDotHtml(i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
+        `<td>${place}</td><td>${teamDotHtml(s,i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
         `<td>${cageC>0?'+':''}${cageC}</td>`+
         `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
         `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;

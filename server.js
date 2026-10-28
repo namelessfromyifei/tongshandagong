@@ -454,6 +454,7 @@ function snapshot(room){
     hostSeat: room.hostSeat, // 房主座位号（与座位归属解耦）：客户端据此显示「你是房主」/设置按钮
     seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, avatar:s.avatar||'', humanCount:room.humanCount})),
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
+    earlyEnded: !!room.earlyEnded, // 本场系「提前结束」收场（局间共识收场）：局数文案显示「本场(已)提前结束」
     endVote: room.endVote ? { requester: room.endVote.requester, need: room.endVote.need, agree: room.endVote.agree.size } : null,
     endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
     G: room.G,
@@ -546,8 +547,11 @@ function finalizeEndSeries(room){
   //  - 局间结束（本局已结束、等下一局）：保留牌局，按正常场末处理（冻结牌桌 + 本场结算）
   if(curGame) room.G = null;
   else if(room.G) room.G.lastSeries = true;
-  room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
+  // 累计/轮数保留（同自然场末 finishRoom）：冻结屏与计分板继续显示提前收场时的场分；
+  // 新的一场开始时才由 startRound 归零。此前这里清零 → 提前收场后「本场(分)」列恒为 0。
+  room.series.active=false; room.series.lastRound=null;
   room.ready=[false,false,false,false];
+  room.earlyEnded=true;          // 提前收场标记：客户端据此把局数文案改为「本场提前结束」
   room.seriesOver=true;
   clearAllOfflineKicks(room); clearIdleKick(room);
   scheduleIdleKick(room);                               // 场结束后可闲置解散
@@ -727,6 +731,7 @@ function startRound(room){
   clearEndVote(room);
   clearIdleKick(room);
   room.seriesOver=false;      // 新的一场开始：解除“本场已结束”的冻结状态
+  room.earlyEnded=false;      // 解除上一场「提前结束」标记（新的一场按正常场末文案）
   room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null; // 新的一场：累计/轮数归零
   // 开局即清 ready：消除 setSettings(wantStart) 遗留在房主座位上的就绪标记。
   // 否则首局全程 snap.ready[房主]=true，局末 ended 帧会把"上一局的就绪残留"

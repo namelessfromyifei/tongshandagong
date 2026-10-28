@@ -166,12 +166,13 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('结算2 客队有分：basePer=1', Math.abs(s.basePer-1)<1e-9);
   T('结算2 各输1番', Math.abs(s.perSeat[2]+1)<1e-9);
 }
-// 场景3：客队跑了一个(3号)剩2号末游且客队抓到分 → 输队没跑人数=1 → basePer=0.5
+// 场景3：客队跑了一个(3号，三游)剩2号末游且客队抓到分 → 输队跑了一家；
+//   判定取「跑者本人分」（3号=0）→ 输1笼（无分则输1，哪怕队内 2 号抓了 10 分）
 {
   const G=mkGame(9); setOut(G,[0,1,3]); G.seats[2].caught=10; G.seats[3].caught=0;
   const s=settleRound(G);
-  T('结算3 跑了一个：basePer=0.5', Math.abs(s.basePer-0.5)<1e-9);
-  T('结算3 各输半番', Math.abs(s.perSeat[2]+0.5)<1e-9 && Math.abs(s.perSeat[3]+0.5)<1e-9);
+  T('结算3 跑了一家·跑者(3号)本人0分 → basePer=1', Math.abs(s.basePer-1)<1e-9);
+  T('结算3 各输1番', Math.abs(s.perSeat[2]+1)<1e-9 && Math.abs(s.perSeat[3]+1)<1e-9);
 }
 // 场景3b：设好名次后，没有一游那一队的尾游（2号，唯一没跑完的）抓分归对家；
 //          手里没出的牌的分不算（那些牌没打出来）
@@ -183,8 +184,64 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   const s=settleRound(G);
   T('结算3b 尾游抓分归零', s.effCaught[2]===0, s.effCaught);
   T('结算3b 尾游抓分归一游，不含手里牌分', s.effCaught[0]===10, s.effCaught);
-  T('结算3b 输方归属后0分→翻倍 basePer=1', Math.abs(s.basePer-1)<1e-9, s.basePer);
+  T('结算3b 跑者本人0分 → basePer=1（三游格·本人0分→输1，与归属结果无关）',
+    Math.abs(s.basePer-1)<1e-9, s.basePer);
   T('结算3b 原始抓分仍保留在 caught 里', s.caught[2]===10, s.caught);
+}
+// 场景3c~3k：2v2 输方牌面基础（屋规分档表，锁定版）
+{
+  // 3c 两家都没跑·0分 → 输 2 番
+  const G=mkGame(601); setOut(G,[0,1]); G.seats[2].caught=0; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('结算3c 两家都没跑·0分 → basePer=+2', Math.abs(s.basePer-2)<1e-9, s.basePer);
+}
+{
+  // 3d 两家都没跑·输队抓=100（有分）→ 输 1 番；「=100平」仅限跑了一家的情形
+  const G=mkGame(602); setOut(G,[0,1]); G.seats[2].caught=60; G.seats[3].caught=40;
+  const s=settleRound(G);
+  T('结算3d 两家都没跑·有分(含=100) → basePer=+1', Math.abs(s.basePer-1)<1e-9, s.basePer);
+}
+{
+  // 3e 跑了一家·二游·跑者本人 0 分（队内另有 10 分）→ 输 1 番
+  const G=mkGame(603); setOut(G,[0,1,2]); G.seats[2].outOrder=2; G.seats[2].caught=0; G.seats[3].caught=10;
+  const s=settleRound(G);
+  T('结算3e 二游·本人0分 → basePer=+1', Math.abs(s.basePer-1)<1e-9, {basePer:s.basePer, eff:s.effCaught});
+}
+{
+  // 3f 跑了一家·二游·本人 0<x<100 → 输 0.5 笼
+  const G=mkGame(604); setOut(G,[0,1,2]); G.seats[2].outOrder=2; G.seats[2].caught=50; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('结算3f 二游·本人50分 → basePer=+0.5', Math.abs(s.basePer-0.5)<1e-9, s.basePer);
+}
+{
+  // 3g 跑了一家·二游·本人=100 → 平（牌面 0）
+  const G=mkGame(605); setOut(G,[0,1,2]); G.seats[2].outOrder=2; G.seats[2].caught=100; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('结算3g 二游·本人=100 → basePer=0（牌面平）', Math.abs(s.basePer)<1e-9, s.basePer);
+}
+{
+  // 3h 跑了一家·二游·本人>100 → 输队赢 0.5（basePer 负，记向输队）
+  const G=mkGame(606); setOut(G,[0,1,2]); G.seats[2].outOrder=2; G.seats[2].caught=150; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('结算3h 二游·本人150分 → basePer=-0.5（输队赢0.5）', Math.abs(s.basePer+0.5)<1e-9, s.basePer);
+}
+{
+  // 3i 跑了一家·三游·本人=100 → 平（三游与二游同格）
+  const G=mkGame(607); setOut(G,[0,1,2]); G.seats[2].outOrder=3; G.seats[2].caught=100; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('结算3i 三游·本人=100 → basePer=0（与二游同格）', Math.abs(s.basePer)<1e-9, s.basePer);
+}
+{
+  // 3j 跑了一家·一游：按队分（尾游分归队）——队分=100 → 平
+  const G=mkGame(608); setOut(G,[0,1,2]); G.seats[2].outOrder=1; G.seats[2].caught=60; G.seats[3].caught=40; // 队分=100
+  const s=settleRound(G);
+  T('结算3j 一游·队分=100（含未跑队友40） → basePer=0', Math.abs(s.basePer)<1e-9, {basePer:s.basePer});
+}
+{
+  // 3k 跑了一家·一游·队分=0 → 输 1 番（一游低档与二/三游格一致）
+  const G=mkGame(609); setOut(G,[0,1,2]); G.seats[2].outOrder=1; G.seats[2].caught=0; G.seats[3].caught=0;
+  const s=settleRound(G);
+  T('结算3k 一游·队分=0 → basePer=+1', Math.abs(s.basePer-1)<1e-9, s.basePer);
 }
 // 场景4：滚笼归属——2号(客队)打过2番滚笼且跑完→归客队(L)？ 注意规则：跑完→算自己队
 //   2号跑了→L=2 → Δ=-2（W=0,L=2）→ 庄队反而要承担？ 不——赢了牌的庄队净额=base+Δ

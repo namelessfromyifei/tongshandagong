@@ -544,10 +544,27 @@ function handHasBomb(hand){
           : (winSet.has(i)? +(2+delta) : -(2+delta));
       }
     } else {
-      const nonOut=loserSeats.filter(i=>!out(i)).length; // 1或2
-      basePer=0.5*nonOut;
+      // —— 2v2 输方牌面基础（屋规分档表，锁定版）——
+      // 判定口径：二/三游格按「跑者本人分」；一游格按「输队两员归属后合计」（尾游分归队）。
+      // 结果记「赢方视角」基（代入 perSeat=±(base+delta)）：正=输队输、负=输队赢走牌面。
+      //  输队两家都没跑        ：0分→输2番；抓到任意分→输1番。
+      //  跑了一家·一游（队分）  ：0→输1、0<x<100→输0.5、=100→平0、>100→输队赢0.5。
+      //  跑了一家·二/三游（本人分）：同上四档。
+      //  双跑（一二游同队即终局，屋规不存在）→ 防呆置 0。
+      const nonOut=loserSeats.filter(i=>!out(i)).length; // 屋规可达只会为 1 或 2
       const loserCaught=loserSeats.reduce((a,i)=>a+effCaught[i],0);
-      if(loserCaught===0) basePer*=2;
+      if(nonOut===2){
+        basePer=(loserCaught===0)?2:1;
+      } else if(nonOut===1){
+        const runner=loserSeats.find(i=>out(i));
+        const pos=(runner!=null && G.seats[runner].outOrder)||0;
+        let pts;
+        if(pos===1){ pts=loserCaught; }       // 一游在输队（偶例）：按归队后的队分
+        else { pts=G.seats[runner].caught; }  // 二/三游：按跑者本人分
+        basePer = (pts===0) ? 1 : (pts===100 ? 0 : (pts>100 ? -0.5 : 0.5));
+      } else {
+        basePer=0; // 双跑：屋规按「同一队跑了一二游牌局就结束」该态不存在
+      }
       for(let i=0;i<4;i++) perSeat[i]= winSet.has(i) ? (basePer+delta) : -(basePer+delta);
     }
     for(let i=0;i<4;i++) perFen[i]=Math.round(perSeat[i]*2*halfFan);
