@@ -653,28 +653,19 @@ function applyState(snap){
     if($('lblMode')) $('lblMode').textContent='等待开局';
     if($('lblRound')) $('lblRound').textContent='';
     if($('msg')) $('msg').textContent='等待全员准备…';
-    // 未发牌：不显示排序/牌大小
-    if($('btnSort')) $('btnSort').style.display='none';
-    if($('btnSize')) $('btnSize').style.display='none';
-    if($('btnNext')) $('btnNext').style.display='none';
-    if($('btnSettle')) $('btnSettle').style.display='none';
     if($('btnAI')){ if(aiAutoOn) aiAutoSet(false); $('btnAI').style.display='none'; }
     if($('tableMsg')) $('tableMsg').textContent='';
     clearBoardDom(); // 未开局/提前收场：把上一局的叫牌卡、4王、笼数、累计分等全部清掉
     renderSeatNames();
-    setBtn(false);
-    // 刚进房间/等开局：不显示 出牌/提示/不要（开局后由出牌轮分支恢复）
-    $('btnPlay').style.display='none';
-    $('btnHint').style.display='none';
-    $('btnPass').style.display='none';
-    $('btnPass').textContent='不要';
-    // 准备按钮居中（此时 G 为空，btnReady 挪到中间位置）
-    layoutActionButtons();
-    positionMidBtns();
-    // G 被清空（提前收场/清残局等）时：上一局手牌/出牌区/本轮分数一并清掉。
-    // 此前这里直接 return，renderHand/renderCenter 不会执行，#hand 手牌区没人清 → 残留上一局牌面
     boardCleared=false;
-    renderReadyIndicators(true); // 清完出牌区后再画准备提示（场初显示在出牌区）
+    renderWaitingView(); // 空桌态：顶部条/按钮/出牌排/圆点全按「刚进房」（公共出口，见函数定义）
+    return;
+  }
+  // 刚点过【准备】/【下一局】（本局已结束、G 仍冻结等全员就绪）：显示同「刚进房」的空桌态。
+  // 桌面已在上面 609 行清过一次；这里不再按旧局信息重画/重播（render/播报/结算调度一并跳过）。
+  // 覆盖：自然场末点【准备】、局末点【下一局】、提前收场（局间结束场次）冻结点【准备】。
+  if(G && G.ended && boardCleared){
+    renderWaitingView();
     return;
   }
   // 发牌后显示排序/牌大小
@@ -845,6 +836,38 @@ function renderReadyIndicators(inTrick){
     d.innerHTML=`<span class="readyDot ${ready?'on':'off'}"></span><span>${ready?'已准备':'未准备'}</span>`;
     host.appendChild(d);
   }
+}
+/* 空桌态渲染（=「刚进房/未开局」的展示：顶部条、按钮、出牌排、准备圆点）。
+ * 用在两类帧：
+ *   ① !G 帧（未开局/提前收场清残局）——原有行为不变；
+ *   ② G.ended && boardCleared 帧（刚点过【准备】/【下一局】，等全员就绪）——
+ *      此时 G 仍冻结，render() 会把旧局信息重画回来，这里在帧末统一覆盖成「刚进房」，
+ *      并清掉旧局「庄」徽标残留。不碰 G / boardCleared 标志本身。 */
+function renderWaitingView(){
+  if($('lblMode')) $('lblMode').textContent='等待开局';
+  if($('lblRound')) $('lblRound').textContent='';
+  if($('msg')) $('msg').textContent='等待全员准备…';
+  if($('tableMsg')) $('tableMsg').textContent='';
+  if($('btnSort')) $('btnSort').style.display='none';
+  if($('btnSize')) $('btnSize').style.display='none';
+  if($('btnNext')) $('btnNext').style.display='none';
+  if($('btnSettle')) $('btnSettle').style.display='none';
+  if($('btnAI')) $('btnAI').style.display='none';
+  setBtn(false);
+  if($('btnPlay')) $('btnPlay').style.display='none';
+  if($('btnHint')) $('btnHint').style.display='none';
+  if($('btnPass')) $('btnPass').style.display='none';
+  if($('btnPass')) $('btnPass').textContent='不要';
+  // 准备按钮居中（此时无对局，btnReady 挪到中间位置）
+  layoutActionButtons();
+  positionMidBtns();
+  // 冻结帧上旧局「庄」徽标还挂着头像圈：空桌态清点回名字首字（同刚进房，无庄标）
+  for(let k=0;k<4;k++){
+    const av=$('av'+k); if(!av) continue;
+    const at=av.querySelector('.avTxt');
+    if(at && /^庄/.test(at.textContent)) at.textContent = at.textContent.replace(/^庄/,'');
+  }
+  renderReadyIndicators(true); // 场初样式：准备圆点在出牌区
 }
 // 准备提示改由 renderReadyIndicators 显示在牌桌（出牌区）上：#13 座位徽标方案已弃用
 // 显示本场累计分数：改显示在每人 tag 右上侧（局数>1），不再放牌桌上方
@@ -1295,9 +1318,12 @@ function baseCageOf(st,i){
   return st.basePer*sign; // 半番×输方没跑人数
 }
 function teamDotHtml(s,i){
-  // 身份列：红/绿圆圈按本局胜负（胜队绿、败队红）——此前按庄/客写死颜色，以胜队视角看像随机
-  const win = !!(s && s.winnerSeats && s.winnerSeats.includes(i));
-  return `<span class="teamDot ${win?'g':'r'}"></span>`;
+  // 身份列：红/绿圆圈按「牌面+滚笼」净额定胜负（胜绿败红）。
+  // 胜负不看出牌名次（winnerSeats）也不看奖金：每座「牌面+滚笼」＝奖金前的
+  // perSeatNoBonus（±(牌面基础+滚笼Δ)），>0 → 该座所在队本局牌面+滚笼赢（绿）；
+  // =0（平）→ 无胜方，全红。硬牌局同理（随牌面+滚笼净额，与起跑名次解耦）。
+  const net = (s && s.perSeatNoBonus) ? (s.perSeatNoBonus[i]||0) : NaN;
+  return `<span class="teamDot ${(net>1e-9)?'g':'r'}"></span>`;
 }
 // 奖金净额（王奖/硬炸奖，单位=笼）：我是获奖者从三家各收 → +奖×3；每有他人获奖我付一份 → −奖。
 // 不依赖 perSeatNoBonus 减法，旧版/新版 engine 都正确（修复旧缓存下奖金恒 0 的问题）
