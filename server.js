@@ -623,19 +623,8 @@ function scheduleOfflineKick(room, seatIdx){
     room.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
-    // 房主掉线被踢：hostSeat 移交给剩余真人中座位号最小且在线者（不再物理挪座位）
-    if(wasHost && room.humanCount>0){
-      for(let j=0;j<4;j++){
-        if(room.seats[j].type==='human' && !room.seats[j].offline){
-          room.hostSeat=j;
-          const s2=io.sockets.sockets.get(room.seats[j].socketId);
-          if(s2){ s2.emit('promotedHost', {hostSeat:j}); }
-          io.to(room.code).emit('toast', `房主切换为${room.seats[j].name}`);
-          logLine(room, `${room.seats[j].name} 成为房主`);
-          break;
-        }
-      }
-    }
+    // 房主掉线被踢/座位被换：房主卫生——在线真人在则移交最少号在线真人，否则悬空(-1)，不挂在 AI 座
+    ensureValidHost(room);
     // 房间无人时自动删除（常驻房除外）
     if(room.humanCount===0 && !isPreserve(room.code)){ clearIdleKick(room); rooms.delete(room.code); }
     else broadcast(room);
@@ -704,6 +693,35 @@ function describe(cards){
 }
 
 /* ---------- 确认轮结束 / 开局 ---------- */
+// 房主座位卫生：确保 hostSeat 指向真人座（含离线——掉线的房主保留身份，防他人加入抢走）；
+// 否则修复——
+//  - 有在线真人 → 移交给座位号最小的在线真人（promotedHost + 房内提示）；
+//  - 无在线真人 → hostSeat=-1（房主悬空，等真人 join/rejoin 时自动补位）。
+// 仅「未开场/场末/局间」执行；对局进行中不动（避免中途抢房主）。
+// 目的：AI 补位房/常驻房真人都退出后，房主不再落在不存在的 AI 座上（如「房主：A家」）。
+function ensureValidHost(room){
+  if(!room) return false;
+  if(room.G && !room.G.ended) return false; // 对局进行中不做房主变动
+  const hs=room.hostSeat;
+  // 「有效」= 该座仍是真人（含离线：掉线的房主保留身份，避免他人加入时抢走房主；
+  //              只有 不存在/空位/AI 才视为空缺——那是“不存在的 AI”问题点）
+  const ok = hs>=0 && room.seats[hs] && room.seats[hs].type==='human'
+      && !!(room.seats[hs].socketId);
+  if(ok) return false;
+  for(let j=0;j<4;j++){
+    const s=room.seats[j];
+    if(s && s.type==='human' && !s.offline && s.socketId){
+      room.hostSeat=j;
+      const so=io.sockets.sockets.get(s.socketId);
+      if(so){ try{ so.emit('promotedHost', {hostSeat:j}); }catch(e){} }
+      try{ io.to(room.code).emit('toast', `房主切换为${s.name}`); }catch(e){}
+      logLine(room, `${s.name} 成为房主`);
+      return true;
+    }
+  }
+  room.hostSeat=-1; // 无在线真人：房主悬空（不挂在 AI/离线座上）
+  return true;
+}
 // 全员就绪检查：真人需准备，AI 座位自动视为已就绪（aiFill 开时参与）
 // 两种可开局状态：① 尚未开局（G 为空）② 上一局刚结束、等待开下一局（G.ended）
 function checkAllReady(room){
@@ -892,6 +910,7 @@ function takeOverSeat(room, seatIdx, ident, newSocket){
       if(os.connected && wasInRoom){ try{ os.emit('displaced', {name:seat.name}); }catch(e){} } // 被顶替：清桌回大厅
     }
   }
+  ensureValidHost(room); // 每次接管后校验房主座卫生（被顶的恰是房主时自动移交/悬空；对局进行中由函数内部跳过）
 }
 
 /* ---------- Socket.IO ---------- */
@@ -1001,6 +1020,7 @@ io.on('connection', (socket)=>{
     socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
+    ensureValidHost(room); // 房主悬空/落在 AI 座时：真人入座立即补位成房主
     broadcast(r);
     scheduleIdleKick(r); // 有人加入＝房间有活动：重置闲置解散计时
     socket.emit('toast', `已加入房间 ${r.code}，你是第 ${r.humanCount} 位玩家`);
@@ -1342,7 +1362,6 @@ io.on('connection', (socket)=>{
     }
     logLine(r, `${r.seats[seatIdx].name} 退出房间`);
     cancelTakeoverAsk(r, seatIdx, '对方已离开房间，顶替请求作废');
-    const wasHost = (seatIdx===r.hostSeat);
     r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx], avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
     // 最后一位在线玩家退出：清空残局 G（牌局信息）。
@@ -1353,19 +1372,8 @@ io.on('connection', (socket)=>{
     socket.leave(r.code);
     room=null; mySeat=-1;
     socket.data.room=null; socket.data.seat=-1;
-    // 房主退出：hostSeat 移交给剩余真人中座位号最小且在线者（不再物理挪座位）
-    if(wasHost && r.humanCount>0){
-      for(let j=0;j<4;j++){
-        if(r.seats[j].type==='human' && !r.seats[j].offline){
-          r.hostSeat=j;
-          const s=io.sockets.sockets.get(r.seats[j].socketId);
-          if(s){ s.emit('promotedHost', {hostSeat:j}); }
-          io.to(r.code).emit('toast', `房主切换为${r.seats[j].name}`);
-          logLine(r, `${r.seats[j].name} 成为房主`);
-          break;
-        }
-      }
-    }
+    // 房主卫生：在线真人在 → 移交最少号在线真人（原逻辑）；否则悬空(-1)，不能落在 AI/离线座
+    ensureValidHost(r);
     // 房间无人时自动删除（常驻房 LOVE/HOME 除外）
     if(r.humanCount===0 && !isPreserve(r.code)){ clearIdleKick(r); rooms.delete(r.code); }
     else broadcast(r);

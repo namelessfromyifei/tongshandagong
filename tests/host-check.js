@@ -122,6 +122,62 @@ function joiner(c){
     T('房主删房：全员收到 roomClosed 并断连', closed);
     T('其他房间不受影响（甲的新房仍在）', cl[0].closed===0 && cl[0].lastSnap && cl[0].lastSnap.code===nj.code);
 
+    // —— 场景七：AI 补位/常驻房真人都退出后，房主不落在不存在的 AI 上 ——
+    // 用户反馈：AI 补位房真人都退出后「房主」落到不存在的 AI（左上角如「房主：A家」）。
+    // 目标规则：房主座卫生——真人退光后 hostSeat 悬空(-1)，新真人进来立即自动补位成房主。
+    // 座位编排保证判别度：甲=0、乙=1；甲乙都退后（修复前 hostSeat 停在乙位=1，已是 AI），
+    // 丙再加入落在 0 号空座 → 修复前 hostSeat=1(AI)≠丙位；修复后 join 自动补位 → hostSeat=丙位(真人)。
+    {
+      const L = 'LOVE'; // 常驻房：真人退光也不删除
+      const hosts = [];
+      for(let i=0;i<2;i++){
+        const c = await connect(PORT);
+        hosts.push({ c, seat:-1, lastSnap:null, toasts:[], promoted:0 });
+        c.on('state', s => { hosts[i].lastSnap = s; });
+        c.on('toast', m => { hosts[i].toasts.push(String(m)); });
+        c.on('promotedHost', () => { hosts[i].promoted++; });
+      }
+      const pA = joiner(hosts[0].c);
+      hosts[0].c.emit('join', { code:L, name:'甲' });  // seat0
+      const jA = await pA; hosts[0].seat = jA.seat;
+      const pB = joiner(hosts[1].c);
+      hosts[1].c.emit('join', { code:L, name:'乙' }); // seat1
+      const jB = await pB; hosts[1].seat = jB.seat;
+      const initH = await until(() => hosts[1].lastSnap && hosts[1].lastSnap.code===L && hosts[1].lastSnap.hostSeat!=null, 5000);
+      T('H7 甲、乙进常驻房：初始房主=0(甲)', initH && hosts[1].lastSnap.hostSeat===jA.seat,
+        {hostSeat: hosts[1].lastSnap && hosts[1].lastSnap.hostSeat});
+
+      // 甲（房主）退出 → 移交乙（在线真人）
+      hosts[0].c.emit('leave');
+      const rep = await until(() => hosts[1].lastSnap && hosts[1].lastSnap.hostSeat===jB.seat, 5000);
+      T('H7 甲退出 → hostSeat 移交乙', rep, {hostSeat: hosts[1].lastSnap && hosts[1].lastSnap.hostSeat});
+
+      // 乙（最后真人）退出 → 常驻房保留；此时不应有「房主=AI」
+      hosts[1].c.emit('leave');
+      await wait(400);
+      const cN = await connect(PORT);
+      const obs = { c:cN, seat:-1, lastSnap:null, toasts:[], promoted:0 };
+      cN.on('state', s => { obs.lastSnap = s; });
+      cN.on('toast', m => { obs.toasts.push(String(m)); });
+      cN.on('promotedHost', () => { obs.promoted++; });
+      const pC = joiner(cN);
+      cN.emit('join', { code:L, name:'丙' }); // 落在空座 0
+      const jC = await pC; obs.seat = jC.seat;
+      const gotS = await until(() => obs.lastSnap && obs.lastSnap.code===L, 5000);
+      const sp = obs.lastSnap;
+      T('H7 丙进常驻空房 → 自动补位为房主（不在 AI 座）',
+        gotS && sp.hostSeat===obs.seat
+          && !!(sp.seats && sp.seats[sp.hostSeat]) && sp.seats[sp.hostSeat].type==='human',
+        {hostSeat: sp && sp.hostSeat, seat: obs.seat,
+         hsType: sp && sp.seats && sp.seats[sp.hostSeat] && sp.seats[sp.hostSeat].type});
+      T('H7 丙收到房主提示（promotedHost 或「成为房主」）',
+        obs.promoted>0 || obs.toasts.some(t => /房主/.test(t)));
+      cN.emit('leave');
+      await wait(200);
+      cN.close();
+      hosts.forEach(h => { h.c.close(); });
+    }
+
   }catch(e){
     console.log('运行异常：', e && e.stack ? e.stack : e);
     fail++;
