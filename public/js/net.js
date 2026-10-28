@@ -19,6 +19,28 @@ let curG=null, curSeriesOver=false, curHostSeat=-1; // 最近一次快照的状�
 
 const $=id=>document.getElementById(id);
 
+// ③ 风暴合帧：同一动画帧里连来的多帧快照只渲染「最新一帧」（rAF 节拍，最多延迟一个 vsync ≤16ms）。
+// 论证：
+//  - 桌内无逐帧动画依赖——唯一 CSS 过渡是 .hcard/.avatar 的 transform/背景过渡，且「选牌上浮」
+//    是本地 classList 操作，不依赖状态帧；出牌落位无逐帧动画，跳过中间帧安全。
+//  - 语音播词仅在「同一动画帧内多事件」时会合并漏播一句（真人手速下概率≈0），可接受。
+//  - 后台标签页 rAF 暂停：只保留最新快照、内存有界，回前台自动追平。
+// 影响面受控：只包裹 socket 'state' 的渲染尾；e2e（直走 socket 监听）与 jsdom 测试
+// （直调 GameUI.applyState）都不经过 net.js，不受影响。
+let _rafTick = 0, _latestState = null;
+const _raf = (typeof window !== 'undefined' && window.requestAnimationFrame)
+  ? window.requestAnimationFrame.bind(window)
+  : cb => setTimeout(cb, 16);
+function stageRender(snap){
+  _latestState = snap;
+  if(_rafTick) return; // 已有 flush 在途：仅把「最新帧」交给它
+  _rafTick = _raf(() => {
+    _rafTick = 0;
+    const s = _latestState; _latestState = null;
+    if(s){ try{ UI.applyState(s); }catch(e){ try{ console.error('applyState 错误：', e); }catch(_){} } }
+  });
+}
+
 /* ---------- 运行环境 ----------
  * App（Capacitor）里页面从本地资源包加载，origin 是 https://localhost，
  * 与服务器域名不同源，因此 API / Socket 必须使用绝对地址。
@@ -153,7 +175,7 @@ function connect(){
     }
     UI.setSeries && UI.setSeries(snap.series);
     // 服务器日志同步到前端日志（snap.G 里没有 log，服务器用 emit 单独推）
-    UI.applyState(snap);
+    stageRender(snap); // ③：同帧连来的多帧只渲染最新一帧（rAF 合帧）
   });
 
   socket.on('log', (line)=>{ UI.addLog(line); });
