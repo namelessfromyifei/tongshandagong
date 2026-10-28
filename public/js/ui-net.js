@@ -1346,9 +1346,25 @@ function flashMsg(m){
 }
 function addLog(msg){ log(msg); }
 
+/* 被顶替退回大厅：清空牌桌 DOM 与对局状态（等同换房间的清理），供 net.js 的 displaced 回调 */
+function resetTable(){
+  const h=$('hand'); if(h) h.innerHTML='';
+  for(let k=0;k<4;k++){
+    const tr=$('t'+k); if(tr) tr.innerHTML='';
+    const hc=$('h'+k); if(hc) hc.innerHTML='';
+    const he=$('hint'+k); if(he) he.innerHTML='';
+  }
+  clearBoardDom();
+  const md=$('modal'); if(md) md.hidden=true;
+  clearSettleTimer(); settleSeq=null; settleShown=false;
+  selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
+  curRoomCode=''; // 下次进房强制走「换房间」清理路径
+}
+
 /* ---------- 网络回调用（net.js 调用） ---------- */
 window.GameUI = {
   applyState,
+  resetTable,
   setSelf(seat, names, types, aiOn, offArr, readyArr, avatars){
     mySeat=seat; seatNames=names||[]; seatTypes=types||[]; seatOffline=offArr||[]; seatReady=readyArr||[]; seatAvatars=avatars||[]; aiFill=aiOn!==undefined?aiOn:true;
   },

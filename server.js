@@ -810,6 +810,7 @@ const RATE_LIMITS = {
   setSettings:  [10000, 20],
   endSeries:    [10000, 3],
   endSeriesVote:[10000, 10],
+  takeoverVote: [10000, 10],
   toggleAI:     [5000, 4],
   toggleReady:  [3000, 4],
   nextRound:    [3000, 4],
@@ -825,6 +826,67 @@ function permit(socket, key){
   if(arr.length >= max){ try{ socket.emit('toast','操作太频繁，请稍后再试'); }catch(e){} return false; }
   arr.push(t);
   return true;
+}
+
+/* ---------- 座位顶替（重连接管）----------
+ * 原则：客户端自动归位（auto:true，闪断/刷新＝本人正常路径）与微信本人（openid 强身份）直接归位、不设门禁；
+ *      其余手动 rejoin（输入房号+昵称）可能是本人换设备、也可能是冒用——按在位状态门禁：
+ *        座位有人在线        → 推弹窗给在位者：同意才接管（被顶替者清桌退回大厅）；不同意→继续游戏并进入冷静期；
+ *        座位掉线不足窗口     → 视为网络波动，暂不允许接管；
+ *        座位掉线超过窗口     → 允许直接接管（原有行为）。
+ * 对方不同意后 TAKEOVER_REJECT_MS 内，该座位的任何手动重连一律拦截（按座位全局，防多账号轮番轰炸）。 */
+const REJOIN_TAKEOVER_MS  = Number(process.env.REJOIN_TAKEOVER_MS  || 30*1000); // 「网络波动」窗口：掉线超过此时长才允许被手动顶替
+const TAKEOVER_ASK_MS     = Number(process.env.TAKEOVER_ASK_MS     || 30*1000); // 顶替弹窗等待时长（超时作废）
+const TAKEOVER_REJECT_MS  = 10*1000;    // 对方不同意后的冷静期
+const TAKEOVER_APPROVE_MS = Number(process.env.TAKEOVER_APPROVE_MS || 15*1000); // 同意后等待请求方完成归位的最长时长
+
+// 座位是否「有人在线在桌」：座位指向的 socket 在线、且在房间内
+function seatOnlineInRoom(room, seatIdx){
+  const s=room.seats[seatIdx];
+  if(!s || !s.socketId) return false;
+  const os=io.sockets.sockets.get(s.socketId);
+  return !!(os && os.connected && os.data && os.data.room===room);
+}
+// 作废座位上的顶替弹窗（pending ask）；why 非空时通知请求方作废原因
+function cancelTakeoverAsk(room, seatIdx, why){
+  const s=room.seats && room.seats[seatIdx];
+  if(!s || !s.takeAsk) return;
+  if(s.takeTimer){ clearTimeout(s.takeTimer); s.takeTimer=null; }
+  const ask=s.takeAsk;
+  s.takeAsk=null;
+  if(why){
+    const os=io.sockets.sockets.get(ask.sid);
+    if(os && os.connected){ try{ os.emit('takeoverResult', {ok:false, reason:why}); }catch(e){} }
+  }
+}
+function clearAllTakeoverAsks(room){
+  if(!room || !room.seats) return;
+  for(let i=0;i<4;i++) cancelTakeoverAsk(room, i, null);
+}
+// 接管座位：把座位挂到新连接，并清掉旧连接的房间绑定（被顶替者收 displaced，清桌退回大厅）
+function takeOverSeat(room, seatIdx, ident, newSocket){
+  const seat=room.seats[seatIdx];
+  const oldId=seat.socketId;
+  seat.socketId=newSocket.id;
+  seat.offline=false;
+  seat.offlineAt=0;
+  seat.name=ident.name;
+  seat.avatar=ident.avatar;
+  if(ident.openid) seat.openid=ident.openid;
+  clearOfflineKick(room, seatIdx);
+  cancelTakeoverAsk(room, seatIdx, null);
+  seat.takeRejectUntil=0;
+  seat.takeApproved=null;
+  if(seat.takeApprTimer){ clearTimeout(seat.takeApprTimer); seat.takeApprTimer=null; }
+  if(oldId && oldId!==newSocket.id){
+    const os=io.sockets.sockets.get(oldId);
+    if(os && os!==newSocket){
+      const wasInRoom=!!(os.data && os.data.room===room);
+      try{ os.leave(room.code); }catch(e){}
+      if(os.data){ os.data.room=null; os.data.seat=-1; }
+      if(os.connected && wasInRoom){ try{ os.emit('displaced', {name:seat.name}); }catch(e){} } // 被顶替：清桌回大厅
+    }
+  }
 }
 
 /* ---------- Socket.IO ---------- */
@@ -970,18 +1032,111 @@ io.on('connection', (socket)=>{
       return;
     }
     const seat=r.seats[seatIdx];
-    seat.socketId=socket.id;
-    seat.offline=false;
-    seat.name=ident.name;
-    seat.avatar=ident.avatar;
-    if(ident.openid) seat.openid=ident.openid;
-    clearOfflineKick(r, seatIdx); // 重连成功：取消未开局掉线踢出计时器
+    // —— 本人直接归位的两条路径，不设门禁 ——
+    const isOwnerOpenid = !!(ident.openid && seat.openid===ident.openid);
+    if(isOwnerOpenid || data.auto===true){
+      // 微信本人（openid 强身份）/ 客户端自动归位（闪断、刷新＝本人正常路径，不被顶替门禁拦截）
+      takeOverSeat(r, seatIdx, ident, socket);
+      room=r; mySeat=seatIdx;
+      socket.data.room=r; socket.data.seat=seatIdx;
+      socket.join(r.code);
+      socket.emit('joined', {code:r.code, seat:seatIdx, name:seat.name, avatar:seat.avatar||''});
+      broadcast(r);
+      scheduleIdleKick(r);
+      socket.emit('toast', `重连成功，你坐回 ${seat.name}`);
+      return;
+    }
+    // —— 手动重连（输入房号+昵称）：可能是本人换设备、也可能是冒用，按在位状态门禁 ——
+    // 对方已同意顶替 → 完成归位（身份在弹窗时锁定；须由请求方同一连接再次 rejoin，保证座位绑定落在自己连接上）
+    if(seat.takeApproved && seat.takeApproved.sid===socket.id && seat.takeApproved.until>Date.now()){
+      const ap=seat.takeApproved;
+      takeOverSeat(r, seatIdx, ap, socket);
+      room=r; mySeat=seatIdx;
+      socket.data.room=r; socket.data.seat=seatIdx;
+      socket.join(r.code);
+      socket.emit('joined', {code:r.code, seat:seatIdx, name:seat.name, avatar:seat.avatar||''});
+      broadcast(r);
+      scheduleIdleKick(r);
+      socket.emit('toast', `顶替成功，你坐回 ${seat.name}`);
+      return;
+    }
+    if(seat.takeRejectUntil > Date.now()){ // 对方刚才不同意：座位全局冷静期（防轮番轰炸）
+      const sec=Math.ceil((seat.takeRejectUntil-Date.now())/1000);
+      socket.emit('toast', `对方刚才不同意顶替，请 ${sec} 秒后再试`);
+      return;
+    }
+    if(seat.takeAsk){ socket.emit('toast','该座位已有顶替请求待对方回应'); return; }
+    if(seatOnlineInRoom(r, seatIdx)){
+      // 座位有人在线：推弹窗给在位者，同意才接管
+      seat.takeAsk={sid:socket.id, name:ident.name, avatar:ident.avatar, openid:ident.openid||''};
+      seat.takeTimer=setTimeout(()=>{
+        if(r.seats[seatIdx] && r.seats[seatIdx].takeAsk && r.seats[seatIdx].takeAsk.sid===socket.id){
+          cancelTakeoverAsk(r, seatIdx, '对方未回应，顶替请求已作废');
+        }
+      }, TAKEOVER_ASK_MS);
+      const os=io.sockets.sockets.get(seat.socketId);
+      if(os && os.connected){ try{ os.emit('takeoverAsk', {name:ident.name, expire:TAKEOVER_ASK_MS}); }catch(e){} }
+      socket.emit('toast', `已向「${seat.name}」请求顶替座位，等待对方回应`);
+      scheduleIdleKick(r);
+      return;
+    }
+    // 掉线：不足「网络波动」窗口 → 暂不可接管（对方可能还在重连）
+    const offlineAge = seat.offlineAt ? Date.now()-seat.offlineAt : Infinity;
+    if(REJOIN_TAKEOVER_MS>0 && offlineAge < REJOIN_TAKEOVER_MS){
+      const waitSec=Math.max(1, Math.ceil((REJOIN_TAKEOVER_MS-offlineAge)/1000));
+      socket.emit('toast', `「${seat.name}」刚掉线，可能网络波动，约 ${waitSec} 秒后可重连`);
+      return;
+    }
+    // 掉线超过窗口 → 直接接管（原行为）
+    takeOverSeat(r, seatIdx, ident, socket);
     room=r; mySeat=seatIdx;
     socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name:seat.name, avatar:seat.avatar||''});
     broadcast(r);
+    scheduleIdleKick(r);
     socket.emit('toast', `重连成功，你坐回 ${seat.name}`);
+  });
+
+  // 顶替弹窗答复：对方「同意」→ 锁定请求方身份，等待请求方再次 rejoin 完成接管；
+  //               「不同意」→ 座位全局 10s 冷静期，请求方收到被拒提示
+  on('takeoverVote', (data)=>{ if(!permit(socket,'takeoverVote')) return;
+    if(!room || mySeat<0) return;
+    const idx=mySeat, r=room;
+    const s=r.seats[idx];
+    const ask=s && s.takeAsk;
+    if(!ask) return;
+    if(s.takeTimer){ clearTimeout(s.takeTimer); s.takeTimer=null; }
+    s.takeAsk=null;
+    if(data && data.ok){
+      // 同意：请求方仍在 → 锁定身份并告知其重新归位
+      const rq=io.sockets.sockets.get(ask.sid);
+      if(!rq || !rq.connected){
+        socket.emit('toast','对方已离线，顶替取消');
+        return;
+      }
+      s.takeApproved={sid:ask.sid, name:ask.name, avatar:ask.avatar||'', openid:ask.openid||'', until:Date.now()+TAKEOVER_APPROVE_MS};
+      socket.emit('toast','已同意顶替，正在切换…');
+      try{ rq.emit('takeoverResult', {ok:true, code:r.code, seat:idx, name:r.seats[idx].name}); }catch(e){}
+      if(s.takeApprTimer){ clearTimeout(s.takeApprTimer); s.takeApprTimer=null; }
+      const apprSid=ask.sid;
+      s.takeApprTimer=setTimeout(()=>{
+        const ss=r.seats && r.seats[idx];
+        if(ss && ss.takeApproved && ss.takeApproved.sid===apprSid){
+          ss.takeApproved=null;
+          const o2=io.sockets.sockets.get(ss.socketId);
+          if(o2 && o2.connected){ try{ o2.emit('toast','对方未完成接管，游戏继续'); }catch(e){} }
+        }
+      }, TAKEOVER_APPROVE_MS);
+      logLine(r, `${r.seats[idx].name} 同意他人顶替`);
+    } else {
+      // 不同意：继续游戏；10s 冷静期内任何手动重连都被拦
+      s.takeRejectUntil=Date.now()+TAKEOVER_REJECT_MS;
+      const rq=io.sockets.sockets.get(ask.sid);
+      if(rq && rq.connected){ try{ rq.emit('takeoverResult', {ok:false, reason:'对方不同意顶替'}); }catch(e){} }
+      socket.emit('toast','你不同意顶替，游戏继续');
+      logLine(r, `${r.seats[idx].name} 拒绝顶替请求`);
+    }
   });
 
   // 房主切换 AI 补位
@@ -1148,6 +1303,8 @@ io.on('connection', (socket)=>{
     if(r.G && !r.G.ended){
       logLine(r, `${r.seats[seatIdx].name} 退出（对局中，视作掉线等待重连）`);
       r.seats[seatIdx].offline=true;
+      r.seats[seatIdx].offlineAt=Date.now();
+      cancelTakeoverAsk(r, seatIdx, '对方已离开，顶替请求作废');
       socket.leave(r.code);
       room=null; mySeat=-1;
       socket.data.room=null; socket.data.seat=-1;
@@ -1161,6 +1318,7 @@ io.on('connection', (socket)=>{
       return;
     }
     logLine(r, `${r.seats[seatIdx].name} 退出房间`);
+    cancelTakeoverAsk(r, seatIdx, '对方已离开房间，顶替请求作废');
     const wasHost = (seatIdx===r.hostSeat);
     r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx], avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
@@ -1201,7 +1359,7 @@ io.on('connection', (socket)=>{
     // 决策 B：无论是否开局（含确认轮、未开局），仅房主可删
     if(!room || room!==r || mySeat!==room.hostSeat){ socket.emit('toast','仅房主可删除'); return; }
     // 清房：结束表决/闲置与离线计时器/aiTimer，并清理其他成员绑定（防闭包盯住已删房间、旧 aiTimer 串房）
-    clearEndVote(r); clearIdleKick(r); clearAllOfflineKicks(r);
+    clearEndVote(r); clearIdleKick(r); clearAllOfflineKicks(r); clearAllTakeoverAsks(r);
     if(r.aiTimer){ clearTimeout(r.aiTimer); r.aiTimer=null; }
     io.to(r.code).emit('roomClosed');
     rooms.delete(code);
@@ -1226,6 +1384,8 @@ io.on('connection', (socket)=>{
     // 座位 socketId 已被新连接接管 → 忽略，不再把已重连的座位误标回 offline
     if(!seat || seat.socketId !== socket.id) return;
     seat.offline=true;
+    seat.offlineAt=Date.now();
+    cancelTakeoverAsk(room, mySeat, '对方已掉线，顶替请求作废');
     logLine(room, `${seat.name} 掉线，等待重连`);
     broadcast(room);
     // 未开局：超时（默认3分钟）后踢出座位；已开局则由掉线保留逻辑处理

@@ -33,6 +33,7 @@ module.exports = {
       // 可选：保持默认即可
       ROOM_IDLE_KICK_MS: 1800000, // 未开局/场结束 30 分钟闲置解散；局间（等下一局）不超时
       OFFLINE_KICK_MS: 180000,
+      REJOIN_TAKEOVER_MS: 30000, // 「网络波动」窗口：座主掉线超过此时长(ms)才允许他人手动重连顶替其座位（默认 30s）
       AI_TURN_MS: 1500,
     },
   }],

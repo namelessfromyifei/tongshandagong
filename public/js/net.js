@@ -96,7 +96,7 @@ function connect(){
     toast('已连接服务器');
     if(socket){
       // 断线重连：自动用当前身份归位（微信会话在 Cookie 中，服务端按 openid 匹配）
-      if(roomCode && myName) socket.emit('rejoin', {code:roomCode, name:myName});
+      if(roomCode && myName) socket.emit('rejoin', {code:roomCode, name:myName, auto:true});
       socket.emit('listRooms');
     }
   });
@@ -160,6 +160,39 @@ function connect(){
   });
 
   socket.on('roomClosed', ()=>{ roomClosed(); });
+
+  // 顶替座位请求：有人想接管你的座位（仅在你在线时出现）。同意→请求方重新归位完成接管（你被顶替回大厅）；
+  // 不同意→继续游戏。超时未答复按作废。
+  socket.on('takeoverAsk', (d)=>{
+    const who=(d && d.name) || '有玩家';
+    const tm=$('takeoverAskModal'); if(!tm) return;
+    const t=$('takeoverAskText');
+    if(t) t.textContent = `${who} 想顶替你的座位，是否同意？\n【同意】你会清空牌桌并退回大厅；【不同意】继续本局游戏。`;
+    if(tm._tt){ clearTimeout(tm._tt); tm._tt=null; }
+    tm._tt=setTimeout(()=>{ tm.hidden=true; }, (d && d.expire) || 30000);
+    tm.hidden=false;
+  });
+  // 顶替请求结果（给请求方）：同意→需再用同一连接 rejoin 一次完成归位；不同意/作废→提示
+  socket.on('takeoverResult', (d)=>{
+    if(d && d.ok){
+      socket.emit('rejoin', {code:d.code || roomCode, name:d.name || myName, agree:true});
+      return;
+    }
+    toast((d && d.reason) || '顶替请求被拒绝');
+  });
+  // 座位被他人顶替（你已同意、或对方掉线超时被接管）：清空牌桌并退回大厅
+  socket.on('displaced', ()=>{
+    roomCode=''; mySeat=-1; inGame=false;
+    const jm=$('joinModal'); if(jm) jm.hidden=true;
+    const rm=$('rejoinModal'); if(rm) rm.hidden=true;
+    const em=$('endAskModal'); if(em) em.hidden=true;
+    const tm=$('takeoverAskModal'); if(tm){ tm.hidden=true; if(tm._tt){ clearTimeout(tm._tt); tm._tt=null; } }
+    const md=$('modal'); if(md) md.hidden=true;
+    try{ localStorage.removeItem('tsRoom'); }catch(e){}
+    if(UI && UI.resetTable) UI.resetTable(); // 清掉牌桌 DOM/对局状态，防残留
+    enterLobby();
+    toast('你的座位已被其他玩家接管，已退回大厅');
+  });
 
   socket.on('toast', (m)=>{ toast(m); });
 
@@ -482,6 +515,10 @@ function bindLobby(){
   const ea=$('btnEndAgree'); if(ea) ea.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:true}); };
   const er=$('btnEndReject'); if(er) er.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:false}); };
   const ec=$('btnEndClose'); if(ec) ec.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; };
+  // 顶替座位弹窗（在位者答复）
+  const hideTake = () => { const tm=$('takeoverAskModal'); if(tm){ tm.hidden=true; if(tm._tt){ clearTimeout(tm._tt); tm._tt=null; } } };
+  const ta=$('btnTakeAgree'); if(ta) ta.onclick=()=>{ hideTake(); if(socket) socket.emit('takeoverVote',{ok:true}); };
+  const tr=$('btnTakeReject'); if(tr) tr.onclick=()=>{ hideTake(); if(socket) socket.emit('takeoverVote',{ok:false}); };
   // 刷新按钮（牌桌内）：等同浏览器刷新页面（重新加载游戏）
   const rf=$('btnRefresh'); if(rf) rf.onclick=()=>{ location.reload(); };
   // 刷新列表按钮（大厅右上角）：重新拉取房间列表（非整页刷新）
@@ -510,7 +547,7 @@ function bindLobby(){
     if(saved && saved.code && saved.name){
       myName=saved.name;
       const ni=$('nameInput'); if(ni) ni.value=saved.name;
-      socket.emit('rejoin', {code:saved.code, name:saved.name});
+      socket.emit('rejoin', {code:saved.code, name:saved.name, auto:true});
     }
   }catch(e){}
   // 大厅每 3 秒刷新房间列表

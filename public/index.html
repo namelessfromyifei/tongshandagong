@@ -246,6 +246,18 @@
         </div>
       </div>
 
+      <!-- 顶替座位请求：本人在线时有人想接管自己的座位（须本人先同意） -->
+      <div id="takeoverAskModal" class="overlay" hidden>
+        <div class="modalBox">
+          <h2>顶替座位请求</h2>
+          <p id="takeoverAskText" style="color:#a8c8b8;line-height:1.6;white-space:pre-line">有人想顶替你的座位</p>
+          <div class="mBtn">
+            <button id="btnTakeAgree" class="btn gold">同意</button>
+            <button id="btnTakeReject" class="btn">不同意</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 本局结算弹窗（须在 #app 内，才能随 app 一起横屏旋转） -->
       <div id="modal" class="overlay" hidden>
         <div class="modalBox">
