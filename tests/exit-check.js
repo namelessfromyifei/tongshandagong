@@ -44,6 +44,7 @@ function connect(port){
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), AI_TURN_MS: '60', ROOM_IDLE_KICK_MS: '0', OFFLINE_KICK_MS: '0',
+      REJOIN_TAKEOVER_MS: '0', // 关手动重连的「网络波动窗口」：场景二的本人重连（r3 输入房号+昵称）须即时归位
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
