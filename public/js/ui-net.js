@@ -1368,14 +1368,7 @@ function finishLocal(settle){
     $('mTitle').textContent = `${lastRoundWasLast?'本场结束':'本局结束'} · ${G.mode==='hard'
       ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
       : `${s.winnerSeats.map(i=>seatNames[i]).join('、')}赢`}${roundTxt}`;
-    const close=$('btnClose');
-    if(close) close.textContent = lastRoundWasLast ? '本场结束' : '下一局';
-    // 场末（最后一局结束）：计分板中不放「下一局」按钮（只留「关闭计分板」），连同按钮行隐藏
-    if(close){
-      close.style.display = lastRoundWasLast ? 'none' : '';
-      const mb=close.parentElement;
-      if(mb) mb.style.display = lastRoundWasLast ? 'none' : '';
-    }
+    // 「下一局」已从计分板移除：局末推进改由牌桌下方【下一局】(btnNext)，场末由【准备】开下一场
     tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面(笼)</th><th>滚笼(笼)</th><th>奖金(笼)</th><th>本局(分)</th><th>本场(分)</th></tr>`;
     for(let v=0;v<4;v++){
       const i=(mySeat+v)%4, fv=s.perFen[i];
@@ -1791,16 +1784,7 @@ if($('btnAI')){
 }
 
 $('btnHe').onclick=playerHe;
-$('btnClose').onclick=()=>{
-  $('modal').hidden=true;
-  // 最后一局（本场结束）关闭后保留【计分板】按钮，可重新打开计分板；非末局隐藏并就绪下一局
-  if(lastRoundWasLast){
-    const b=$('btnSettle'); if(b) b.style.display='inline-block';
-  } else {
-    const b=$('btnSettle'); if(b) b.style.display='none';
-    getNET().nextRound();
-  }
-};
+// 「下一局」已从计分板移除（局末改由牌桌下方 btnNext 推进；btnNext 接线在下方）
 // 计分板右上角"关闭计分板"：收起后，牌桌上出现【计分板】按钮（在【下一局】左侧），可重新打开
 (function(){
   const showSettleBtn=on=>{ const b=$('btnSettle'); if(b) b.style.display=on?'inline-block':'none'; };
