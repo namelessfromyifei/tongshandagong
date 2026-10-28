@@ -9,6 +9,8 @@
  *   ✓ 手动重连·座位掉线 < REJOIN_TAKEOVER_MS → 视为网络波动，拦截并提示等待；
  *       掉线 ≥ 窗口 → 直接接管
  *   ✓ 同意后请求方未完成归位 → 在位者收「对方未完成接管」提示后继续游戏
+ *   ✓ 被顶者再次 rejoin 不再短路直进（残留闭包防护：走门禁弹窗而非秒进）
+ *   ✓ 被顶者可正常建新房 / 加入他房（闭包残留自愈）
  * 运行：node tests/takeover-check.js
  * ========================================================= */
 "use strict";
@@ -205,6 +207,78 @@ async function createRoomAs(A, name){
       const giveUp = await until(() => A.toasts.some(t => /未完成接管/.test(t)), 7000);
       T('S6 请求方未完成接管 → 在位者收提示并继续', giveUp, A.toasts);
       T('S6 在位者未被顶（仍在桌）', A.displaced === 0);
+    }
+
+    // ---------- 场景七：被顶者再次 rejoin 不再短路直进（残留闭包防护） ----------
+    // 复现用户报告：同意顶替→被顶回大厅→点自己房间行（rejoin）秒进 + tsRoom 重写→刷新又进。
+    // 根因是 server 端被顶连接的闭包 room/mySeat 残留，rejoin 开头「已绑定→直接进桌」短路放行。
+    {
+      const A = await mk(PORT); clients.push(A);
+      const r5 = await createRoomAs(A, '甲');
+      const R = await mk(PORT); clients.push(R);
+      // 预置一次正常顶替：R 手动重连 → A 同意 → R 接管、A 被顶
+      R.c.emit('rejoin', { code: r5.code, name: '甲' });
+      await until(() => A.asks >= 1, 3000);
+      A.c.emit('takeoverVote', { ok: true });
+      await until(() => R.results.some(x => x && x.ok === true), 3000);
+      R.c.emit('rejoin', { code: r5.code, name: '甲' });
+      const jdR = await nextJoined(R, 4000);
+      T('S7 预置：R 完成接管（甲座）', !!(jdR && jdR.seat === r5.seat), jdR);
+      const dispA = await until(() => A.displaced >= 1, 3000);
+      T('S7 预置：A 被顶（收到 displaced）', dispA);
+      const A0join = A.joined; // create 建房时的 joined 引用：之后不应被新的 rejoin/接管改动
+
+      // ★ 被顶者 A 用其旧连接再次 rejoin 同房同座 —— 修复前会走残留闭包短路秒进
+      A.c.emit('rejoin', { code: r5.code, name: '甲' });
+      const jdA = await nextJoined(A, 600);
+      T('S7 被顶者再 rejoin 不再短路直进', jdA === null, jdA);
+      const rAsk = await until(() => R.asks >= 1, 2500); // 现任 R 在线 → 门禁弹窗落给 R
+      T('S7 现任(R)收到 takeoverAsk（走门禁而非短路）', rAsk, {asks:R.asks});
+      R.c.emit('takeoverVote', { ok: false });
+      const rejA = await until(() => A.results.some(x => x && x.ok === false), 2000);
+      T('S7 现任拒绝 → 被顶者收被拒、仍未归位', rejA && A.joined === A0join, A.results);
+      T('S7 现任未被顶（R.displaced=0，仍持座）', R.displaced === 0);
+    }
+
+    // ---------- 场景八：被顶者可正常建新房 / 加入他房（闭包残留自愈） ----------
+    {
+      // 8a：被顶者「建新房」——修复前残留闭包会报「你已在房间中」
+      const A = await mk(PORT); clients.push(A);
+      const r6 = await createRoomAs(A, '甲');
+      const Ra = await mk(PORT); clients.push(Ra);
+      Ra.c.emit('rejoin', { code: r6.code, name: '甲' });
+      await until(() => A.asks >= 1, 3000);
+      A.c.emit('takeoverVote', { ok: true });
+      await until(() => Ra.results.some(x => x && x.ok === true), 3000);
+      Ra.c.emit('rejoin', { code: r6.code, name: '甲' });
+      await nextJoined(Ra, 4000);
+      const d8a_disp = await until(() => A.displaced >= 1, 3000);
+      T('S8a 预置：A 已被顶替', d8a_disp);
+
+      let d8a = null;
+      A.c.on('joined', dj => { d8a = dj; });
+      A.c.emit('create', { name: '戊', settings: {} });
+      await until(() => d8a, 8000);
+      T('S8a 被顶者可正常建房（闭包自愈，非「你已在房间中」）', !!(d8a && d8a.code && d8a.code !== r6.code), d8a);
+
+      // 8b：另一被顶者「加入他房」——修复前同样被残留闭包挡
+      const B = await mk(PORT); clients.push(B);
+      const r7 = await createRoomAs(B, '乙');
+      const Rb = await mk(PORT); clients.push(Rb);
+      Rb.c.emit('rejoin', { code: r7.code, name: '乙' });
+      await until(() => B.asks >= 1, 3000);
+      B.c.emit('takeoverVote', { ok: true });
+      await until(() => Rb.results.some(x => x && x.ok === true), 3000);
+      Rb.c.emit('rejoin', { code: r7.code, name: '乙' });
+      await nextJoined(Rb, 4000);
+      const d8b_disp = await until(() => B.displaced >= 1, 3000);
+      T('S8b 预置：B 已被顶替', d8b_disp);
+
+      let d8b = null;
+      B.c.on('joined', dj => { d8b = dj; });
+      B.c.emit('join', { code: r6.code, name: '辛' }); // 加入已被 Ra 占 0 号座的 r6（未开局有空座）
+      await until(() => d8b, 8000);
+      T('S8b 被顶者可正常加入他房（闭包自愈）', !!(d8b && d8b.code === r6.code && d8b.seat >= 0), d8b);
     }
 
   }catch(e){

@@ -925,6 +925,8 @@ io.on('connection', (socket)=>{
   });
 
   on('create', (data)=>{ if(!permit(socket,'create')) return;
+    // 闭包残留自愈：被顶替等只清了 socket.data，闭包 room 还指着旧房 → 先同步，防误报「你已在房间中」
+    if(room && !socket.data.room){ room=null; mySeat=-1; }
     if(room){ socket.emit('toast','你已在房间中'); return; }
     data = data||{};
     // 自定义房间号（可选，4 位大写字母/数字）；不填则随机
@@ -969,6 +971,8 @@ io.on('connection', (socket)=>{
   });
 
   on('join', (data)=>{ if(!permit(socket,'join')) return;
+    // 闭包残留自愈（同 create）：被顶替等后闭包 room 残留 → data 为准
+    if(room && !socket.data.room){ room=null; mySeat=-1; }
     if(room){ socket.emit('toast','你已在房间中'); return; }
     const code = roomCodeOf(data && data.code);
     if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
@@ -1009,16 +1013,24 @@ io.on('connection', (socket)=>{
     const name=(data.name||'').trim();
     if(!wxSession && !name){ socket.emit('toast','请输入昵称'); return; }
     if(!code){ socket.emit('toast','房间号需为 4 位字母或数字'); return; }
-    // 若本 socket 已绑定房间：直接确认进桌（创建后点自己的房间进入）
+    // 闭包残留自愈：被顶替等只清了 socket.data，闭包 room 还指着旧房 → 先同步，防误入短路/误报
+    if(room && !socket.data.room){ room=null; mySeat=-1; }
+    // 若本 socket 已绑定房间：直接确认进桌（创建后点自己的房间进入）。
+    // 归属以 socket.data.room 与 seat.socketId 为准——被顶替/换座后闭包 room 仍在也不走这里，落回正常门禁
     if(room){
       if(room.code===code){
-        const me=room.seats[mySeat];
-        socket.emit('joined', {code:room.code, seat:mySeat, name:me.name, avatar:me.avatar||''});
-        broadcast(room);
+        if(mySeat>=0 && socket.data.room===room
+           && room.seats[mySeat] && room.seats[mySeat].socketId===socket.id){
+          const me=room.seats[mySeat];
+          socket.emit('joined', {code:room.code, seat:mySeat, name:me.name, avatar:me.avatar||''});
+          broadcast(room);
+          return;
+        }
+        // 同房但座位已不是本连接（被顶替/换座）：不短路，继续走正常 rejoin 门禁
+      } else {
+        socket.emit('toast','你已在其他房间');
         return;
       }
-      socket.emit('toast','你已在其他房间');
-      return;
     }
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
@@ -1303,6 +1315,12 @@ io.on('connection', (socket)=>{
     if(!room || mySeat<0){ return; }
     const seatIdx=mySeat;
     const r=room;
+    // 座位归属以 socketId 为准：被顶替/换座后的闭包残留不应再对该房动作（否则会误把现任标记离线/移走）
+    if(!(r.seats[seatIdx] && r.seats[seatIdx].socketId===socket.id)){
+      room=null; mySeat=-1;
+      socket.data.room=null; socket.data.seat=-1;
+      return;
+    }
     clearEndVote(r); // 有人退出：进行中的共识表决作废
     // 对局进行中（本局未结束，含确认轮）：点退出视作掉线（保留座位，等重连）
     if(r.G && !r.G.ended){
@@ -1361,8 +1379,13 @@ io.on('connection', (socket)=>{
     if(isPreserve(code)){ socket.emit('toast', `${code} 是常驻房间，不能删除`); return; }
     const r=rooms.get(code);
     if(!r){ socket.emit('toast','房间不存在'); return; }
-    // 决策 B：无论是否开局（含确认轮、未开局），仅房主可删
-    if(!room || room!==r || mySeat!==room.hostSeat){ socket.emit('toast','仅房主可删除'); return; }
+    // 决策 B：无论是否开局（含确认轮、未开局），仅房主可删；
+    // 归属以 socketId 为准（被顶替/换座后的闭包残留即使 mySeat===hostSeat 也不放行）
+    if(!room || room!==r || !(mySeat===room.hostSeat
+       && room.seats[mySeat] && room.seats[mySeat].socketId===socket.id)){
+      socket.emit('toast','仅房主可删除');
+      return;
+    }
     // 清房：结束表决/闲置与离线计时器/aiTimer，并清理其他成员绑定（防闭包盯住已删房间、旧 aiTimer 串房）
     clearEndVote(r); clearIdleKick(r); clearAllOfflineKicks(r); clearAllTakeoverAsks(r);
     if(r.aiTimer){ clearTimeout(r.aiTimer); r.aiTimer=null; }
