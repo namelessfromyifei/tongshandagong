@@ -541,10 +541,11 @@ function finalizeEndSeries(room){
   if(curGame) logLine(room, '提前收场：本局进行中，直接废弃（不计分）');
   logLine(room, '══════ 本场提前结束（共识）══════');
   logLine(room, `已完成局累计：${room.series.totals.map((t,i)=>`${room.seats[i].name} ${t>0?'+':''}${t}分`).join('｜')}`);
-  // 局间结束：保留已结束的 G，牌桌冻结（各家剩余牌照常摊在桌面），
-  // 点【准备】或【退出房间】时才清空。局中结束仍直接废弃，避免把未完成的一局当成结果展示。
+  // 提前收场：
+  //  - 局中结束：丢掉当前局，客户端回到「刚进房间」状态（牌桌清空、准备提示回出牌区）
+  //  - 局间结束（本局已结束、等下一局）：保留牌局，按正常场末处理（冻结牌桌 + 本场结算）
   if(curGame) room.G = null;
-  else if(room.G) room.G.lastSeries = true; // 局间结束：标记为「本场最后一局」，客户端显示本场结束
+  else if(room.G) room.G.lastSeries = true;
   room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null;
   room.ready=[false,false,false,false];
   room.seriesOver=true;

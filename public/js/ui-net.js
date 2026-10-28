@@ -55,6 +55,7 @@ let downInfo=null, clickSuppress=false;
 let lastHandSig='';    // #26 手牌差量：视图签名未变则跳过重建（省去反复拼 28 张牌）
 let renderCornerKey=''; // #26 信息框缓存：设置内容未变不重建
 let boardCleared=false; // 点「准备/下一局」后清空上局牌桌，等新局（在牌桌上显示准备圆点）
+let prevBoardCleared=false; // 上一帧的 boardCleared（用于「刚清桌」的一次性重置）
 function snapSeatOffline(i){ return !!seatOffline[i]; }
 
 /* ---------- 排序（与单机版一致） ---------- */
@@ -602,6 +603,9 @@ function applyState(snap){
   // 点「准备/下一局」清空上局牌桌：新一局开始恢复桌面；我准备（场未结束）则清空并显示准备圆点
   if(G && !G.ended){ boardCleared=false; }
   else if(G && G.ended && snap.ready && snap.ready[mySeat]){ boardCleared=true; }
+  // 刚点过准备/下一局：整桌残留（叫牌卡、4王、笼数、累计分…）一次性清干净
+  if(boardCleared && !prevBoardCleared) clearBoardDom();
+  prevBoardCleared = boardCleared;
   // 服务端脱敏：明鸡未公开前对家身份只对本人可见（youArePartner → 本人座位即对家）
   if(G && snap.youArePartner) G.partner = mySeat;
   seatNames = snap.seats.map(s=>s.name);
@@ -654,7 +658,7 @@ function applyState(snap){
     if($('btnSettle')) $('btnSettle').style.display='none';
     if($('btnAI')){ if(aiAutoOn) aiAutoSet(false); $('btnAI').style.display='none'; }
     if($('tableMsg')) $('tableMsg').textContent='';
-    for(let k=0;k<4;k++){ const he=$('hint'+k); if(he) he.innerHTML=''; }
+    clearBoardDom(); // 未开局/提前收场：把上一局的叫牌卡、4王、笼数、累计分等全部清掉
     renderSeatNames();
     setBtn(false);
     // 刚进房间/等开局：不显示 出牌/提示/不要（开局后由出牌轮分支恢复）
@@ -667,12 +671,6 @@ function applyState(snap){
     positionMidBtns();
     // G 被清空（提前收场/清残局等）时：上一局手牌/出牌区/本轮分数一并清掉。
     // 此前这里直接 return，renderHand/renderCenter 不会执行，#hand 手牌区没人清 → 残留上一局牌面
-    const _h=$('hand'); if(_h) _h.innerHTML='';
-    for(let k=0;k<4;k++){
-      const _tr=$('t'+k); if(_tr) _tr.innerHTML='';
-      const _hc=$('h'+k); if(_hc) _hc.innerHTML='';
-    }
-    const _ts=$('trickScore'); if(_ts) _ts.textContent='';
     boardCleared=false;
     renderReadyIndicators(true); // 清完出牌区后再画准备提示（场初显示在出牌区）
     return;
@@ -814,6 +812,19 @@ function renderSeatNames(){
   }
 }
 // 把「已准备 / 未准备」显示在各家自己的出牌区（牌桌上），绿色/红色圆点
+// 点「准备/下一局」时把整张牌桌的残留一次性清干净（叫牌卡可能在任意一家的 tag 上）
+function clearBoardDom(){
+  for(let k=0;k<4;k++){
+    ['t','h','hint'].forEach(pre=>{ const e=$(pre+k); if(e) e.innerHTML=''; });
+    const tag=$('tag'+k); if(tag) tag.innerHTML='';
+    const av=$('av'+k); if(av) av.querySelectorAll('.kingBadge').forEach(n=>n.remove());
+    const seat=document.querySelector(`.seat[data-seat="${k}"]`);
+    if(seat) seat.querySelectorAll('.cumSco,.roundSco').forEach(n=>n.remove());
+    const pts=$('p'+k); if(pts) pts.textContent='';
+  }
+  const hand=$('hand'); if(hand) hand.innerHTML='';
+  const ts=$('trickScore'); if(ts) ts.textContent='';
+}
 // 准备提示：场初放在各座位的出牌区；局末/场末改放信息框旁的 hint 区，
 // 这样场末冻结的牌桌不会被清掉。
 function renderReadyIndicators(inTrick){

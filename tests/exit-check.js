@@ -134,7 +134,7 @@ function connect(port){
     T('AI 房可发起提前结束（不要求 4 真人；无人报「需要 4 位在线真人」）',
       voteSeen && !clients[0].toasts.some(t => /需要 4 位在线真人/.test(t)));
     clients[2].c.emit('endSeriesVote', { vote: true });
-    // 局间结束：保留已结束的 G（牌桌冻结，等准备/退出才清）
+    // 局间提前收场：保留已结束的牌局（按场末处理，等准备/退出才清）
     const s1Ended = await until(() => clients.some(x => x.lastSnap && x.lastSnap.seriesOver && !!x.lastSnap.G), 10000);
     T('AI 房在线真人全票 → 场结束（离线 c1 不阻塞）', s1Ended);
 
