@@ -55,7 +55,7 @@ function toast(msg){
   setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见
-// 对局配置弹窗只读开关：一场未结束时除「返回」外全部禁用（设置与「开始对局」都锁）
+// 对局配置弹窗只读开关：一场未结束时除「返回」外全部禁用（对局中设置不可改）
 function syncSetLock(){
   const m=$('setModal'); if(!m) return;
   const locked = !!(curG && !curSeriesOver);
@@ -133,7 +133,12 @@ function connect(){
     UI.setSelf(mySeat, snap.seats.map(s=>s.name), snap.seats.map(s=>s.type), snap.aiFill, snap.seats.map(s=>!!s.offline), readyArr, snap.seats.map(s=>s.avatar||''));
     // 房主才显示"对局配置"：对局进行中（已发牌且未结束）隐藏，未开局或本局已结束可配置（hostSeat 与座位解耦）
     if(snap.hostSeat!=null){
-      if($('mySeatInfo')) $('mySeatInfo').textContent = (mySeat===snap.hostSeat) ? `${myName} 是房主` : `${myName}`;
+      // 左上角固定显示「房主：xx」：xx 取实际房主（snap.hostSeat 对应座位名），
+      // 自己是不是房主不影响文案（自己名字仍显示在己方座位行）
+      if($('mySeatInfo')){
+        const who = (snap.hostSeat!=null && snap.seats[snap.hostSeat]) ? snap.seats[snap.hostSeat].name : '';
+        $('mySeatInfo').textContent = who ? `房主：${who}` : myName;
+      }
       const canConfig = mySeat===snap.hostSeat && (!snap.G || snap.seriesOver); // 仅未开局或本场结束后可配置/开局
       if($('btnStart')) $('btnStart').style.display = canConfig ? 'inline-block' : 'none';
     }
@@ -156,7 +161,7 @@ function connect(){
   // 被提升为房主（原房主退出）：hostSeat 与座位解耦，座位不变，仅提示
   socket.on('promotedHost', ()=>{
     toast('你已成为房主');
-    if($('mySeatInfo')) $('mySeatInfo').textContent=`${myName} 是房主`;
+    if($('mySeatInfo')) $('mySeatInfo').textContent=`房主：${myName}`;
   });
 
   socket.on('roomClosed', ()=>{ roomClosed(); });
@@ -502,11 +507,6 @@ function bindLobby(){
     if(mySeat<0){ toast('请先进入房间'); return; }
     connect();
     socket.emit('toggleReady', {});
-  };
-  $('btnSetGo').onclick=()=>{
-    if(socket) socket.emit('setSettings', Object.assign(collectSettings(), {start:true}));
-    const m=$('setModal'); if(m) m.hidden=true;
-    toast('已保存配置并准备，等待开局…');
   };
   $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };

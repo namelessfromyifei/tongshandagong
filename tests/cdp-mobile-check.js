@@ -55,7 +55,9 @@ async function main(){
     // 打开对局配置 → 勾选 AI 补位 → 点开始对局（自动开局）
     await evalJS(`document.getElementById('btnStart').click();true`);
     await sleep(150);
-    await evalJS(`var c=document.getElementById('setAIFill'); c.checked=true; c.dispatchEvent(new Event('change'));document.getElementById('btnSetGo').click();true`);
+    // 「开始对局」按钮已移除（等同上一次「只当准备」语义）：改为 勾选 AI 补位(即时生效) → 返回弹窗 → 点【准备】开局
+    // 单真人 + AI 补位房判据不变，点【准备】即开（与旧「开始对局」行为一致）
+    await evalJS(`var c=document.getElementById('setAIFill'); c.checked=true; c.dispatchEvent(new Event('change'));document.getElementById('btnSetBack').click();document.getElementById('btnReady').click();true`);
     await sleep(1200);
     return await evalJS(`(function(){var tw=document.getElementById('tableWrap');var g=window.__lastG; return {tableVisible:getComputedStyle(tw).display, hasG:!!g};})()`);
   }
