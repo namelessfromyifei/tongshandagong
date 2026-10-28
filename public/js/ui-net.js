@@ -857,6 +857,30 @@ function seatTag(i){
   // 庄家标记已放到头像圆圈里（"庄"字），信息框 tag 不再显示"老板"
   return '';
 }
+// 座位行差量签名（renderSeats 重装跳过用）：renderSeats 每个座位读到的一切字段都进签名。
+// 保守策略：宁可多刷，不可漏刷——漏刷=陈旧渲染（可见缺陷）；多刷只是回到无差量的原成本。
+let lastSeatSig = ['', '', '', ''];
+let prevTurn = -3; // 上一帧轮次座位：对局转移瞬间「当前/上一轮次」两座都要强制重装
+function seatSig(v){
+  const i = (mySeat + v) % 4;
+  const s = G.seats[i];
+  const c = G.called;
+  const rc = s.rollcages || [];
+  return [
+    G.seq || G.roundNo, G.ended ? 1 : 0, G.mode, G.revealed ? 1 : 0, G.confirming ? 1 : 0,
+    G.landlord, G.partner, G.hardSeat, c ? c.r + '.' + c.s : '',
+    settings.showRemain ? 1 : 0, settings.rounds, cumEndedSeq,
+    mySeat, boardCleared ? 1 : 0,
+    seatNames[i], seatTypes[i], seatOffline[i] ? 1 : 0, seatAvatars[i],
+    handCountOf(s),
+    s.out ? (s.outOrder || 0) : 0,
+    s.caught, s.choice || '', s.passed ? 1 : 0, s.kings, s.kingPlayed ? 1 : 0,
+    rc.length > 0 ? rc.length + ':' + rc.reduce((a, r) => a + (r.fan || 0), 0) : 0,
+    s.lastCards ? s.lastCards.map(x => x.id).join(',') : '',
+    s.hand ? s.hand.map(x => x.id).join(',') : '',
+    cumTotals[i]
+  ].join('|');
+}
 function renderSeats(){
   // 视图重排：自己的座位(real=mySeat)显示在下方(南位 view0)
   const realOf = v => (mySeat + v) % 4;
@@ -864,7 +888,30 @@ function renderSeats(){
     const i=realOf(v);
     const s=G.seats[i];
     const el=document.querySelector(`.seat[data-seat="${v}"]`); if(!el) continue;
+    // —— 廉价段（每帧都执行）：纯 classList 翻转，无 DOM 重建 ——
     el.classList.toggle('active', G.turn===i && !G.ended);
+    // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示。
+    // 本家（南）不放在 tag 里 —— 会把信息框撑高、压到左边西家；改放到信息框右侧的 hint 区。
+    const isCaller = (G.mode!=='hard' && G.called && i===G.landlord);
+    const calledCardHtml = isCaller ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini calledOnDesk') + '</span>' : '';
+    const calledMiniHtml = (isCaller && v!==0) ? calledCardHtml : '';
+    el.classList.toggle('hasCalled', !!(isCaller && v!==0));
+    if(G.mode!=='hard' && G.revealed){
+      // 头像圆圈颜色：庄家红 + 出明鸡牌的也红 → teamA；其余两家蓝 → teamB
+      el.classList.toggle('teamA', (i===G.landlord||i===G.partner));
+      el.classList.toggle('teamB', (i!==G.landlord&&i!==G.partner));
+      el.classList.remove('plain');
+    } else {
+      // 硬牌局：硬牌玩家红（teamA）、其他三家蓝（teamB）；2V2 明鸡未出：庄家红，其他三家灰（plain）
+      el.classList.toggle('teamA', G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord));
+      el.classList.toggle('teamB', G.mode==='hard' && i!==G.hardSeat);
+      el.classList.toggle('plain', G.mode!=='hard' && i!==G.landlord);
+    }
+    // —— 重型段（签名差量）：依赖没变且不在轮次转移两座上 → 整行跳过 ——
+    const sig = seatSig(v);
+    const rebuild = (i===G.turn || i===prevTurn) || sig !== lastSeatSig[v];
+    if(rebuild) lastSeatSig[v] = sig;
+    if(!rebuild) continue;
     const nm=$('nm'+v);
     nm.textContent = (seatNames[i]||s.name);
     if(seatTypes[i]==='ai' && !s.out) nm.textContent += ' 🤖';
@@ -883,26 +930,8 @@ function renderSeats(){
         av.appendChild(badge);
       }
     }
-    // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示。
-    // 本家（南）不放在 tag 里 —— 会把信息框撑高、压到左边西家；改放到信息框右侧的 hint 区。
-    const isCaller = (G.mode!=='hard' && G.called && i===G.landlord);
-    const calledCardHtml = isCaller ? '<span class="calledMini">' + cardHTML({j:false,r:G.called.r,s:G.called.s},'mini calledOnDesk') + '</span>' : '';
-    const calledMiniHtml = (isCaller && v!==0) ? calledCardHtml : '';
-    // 其他三家的叫牌卡改为绝对定位浮在信息框右侧，不参与文字行高；右侧留出通道给它
-    if(el) el.classList.toggle('hasCalled', !!(isCaller && v!==0));
-    if(G.mode!=='hard' && G.revealed){
-      // 头像圆圈颜色：庄家红 + 出明鸡牌的也红 → teamA；其余两家蓝 → teamB
-      el.classList.toggle('teamA', (i===G.landlord||i===G.partner));
-      el.classList.toggle('teamB', (i!==G.landlord&&i!==G.partner));
-      el.classList.remove('plain');
-      $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
-    } else {
-      // 硬牌局：硬牌玩家红（teamA）、其他三家蓝（teamB）；2V2 明鸡未出：庄家红，其他三家灰（plain）
-      el.classList.toggle('teamA', G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord));
-      el.classList.toggle('teamB', G.mode==='hard' && i!==G.hardSeat);
-      el.classList.toggle('plain', G.mode!=='hard' && i!==G.landlord);
-      $('tag'+v).innerHTML = seatTag(i) + calledMiniHtml;
-    }
+    // 叫牌小卡挂 tag（庄家座/明鸡相关；依赖字段都已在 seatSig 里）
+    const tg=$('tag'+v); if(tg) tg.innerHTML = seatTag(i) + calledMiniHtml;
     const pEl=$('p'+v); if(!pEl) continue;
     // 点「准备」清空上局：保留座位名/头像，抓分、背面牌堆、出牌区全部清空等新局
     if(boardCleared){
@@ -1066,6 +1095,7 @@ function renderSeats(){
     // 插底提示始终显示（本局结束或该玩家已跑完才消失），固定在原来的座位提示位置
     if(!G.ended && isDizhi) addAlert();
   }
+  prevTurn = G.turn; // 记录上一帧轮次：对局转移瞬间「当前/上一轮次」两座在循环头里强制重装
   // 中间提示不再显示“轮到谁”
   const msg=$('msg');
   if(!G.ended){
@@ -1221,23 +1251,30 @@ function renderCardFan(handEl, cards, forSeat){
     handEl.appendChild(el);
   });
 }
+let centerKey = ''; // #tableMsg 差量键：表头/分数都没变则不重拼 innerHTML
 function renderCenter(){
   const el=$('trickScore');
   el.textContent='';
   el.append('本轮分数 ');
-  const num=document.createElement('span');
-  num.className='scoreNum';
-  num.textContent=G.trickPoints;
-  el.append(num, ' 分');
+  const num=G.trickPoints||0;
+  const numEl=document.createElement('span');
+  numEl.className='scoreNum';
+  numEl.textContent=num;
+  el.append(numEl, ' 分');
   // 中间不再显示“谁压着”
   // 房间号右侧同步一份：对家信息 + 本轮分数，字号更大，方便一眼看到
   const tm=$('tableMsg');
   if(tm){
     const m=$('msg');
     const head=(m && m.textContent) ? m.textContent : '';
+    const key = head + '|' + num;
+    // 差量：表头/得分都没变就不重拼 innerHTML（得分常随抓分变、表头稳定，正好互补）
     // #tableMsg 是 innerHTML 直插：head 里的昵称（对家/硬牌者）必须转义，防 textContent→innerHTML 反弹 XSS
-    tm.innerHTML = (head ? `<span class="m1">${esc(head)}</span>` : '') +
-      `<span class="m2">本轮分数 <b>${G.trickPoints}</b> 分</span>`;
+    if(centerKey !== key){
+      centerKey = key;
+      tm.innerHTML = (head ? `<span class="m1">${esc(head)}</span>` : '') +
+        `<span class="m2">本轮分数 <b>${num}</b> 分</span>`;
+    }
   }
 }
 function describeShort(p){
