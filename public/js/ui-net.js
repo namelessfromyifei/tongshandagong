@@ -603,8 +603,23 @@ function applyState(snap){
   seriesOver = !!snap.seriesOver;
   earlyEnded = !!snap.earlyEnded; // 提前收场标记（服务端 finalizeEndSeries 置 true，startRound 清 false）
   // 点「准备/下一局」清空上局牌桌：新一局开始恢复桌面；我准备（场未结束）则清空并显示准备圆点
-  if(G && !G.ended){ boardCleared=false; }
-  else if(G && G.ended && snap.ready && snap.ready[mySeat]){ boardCleared=true; }
+  if(G && !G.ended){
+    boardCleared=false;
+    try{ localStorage.removeItem('tsCleared'); }catch(e){} // 新一局开始：忘掉上一局的清桌标记
+  } else if(G && G.ended){
+    const clearKey = curRoomCode + ':' + (G.seq||G.roundNo);
+    let saved=null;
+    try{ saved=JSON.parse(localStorage.getItem('tsCleared')||'null'); }catch(e){}
+    if(snap.ready && snap.ready[mySeat]){
+      boardCleared=true;
+      try{ localStorage.setItem('tsCleared', JSON.stringify({key:clearKey})); }catch(e){}
+    } else if(saved && saved.key===clearKey){
+      // 已经点过准备（哪怕中途退出/刷新/重连回来）：继续按已清桌显示
+      boardCleared=true;
+    } else {
+      boardCleared=false;
+    }
+  }
   // 刚点过准备/下一局：整桌残留（叫牌卡、4王、笼数、累计分…）一次性清干净
   if(boardCleared && !prevBoardCleared) clearBoardDom();
   prevBoardCleared = boardCleared;
@@ -656,6 +671,7 @@ function applyState(snap){
     if($('btnAI')){ if(aiAutoOn) aiAutoSet(false); $('btnAI').style.display='none'; }
     if($('tableMsg')) $('tableMsg').textContent='';
     clearBoardDom(); // 未开局/提前收场：把上一局的叫牌卡、4王、笼数、累计分等全部清掉
+    const _md=$('modal'); if(_md) _md.hidden=true; // 场末有人退出/收场后：旧计分板一起收起
     renderSeatNames();
     boardCleared=false;
     renderWaitingView(); // 空桌态：顶部条/按钮/出牌排/圆点全按「刚进房」（公共出口，见函数定义）
@@ -697,7 +713,7 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
-  if(G && G.ended) renderReadyIndicators(false); // 局末/场末：各家准备状态常显在座位旁
+  if(G && G.ended && boardCleared) renderReadyIndicators(false); // 点过下一局、桌面清空后才显示各家准备状态
   // 场末计分板按钮兜底：本场结束且计分板弹窗未开时始终可见，可重开计分板
   if(G && G.ended && seriesOver){ const b=$('btnSettle'); if(b && $('modal').hidden) b.style.display='inline-block'; }
   announceState();
@@ -716,6 +732,7 @@ function applyState(snap){
     const _stB=$('btnSettle'); if(_stB && $('modal').hidden) _stB.style.display='inline-block';
     // 局末：出牌 / 提示 / 不要 / 牌大小 四个按钮不再显示
     ['btnPlay','btnHint','btnPass','btnSize'].forEach(id=>{ const b=$(id); if(b) b.style.display='none'; });
+    syncHandLayout(); // 提示（xx游/准备）出现后，两侧出牌区要让位重新定位
     return;
   }
   if($('btnSettle')) $('btnSettle').style.display='none';
@@ -1448,12 +1465,17 @@ function positionSideTricks(){
   // gap 加大：左右玩家出牌区往外侧移（西→右、东→左各 10px），
   // 避免压住信息框外侧下方显示的 xx游/插底提示。
   const gap=16, tableW=table.clientWidth;
-  // 西家：紧贴信息框右侧
-  tw.style.left=(w.offsetLeft + w.offsetWidth + gap)+'px';
+  // 信息框外侧的提示（xx游 / 准备状态）占用的宽度：出牌区要避开它，自动让位
+  const hintW = el => (el ? el.offsetWidth : 0);
+  const pad = n => (n>0 ? n + 8 : gap);
+  const wPad = pad(hintW(document.getElementById('hint3')));
+  const ePad = pad(hintW(document.getElementById('hint1')));
+  // 西家：紧贴信息框右侧（有提示时再往右让开）
+  tw.style.left=(w.offsetLeft + w.offsetWidth + wPad)+'px';
   tw.style.right='auto';
-  // 东家：紧贴信息框左侧
+  // 东家：紧贴信息框左侧（有提示时再往左让开）
   te.style.left='auto';
-  te.style.right=(tableW - e.offsetLeft + gap)+'px';
+  te.style.right=(tableW - e.offsetLeft + ePad)+'px';
 }
 
 /* ---------- 北家出牌区：始终贴在北家信息框下方 10px（随信息框高度自适应） ---------- */

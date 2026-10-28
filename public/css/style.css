@@ -221,7 +221,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 座位状态提示（插底 / x游）：南=准备按钮右侧；东/西=信息框下方；北=信息框右侧 */
 .southHint{display:flex;align-items:center;gap:8px;color:#ffe9b0;font-size:16px;font-weight:bold;white-space:nowrap;align-self:center;}
 .southHint:empty{display:none;}
-.seatHint{position:absolute;z-index:6;white-space:nowrap;font-size:16px;font-weight:bold;color:#ffe9b0;}
+.seatHint{position:absolute;z-index:6;white-space:nowrap;font-size:16px;font-weight:bold;color:#ffe9b0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+.seatE .seatHint{align-items:flex-end;}
+.seatHint .readyHint{order:-1;font-size:13px;font-weight:bold;color:#cfe6da;} /* 未准备在上、x游在下 */
 .seatHint:empty{display:none;}
 /* 提示位置：上方/下方贴住信息框，并在相应一侧对齐
  * 西=上方右侧；东=上方左侧；北=右侧下方（贴右侧、底部对齐）；南=信息框右方 */

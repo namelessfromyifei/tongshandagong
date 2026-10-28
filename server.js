@@ -1360,9 +1360,11 @@ io.on('connection', (socket)=>{
       socket.emit('toast','本局尚未结束，请点【结束场次】提前收场');
       return;
     }
-    logLine(r, `${r.seats[seatIdx].name} 退出房间`);
+    const leftName = r.seats[seatIdx].name;
+    logLine(r, `${leftName} 退出房间`);
     cancelTakeoverAsk(r, seatIdx, '对方已离开房间，顶替请求作废');
-    r.seats[seatIdx]={type:'ai', name:['A家','B家','C家','D家'][seatIdx], avatar:'', openid:''};
+    // 退出后座位显示「空位」（不是 AI 接管）：ai 类型只是"可被新玩家加入"的标记
+    r.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
     // 最后一位在线玩家退出：清空残局 G（牌局信息）。
     // 普通房随后解散无影响；常驻房（LOVE/HOME）不删，残局一并清除，
