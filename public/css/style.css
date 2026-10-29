@@ -79,9 +79,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .btn.danger{background:#8a3a2e;border-color:#a85345;}
 /* 全屏 / 结束场次：与「退出房间」(.btn.danger) 同色 */
 #btnFullscreen, #btnEndSeries{background:#8a3a2e;border-color:#a85345;}
-/* 牌桌局数标签（第 x/y 局 / 本场提前结束）：白色；下方附当前时间 */
+/* 牌桌局数标签（第 x/y 局 / 等待开场 / 本场提前结束）：白色；当前时间在左上「房主：xx」下方（#lblClock，随 .tableTitle 竖排） */
 #lblRound{color:#fff;}
-.metaClock{display:flex;flex-direction:column;align-items:flex-start;gap:2px;} /* 局数+当前时间竖排 */
 .btn:disabled{opacity:.4;cursor:not-allowed;}
 
 /* ===== 牌桌桌布 ===== */
@@ -93,7 +92,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatW{left:12px;top:44%;transform:translateY(-50%);}
 .seatE{right:12px;top:44%;transform:translateY(-50%);}
 /* 轮到该座出牌：金色描边 + 发光；带队色底的座位同样覆盖（gold 权重大于 .teamA/.teamB 的队色细边框） */
-.seat.active,.seat.teamA.active,.seat.teamB.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
+.seat.active,.seat.teamA.active,.seat.teamB.active,.handRow .seatS.teamA.active,.handRow .seatS.teamB.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
 /* 局末得分徽标（信息框外侧右下角）：+/-/0 三色 */
 .roundSco{position:absolute;right:-6px;bottom:-10px;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
 .roundSco.plus{background:#1d9c5c;}
@@ -119,9 +118,11 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 分隊识别改在信息框底色：.seat.teamA=庄队（紫底）、.seat.teamB=客队（青碧底）、无队/plain=原黑底。
    底色为深染（0.55 透明度）：白昵称、浅绿抓分行、金色数字均可读；边框同色细边加强边缘区分。
    出牌轮 .seat.active 的金色描边+光晕层级更高、不受队色影响（见上 .seat.active 权重）。
-   头像不再按队着色、复原为灰（庄家座位上仍显示「庄」字标识）。 */
-.seat.teamA{background:var(--teamA-bg);border-color:var(--teamA-bd);}
-.seat.teamB{background:var(--teamB-bg);border-color:var(--teamB-bd);}
+   头像不再按队着色、复原为灰（庄家座位上仍显示「庄」字标识）。
+   南座（我自己）同款：#handRow .seatS 下边会重设底色/边框，组合 .handRow .seatS.teamX 提权重，
+   让队色底、队色边同样作用到自己（南）的信息框。 */
+.seat.teamA,.handRow .seatS.teamA{background:var(--teamA-bg);border-color:var(--teamA-bd);}
+.seat.teamB,.handRow .seatS.teamB{background:var(--teamB-bg);border-color:var(--teamB-bd);}
 .seat.plain .avatar{background:#8a8a8a;color:#eee;box-shadow:none;}
 /* 昵称：单行省略 */
 .nm{font-weight:bold;font-size:16px;min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -280,7 +281,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 
 /* ===== 弹窗 ===== */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;overflow:auto;} /* 兜底：极小屏由遮罩滚动 */
-.modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
+.modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;min-height:0;overflow-y:auto;} /* flex 子项要 min-height:0：否则 max-height 被 min-height:auto 顶破，弹窗随内容无限变高 */
 /* 结算弹窗右上角「关闭计分板」；历史分数弹窗「关闭」、牌局设置「保存」同款 */
 #btnPeek, #btnHistoryClose, #btnSetBack{position:absolute;right:8px;top:8px;z-index:2;font-size:16px;padding:5px 13px;}
 /* 计分板「关闭计分板」单独调小一档（历史分数/牌局设置仍保持两档放大） */
@@ -314,9 +315,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .kickSeatBtn:hover{background:#a5533f;}
 /* 历史分数弹窗 #historyWrap/#historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
  *   文字默认白；昵称白、分数用 --gold。
- *   防「记录多了无限放大」：表体在内层流动（≤ min(60vh,560px)），表格 table-layout:fixed，
- *   宽度恒等于容器——长昵称在列内换行，不把表格/弹窗撑宽。 */
-#historyWrap{max-height:min(60vh,560px);overflow:auto;overscroll-behavior:contain;}
+ *   防「记录多了无限放大」：表体在内层流动（≤60vh，纯 vh 不用 min()——旧安卓 WebView 不解析会整条丢弃导致无限变高），
+ *   表格 table-layout:fixed、宽度恒等于容器——长昵称在列内换行，不把表格/弹窗撑宽。 */
+#historyWrap{max-height:60vh;overflow:auto;overscroll-behavior:contain;}
 #historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;table-layout:fixed;}
 #historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;word-break:break-word;}
 #historyTable th:first-child{width:22%;}   /* 时间列收窄 */

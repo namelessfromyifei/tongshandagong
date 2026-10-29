@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通山打拱 · 多人联网</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🀄%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=257">
+<link rel="stylesheet" href="css/style.css?v=259">
 </head>
 <body>
 <div id="app">
@@ -105,15 +105,14 @@
         </div>
         <span class="chip" id="roomCode">房间号：—</span>
         <div class="chip tableWho" id="mySeatInfo">—</div>
+        <!-- 当前时间：#lblClock 跟随「房主：xx」正下方（左上竖排） -->
+        <span class="chip" id="lblClock"></span>
       </div>
       <!-- 牌桌右上角：局数/模式/配置/退出 -->
       <div class="tableTopRight">
         <div class="topRightInfo">
-          <div class="metaClock">
-            <span class="chip" id="lblRound"></span>
-            <span class="chip" id="lblClock"></span>
-          </div>
-          <span class="chip" id="lblMode">2V2</span>
+          <span class="chip" id="lblRound"></span>
+          <span class="chip" id="lblMode"></span>
         </div>
         <div class="toolBtns">
           <button id="btnHistory" class="btn small">历史分数</button>
@@ -288,7 +287,7 @@
 <script src="vendor/socket.io.min.js?v=256"></script>
 <script src="js/engine.js?v=256"></script>
 <script src="js/ai.js?v=256"></script>
-<script src="js/ui-net.js?v=257"></script>
+<script src="js/ui-net.js?v=259"></script>
 <script src="js/screen.js?v=256"></script>
 <script src="js/app.js?v=256"></script>
 <script src="js/env.js?v=256"></script>
