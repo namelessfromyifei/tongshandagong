@@ -727,7 +727,10 @@ function pushRoomHistory(room){
   room.history = room.history || [];
   room.history.unshift({
     t: Date.now(),
-    rounds: room.series.roundCount || room.settings.rounds || 1,
+    // 局数 = 实际已完成局数：提前收场（含局中弃局）按 series.roundCount 记（可为 0）；
+    // 自然场末 roundCount===计划局数，两者一致。不在此用 settings.rounds 兜底，
+    // 否则「第一局中就提前收场」会把 0 显示成计划局数。
+    rounds: Number.isFinite(room.series.roundCount) ? room.series.roundCount : (room.settings.rounds || 1),
     players: room.seats.map(s=>s.name),
     scores: (room.series.totals || [0,0,0,0]).slice(),
   });

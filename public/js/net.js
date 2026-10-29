@@ -535,7 +535,7 @@ function bindLobby(){
         const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0;
         return `<td><div class="hName">${esc(n)}</div><div><span class="hScore">${sc>0?'+':''}${sc}</span>分</div></td>`;
       }).join('');
-      html+=`<tr><td>${tm}</td><td>${e.rounds||1}</td>${cells}</tr>`;
+      html+=`<tr><td>${tm}</td><td>${e.rounds!=null ? e.rounds : 1}</td>${cells}</tr>`;
     }
     tb.innerHTML=html;
   };

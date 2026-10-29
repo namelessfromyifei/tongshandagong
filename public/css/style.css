@@ -501,7 +501,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 
 /* ===== 牌桌内标题/右上控制 ===== */
 .tableTitle{position:absolute;left:12px;top:8px;color:var(--gold);font-size:15px;letter-spacing:2px;z-index:4;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,.5);}
-.tableTopRight{position:absolute;right:12px;top:8px;display:flex;align-items:flex-start;justify-content:flex-end;gap:8px;z-index:4;max-width:41%;}
+.tableTopRight{position:absolute;right:12px;top:8px;display:flex;align-items:flex-start;justify-content:flex-end;gap:8px;z-index:4;max-width:41%;flex-wrap:wrap;} /* 三列按钮时窄屏允许换行，避免溢出 */
 /* 左侧信息区可换行；工具组和右侧竖排按钮保持固定位置 */
 .topRightInfo{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px;min-width:0;flex:1 1 auto;}
 .topRightInfo > *{flex:0 0 auto;}
