@@ -610,15 +610,17 @@ function applyState(snap){
     const clearKey = curRoomCode + ':' + (G.seq||G.roundNo);
     let saved=null;
     try{ saved=JSON.parse(localStorage.getItem('tsCleared')||'null'); }catch(e){}
-    const curSO = !!snap.seriesOver;
     if(snap.ready && snap.ready[mySeat]){
       boardCleared=true;
-      try{ localStorage.setItem('tsCleared', JSON.stringify({key:clearKey, seriesOver:curSO})); }catch(e){}
-    } else if(saved && saved.key===clearKey && saved.seriesOver===curSO){
-      // 已经在同一房间同局、且「当时状态(局末/场末)一致」时点过准备/下一局：
-      // 哪怕中途退出/刷新/重连回来也继续按已清桌显示。
-      // 记上 seriesOver 可避免局末(非场末)的记忆被误用于之后同样同局的「场末冻结帧」，
-      // 否则冻结的场末桌会被误冲刷成进房空桌。
+      try{ localStorage.setItem('tsCleared', JSON.stringify({key:clearKey})); }catch(e){}
+    } else if(saved && saved.key===clearKey){
+      // 同房同局（seq 全局唯一）点过准备/下一局：中途退出/刷新/重连回来仍保持已清桌。
+      // 不区分局末/场末——局末已清、随后共识提前收场成场末的「同一局」，清桌状态照样延续，
+      // 刷新不再让已去掉的旧信息重现。
+      boardCleared=true;
+    } else if(G.seats[mySeat] && G.seats[mySeat].blanked){
+      // 场末冻结房的新玩家（本人该座刚被服务端 blankGameSeatData 清残打标）：
+      // 整桌按「刚进房间」显示；blanked 随服务端 G 持续，刷新/重进同样不再显示旧局信息。
       boardCleared=true;
     } else {
       boardCleared=false;
