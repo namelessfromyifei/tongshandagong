@@ -989,14 +989,12 @@ function renderSeats(){
     const calledMiniHtml = (isCaller && v!==0) ? calledCardHtml : '';
     el.classList.toggle('hasCalled', !!(isCaller && v!==0));
     if(G.mode!=='hard' && G.revealed){
-      // 信息框底色：庄家+队友 → teamA（紫底）；其余两家 → teamB（青碧底）
+      // 信息框底色：庄家+队友（明鸡队）→ teamA（紫底）；其余两家不设队色底（自然成队）
       el.classList.toggle('teamA', (i===G.landlord||i===G.partner));
-      el.classList.toggle('teamB', (i!==G.landlord&&i!==G.partner));
       el.classList.remove('plain');
     } else {
-      // 硬牌局：硬牌玩家 → teamA（紫底）、其他三家 → teamB（青碧底）；2V2 明鸡未出：庄家 → teamA，其他三家 → plain（黑底）
+      // 硬牌局：硬牌玩家 → teamA（紫底）、其他三家不设队色底；2V2 明鸡未出：庄家 → teamA，其他三家 → plain（黑底）
       el.classList.toggle('teamA', G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord));
-      el.classList.toggle('teamB', G.mode==='hard' && i!==G.hardSeat);
       el.classList.toggle('plain', G.mode!=='hard' && i!==G.landlord);
     }
     // —— 重型段（签名差量）：依赖没变且不在轮次转移两座上 → 整行跳过 ——

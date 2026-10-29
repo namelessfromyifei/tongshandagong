@@ -5,7 +5,7 @@
  *   ┌─ 全局/主题 ......... :root 色板 + --card-zoom 牌缩放；* 重置；body 背景；#app 壳与「大厅↔牌桌」显隐
  *   ├─ 顶栏 .topbar ...... 标题 .topbar h1、右侧 .topMeta 徽标组（.chip）
  *   ├─ 牌桌 .table ....... 桌布；四座 .seat（.seatN/.seatW/.seatE 绝对定位；南座在手牌上方 .handRow .seatS）
- *   │                    分隊识别在信息框底色：.seat.teamA 紫底（庄队）/ .seat.teamB 青碧底（客队）
+ *   │                    分队识别在信息框底色：.seat.teamA 紫底（庄队/明鸡队）；客队不设底色（自然成队）
  *   ├─ 座位内容 ........... .head 头像行；.nm 昵称；.tag/.teamMark 庄游队标；.pts 抓分
  *   │                    徽标：.roundSco 局末分 / .cumSco 已打笼 / .kingBadge 4+王 / .calledMini 叫牌卡
  *   ├─ 出牌区 ............. .trick.trickN/S/W/E（对应 #t0..#t3），行内 .trickRow 叠放；.fanBadge 番数角标
@@ -49,7 +49,7 @@
   /* 主题色：桌布绿 / 木框 / 金黄（强调）/ 红（危险）/ 墨色 / 背景两级 */
   --felt:#1d5c3f; --felt2:#2a7952; --wood:#5a3a1e; --gold:#e8c15a;
   --red:#c0392b; --ink:#2b2b2b; --bg:#0f3d2a; --bg2:#0c2a1e; --title:#eef3ea; --danger:#c0392b; --num:#ffd24a; /* 数字统一色：抓分xx的xx / x游 / 得X笼 */
-  --teamA-bg:rgba(118,42,150,.55); --teamA-bd:rgba(190,120,224,.5); --teamB-bg:rgba(12,112,128,.55); --teamB-bd:rgba(102,205,214,.5); /* 信息框分隊底色：庄队紫 / 客队青碧（bg=深染底，bd=同色细边框） */
+  --teamA-bg:rgba(118,42,150,.55); --teamA-bd:rgba(190,120,224,.5); /* 信息框分队底色：庄队/明鸡队 紫（bg=深染底，bd=同色细边）；客队不设队色底（自然成队） */
   --card-zoom:1.6; /* 牌面整体缩放：手牌 + 桌面出牌，按钮可调（标准/大/特大/巨无霸），默认第三档「特大」 */
 }
 body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-family:"Microsoft YaHei",system-ui,sans-serif;min-height:100vh;padding:10px;}
@@ -91,8 +91,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatN{left:50%;top:10px;transform:translateX(-50%);}
 .seatW{left:12px;top:44%;transform:translateY(-50%);}
 .seatE{right:12px;top:44%;transform:translateY(-50%);}
-/* 轮到该座出牌：金色描边 + 发光；带队色底的座位同样覆盖（gold 权重大于 .teamA/.teamB 的队色细边框） */
-.seat.active,.seat.teamA.active,.seat.teamB.active,.handRow .seatS.teamA.active,.handRow .seatS.teamB.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
+/* 轮到该座出牌：金色描边 + 发光；只标庄队的队色细边同样被 gold 权重覆盖 */
+.seat.active,.seat.teamA.active,.handRow .seatS.teamA.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
 /* 局末得分徽标（信息框外侧右下角）：+/-/0 三色 */
 .roundSco{position:absolute;right:-6px;bottom:-10px;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
 .roundSco.plus{background:#1d9c5c;}
@@ -115,14 +115,14 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
 /* 头像圆圈（默认灰底首字）；微信头像 .avImg 铺满，庄标/首字 .avTxt 浮其上 */
 .avatar{width:30px;height:30px;border-radius:50%;background:#8a8a8a;color:#eee;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:17px;border:2px solid rgba(255,255,255,.35);flex:0 0 auto;transition:background .2s ease,box-shadow .2s ease;}
-/* 分隊识别改在信息框底色：.seat.teamA=庄队（紫底）、.seat.teamB=客队（青碧底）、无队/plain=原黑底。
+/* 分队识别改在信息框底色：.seat.teamA=庄队/明鸡队（紫底）、无队/plain=原黑底。
+   只给「明鸡队（庄家+对家）」上底色标识；客队两家不设队色底（自然成队）。
    底色为深染（0.55 透明度）：白昵称、浅绿抓分行、金色数字均可读；边框同色细边加强边缘区分。
    出牌轮 .seat.active 的金色描边+光晕层级更高、不受队色影响（见上 .seat.active 权重）。
    头像不再按队着色、复原为灰（庄家座位上仍显示「庄」字标识）。
-   南座（我自己）同款：#handRow .seatS 下边会重设底色/边框，组合 .handRow .seatS.teamX 提权重，
+   南座（我自己）同款：#handRow .seatS 下边会重设底色/边框，组合 .handRow .seatS.teamA 提权重，
    让队色底、队色边同样作用到自己（南）的信息框。 */
 .seat.teamA,.handRow .seatS.teamA{background:var(--teamA-bg);border-color:var(--teamA-bd);}
-.seat.teamB,.handRow .seatS.teamB{background:var(--teamB-bg);border-color:var(--teamB-bd);}
 .seat.plain .avatar{background:#8a8a8a;color:#eee;box-shadow:none;}
 /* 昵称：单行省略 */
 .nm{font-weight:bold;font-size:16px;min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
