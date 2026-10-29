@@ -5,6 +5,7 @@
  *   ┌─ 全局/主题 ......... :root 色板 + --card-zoom 牌缩放；* 重置；body 背景；#app 壳与「大厅↔牌桌」显隐
  *   ├─ 顶栏 .topbar ...... 标题 .topbar h1、右侧 .topMeta 徽标组（.chip）
  *   ├─ 牌桌 .table ....... 桌布；四座 .seat（.seatN/.seatW/.seatE 绝对定位；南座在手牌上方 .handRow .seatS）
+ *   │                    分隊识别在信息框底色：.seat.teamA 紫底（庄队）/ .seat.teamB 青碧底（客队）
  *   ├─ 座位内容 ........... .head 头像行；.nm 昵称；.tag/.teamMark 庄游队标；.pts 抓分
  *   │                    徽标：.roundSco 局末分 / .cumSco 已打笼 / .kingBadge 4+王 / .calledMini 叫牌卡
  *   ├─ 出牌区 ............. .trick.trickN/S/W/E（对应 #t0..#t3），行内 .trickRow 叠放；.fanBadge 番数角标
@@ -48,6 +49,7 @@
   /* 主题色：桌布绿 / 木框 / 金黄（强调）/ 红（危险）/ 墨色 / 背景两级 */
   --felt:#1d5c3f; --felt2:#2a7952; --wood:#5a3a1e; --gold:#e8c15a;
   --red:#c0392b; --ink:#2b2b2b; --bg:#0f3d2a; --bg2:#0c2a1e; --title:#eef3ea; --danger:#c0392b; --num:#ffd24a; /* 数字统一色：抓分xx的xx / x游 / 得X笼 */
+  --teamA-bg:rgba(118,42,150,.55); --teamA-bd:rgba(190,120,224,.5); --teamB-bg:rgba(12,112,128,.55); --teamB-bd:rgba(102,205,214,.5); /* 信息框分隊底色：庄队紫 / 客队青碧（bg=深染底，bd=同色细边框） */
   --card-zoom:1.6; /* 牌面整体缩放：手牌 + 桌面出牌，按钮可调（标准/大/特大/巨无霸），默认第三档「特大」 */
 }
 body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-family:"Microsoft YaHei",system-ui,sans-serif;min-height:100vh;padding:10px;}
@@ -90,8 +92,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatN{left:50%;top:10px;transform:translateX(-50%);}
 .seatW{left:12px;top:44%;transform:translateY(-50%);}
 .seatE{right:12px;top:44%;transform:translateY(-50%);}
-/* 轮到该座出牌：金色描边 + 发光 */
-.seat.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
+/* 轮到该座出牌：金色描边 + 发光；带队色底的座位同样覆盖（gold 权重大于 .teamA/.teamB 的队色细边框） */
+.seat.active,.seat.teamA.active,.seat.teamB.active{border-color:var(--gold);box-shadow:0 0 12px rgba(232,193,90,.7);}
 /* 局末得分徽标（信息框外侧右下角）：+/-/0 三色 */
 .roundSco{position:absolute;right:-6px;bottom:-10px;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:6;pointer-events:none;line-height:1.4;}
 .roundSco.plus{background:#1d9c5c;}
@@ -114,9 +116,12 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
 /* 头像圆圈（默认灰底首字）；微信头像 .avImg 铺满，庄标/首字 .avTxt 浮其上 */
 .avatar{width:30px;height:30px;border-radius:50%;background:#8a8a8a;color:#eee;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:17px;border:2px solid rgba(255,255,255,.35);flex:0 0 auto;transition:background .2s ease,box-shadow .2s ease;}
-/* 头像圆圈按队伍着色：teamA=庄队（红渐变）、teamB=客队（蓝渐变）、plain=明鸡未出前灰 */
-.seat.teamA .avatar{background:linear-gradient(150deg,#ff5a5a,#c0392b);color:#fff;border-color:rgba(255,255,255,.55);box-shadow:0 0 8px rgba(192,57,43,.8);}
-.seat.teamB .avatar{background:linear-gradient(150deg,#5aa7e8,#2f6fb5);color:#fff;border-color:rgba(255,255,255,.55);box-shadow:0 0 8px rgba(47,111,181,.75);}
+/* 分隊识别改在信息框底色：.seat.teamA=庄队（紫底）、.seat.teamB=客队（青碧底）、无队/plain=原黑底。
+   底色为深染（0.55 透明度）：白昵称、浅绿抓分行、金色数字均可读；边框同色细边加强边缘区分。
+   出牌轮 .seat.active 的金色描边+光晕层级更高、不受队色影响（见上 .seat.active 权重）。
+   头像不再按队着色、复原为灰（庄家座位上仍显示「庄」字标识）。 */
+.seat.teamA{background:var(--teamA-bg);border-color:var(--teamA-bd);}
+.seat.teamB{background:var(--teamB-bg);border-color:var(--teamB-bd);}
 .seat.plain .avatar{background:#8a8a8a;color:#eee;box-shadow:none;}
 /* 昵称：单行省略 */
 .nm{font-weight:bold;font-size:16px;min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -278,6 +283,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
 /* 结算弹窗右上角「关闭计分板」；历史分数弹窗「关闭」、牌局设置「保存」同款 */
 #btnPeek, #btnHistoryClose, #btnSetBack{position:absolute;right:8px;top:8px;z-index:2;font-size:16px;padding:5px 13px;}
+/* 计分板「关闭计分板」单独调小一档（历史分数/牌局设置仍保持两档放大） */
+#btnPeek{font-size:14px;padding:4px 10px;}
 /* 局末摊牌：没出完的牌当作一手牌摊在桌面上。
    尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色，多行时上下叠起来。 */
 .trickRow.remainDesk{margin-top:6px;zoom:1;}
@@ -318,6 +325,12 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 #historyTable .hName{color:#fff;}   /* 历史行·玩家昵称 */
 #historyTable .hScore{color:var(--gold);}    /* 历史行·场末分 */
 #mTable .fenGold{color:var(--gold);}         /* 计分板·本局分数列 */
+/* 计分板标题高亮（#mTitle）：获胜玩家名 + 「第x局/共x局」数字统一金色（--num） */
+.mtGold{color:var(--num);}
+/* 计分板成绩表（#mTable）：字体比默认弹窗表格(13px)放大一档 */
+#mTable{font-size:14px;}
+/* 当前玩家所在行：浅金底标识（方便一眼定位自己），叠加在弹窗深绿底上不刺眼 */
+#mTable tr.myRow td{background:rgba(232,193,90,.2);}
 /* 南家信息框右侧：插底/准备提示跟随信息框 */
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
 .handRow .seatS .southHint:empty{display:none;}

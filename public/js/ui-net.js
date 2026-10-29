@@ -983,12 +983,12 @@ function renderSeats(){
     const calledMiniHtml = (isCaller && v!==0) ? calledCardHtml : '';
     el.classList.toggle('hasCalled', !!(isCaller && v!==0));
     if(G.mode!=='hard' && G.revealed){
-      // 头像圆圈颜色：庄家红 + 出明鸡牌的也红 → teamA；其余两家蓝 → teamB
+      // 信息框底色：庄家+队友 → teamA（紫底）；其余两家 → teamB（青碧底）
       el.classList.toggle('teamA', (i===G.landlord||i===G.partner));
       el.classList.toggle('teamB', (i!==G.landlord&&i!==G.partner));
       el.classList.remove('plain');
     } else {
-      // 硬牌局：硬牌玩家红（teamA）、其他三家蓝（teamB）；2V2 明鸡未出：庄家红，其他三家灰（plain）
+      // 硬牌局：硬牌玩家 → teamA（紫底）、其他三家 → teamB（青碧底）；2V2 明鸡未出：庄家 → teamA，其他三家 → plain（黑底）
       el.classList.toggle('teamA', G.mode==='hard' ? (i===G.hardSeat) : (i===G.landlord));
       el.classList.toggle('teamB', G.mode==='hard' && i!==G.hardSeat);
       el.classList.toggle('plain', G.mode!=='hard' && i!==G.landlord);
@@ -1429,13 +1429,16 @@ function finishLocal(settle){
     const tb=$('mTable');
     // 是否本场最后一局：由服务器标记（避免客户端根据已累计的局数猜错）
     lastRoundWasLast = !!G.lastSeries;
-    // 标题右侧直接带局数：（第2局/共3局）；提前收场 → （第2局/本场已提前结束）
-    const roundTxt = (seriesOver && earlyEnded)
-      ? `（第${G.roundNo||1}局/本场已提前结束）`
-      : `（第${G.roundNo||1}局/共${settings.rounds||1}局）`;
-    $('mTitle').textContent = `${lastRoundWasLast?'本场结束':'本局结束'} · ${G.mode==='hard'
-      ? `硬牌者 ${seatNames[G.hardSeat]} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
-      : `${s.winnerSeats.map(i=>seatNames[i]).join('、')}赢`}${roundTxt}`;
+    // 标题右侧直接带局数：（第2局/共3局）；提前收场 → （第2局/本场已提前结束）。
+    // 标题改 innerHTML：获胜玩家名与局数数字上金色 .mtGold（名字先 esc 转义，防 XSS）
+    const mtName=i=>`<span class="mtGold">${esc(seatNames[i])}</span>`;
+    const namesHtml = G.mode==='hard'
+      ? `硬牌者 ${mtName(G.hardSeat)} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
+      : `${s.winnerSeats.map(mtName).join('、')}赢`;
+    const roundHtml = (seriesOver && earlyEnded)
+      ? `（第<span class="mtGold">${G.roundNo||1}</span>局/本场已提前结束）`
+      : `（第<span class="mtGold">${G.roundNo||1}</span>局/共<span class="mtGold">${settings.rounds||1}</span>局）`;
+    $('mTitle').innerHTML = `${lastRoundWasLast?'本场结束':'本局结束'} · ${namesHtml}${roundHtml}`;
     // 「下一局」已从计分板移除：局末推进改由牌桌下方【下一局】(btnNext)，场末由【准备】开下一场
     tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面(笼)</th><th>滚笼(笼)</th><th>奖金(笼)</th><th>本局(分)</th><th>本场(分)</th></tr>`;
     for(let v=0;v<4;v++){
@@ -1449,7 +1452,9 @@ function finishLocal(settle){
       const bb = s.bombBonus&&s.bombBonus[i] ? `（硬炸奖${s.bombBonus[i]}笼×3）` : '';
       // 抓分：优先用引擎归属后的值（尾游的抓分归对面队伍），旧缓存引擎回退到原始值
       const caughtVal = (s.effCaught && s.effCaught[i]!=null) ? s.effCaught[i] : gs.caught;
-      tb.innerHTML+=`<tr><td>${esc(seatNames[i])}</td>`+
+      // 当前玩家（自己）所在行加 myRow 底色，便于一眼定位自己
+      const rowCls = i===mySeat ? ' class="myRow"' : '';
+      tb.innerHTML+=`<tr${rowCls}><td>${esc(seatNames[i])}</td>`+
         `<td>${place}</td><td>${teamDotHtml(s,i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
         `<td>${cageC>0?'+':''}${cageC}</td>`+
         `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
