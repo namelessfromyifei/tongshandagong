@@ -1,25 +1,45 @@
 /* =============================================================================
  * 通山打拱 · 牌桌样式（public/css/style.css）
  *
- * 结构与页面元素索引
- *   ┌─ 全局 / 主题变量 ......... :root（felt/wood/gold/red/ink 等 + --card-zoom 牌缩放）
- *   ├─ 基础重置与布局壳 ......... * reset / body 背景 / #app 容器与「大厅↔牌桌」显隐
- *   ├─ 顶栏 .topbar ............. 标题 / 徽标 .chip / 通用按钮 .btn（.gold 对局配置 / .danger 退出）
- *   ├─ 牌桌桌布 .table .......... 圆形渐变桌布 + 木框 + 内阴影
- *   ├─ 座位 .seat ............... 四向定位（N/W/E/S）+ 当前座高亮 + 分数徽标 + 队标 + 头像 + 叫牌卡
- *   ├─ 背面牌叠 / 四家出牌区 ..... .cards.back 手牌背面；.trick.trickN/S/W/E 出牌区与行内叠放
- *   ├─ 桌面中央 ................. .center / #msg / #lastTrick / #trickScore
- *   ├─ 左上信息角 .corner ........ 叫牌+明鸡信息框（默认隐藏，勾选后显示）
- *   ├─ 扑克牌 .card ............. 点数花色角标 / 王 .jk / 明鸡金框 / mini 尺寸
- *   ├─ 手牌区 .south ............. 南家手牌行（信息框+手牌+工具按钮），牌缩放与选中态
- *   ├─ 日志 .log ................ 出牌记录框（右上，可开可关）
- *   ├─ 弹窗 .overlay/.modalBox ... 结算/设置/顶替/历史/加入重连等；桌内提示与准备圆点
- *   ├─ 大厅 #lobby ............... 登录/建房/加入/房间列表/微信身份
- *   ├─ 设置栏 .settingsBar ....... 对局配置行内控件
- *   ├─ 牌桌内标题/右上控制 ........ .tableTitle / .tableTopRight / 工具按钮 / 右下 排序·牌大小
- *   └─ 响应式 .................. 竖屏窄屏 / 横屏窄屏 / 强制横屏旋转兜底（landscapeRotate/compat）
+ * 一、结构与页面元素索引（按板块）
+ *   ┌─ 全局/主题 ......... :root 色板 + --card-zoom 牌缩放；* 重置；body 背景；#app 壳与「大厅↔牌桌」显隐
+ *   ├─ 顶栏 .topbar ...... 标题 .topbar h1、右侧 .topMeta 徽标组（.chip）
+ *   ├─ 牌桌 .table ....... 桌布；四座 .seat（.seatN/.seatW/.seatE 绝对定位；南座在手牌上方 .handRow .seatS）
+ *   ├─ 座位内容 ........... .head 头像行；.nm 昵称；.tag/.teamMark 庄游队标；.pts 抓分
+ *   │                    徽标：.roundSco 局末分 / .cumSco 已打笼 / .kingBadge 4+王 / .calledMini 叫牌卡
+ *   ├─ 出牌区 ............. .trick.trickN/S/W/E（对应 #t0..#t3），行内 .trickRow 叠放；.fanBadge 番数角标
+ *   ├─ 桌面中央 ........... .center / #msg / #lastTrick / #trickScore
+ *   ├─ 左上角 .corner ..... 叫牌+明鸡信息框（默认隐藏，renderCorner 开启）
+ *   ├─ 扑克牌 ............. .card（角标 .tl/.br、中央 .ctr、王 .jk、明鸡 .called/.calledMark/.calledOnDesk）
+ *   ├─ 手牌区 ............. .south/.southMain/#hand/.hcard，出牌按钮排 .playBtns/.midBtns
+ *   ├─ 日志 .............. .log（右上角，横屏时挪位）
+ *   ├─ 弹窗 .............. .overlay/.modalBox（列表见「二」）
+ *   ├─ 大厅 .............. #lobby/.lobbyBox/.lobbyRow/.wxProfile/#status/#roomList/.roomItem
+ *   ├─ 设置栏 ............. .settingsBar（对局配置行内控件）/ #seriesInfo
+ *   ├─ 牌桌内标题/右上控制 ... .tableTitle（游戏名+房间号+提示）/ .tableTopRight / .toolBtns / .tableSideBtns（排序·牌大小）
+ *   └─ 响应式 ............. 竖屏(≤560px) / 横屏(landscape≤920px) / 强制横屏旋转兜底 landscapeCompat
  *
- * 维护约定：规则保持原有顺序（后写覆盖先写），注释只描述「元素是什么、为什么这么摆」。
+ * 二、弹窗明细（共用 .overlay 遮罩 + .modalBox 盒子；标题统一 .modalBox h2）
+ *   #setModal ............. 牌局设置（对局配置，返回按钮 #btnSetBack）
+ *   #modal ............... 本局/本场结算「计分板」—— #mTitle 弹窗标题、#mTable 成绩表、
+ *                          #btnPeek 关闭计分板（右上角）；下一局按钮已移除，改走桌下 #btnNext
+ *   #historyModal ......... 历史分数弹窗—— #historyTable 最近 10 场成绩表、#btnHistoryClose 关闭
+ *   #takeoverAskModal ..... 顶替座位请求弹窗—— #btnTakeAgree 同意 / #btnTakeReject 不同意
+ *   #endAskModal .......... 提前结束本场共识弹窗—— #btnEndAgree / #btnEndReject / #btnEndClose
+ *   #createModal .......... 创建房间（#btnCreateGo / #btnCreateBack）
+ *   #joinModal ............ 加入房间（#btnJoinGo / #btnJoinBack）
+ *   #rejoinModal .......... 重连连桌（#btnRejoinGo / #btnRejoinBack）
+ *
+ * 三、按钮与控件明细（通用按钮样式 .btn；金色 .btn.gold = 对局配置；危险 .btn.danger = 退出房间）
+ *   大厅  ：#btnSetName 设置昵称 · #btnCreate 建房 · #btnJoin 加入 · #btnRejoin 重连
+ *          #btnWxLogin 微信授权 · #btnRefreshList 刷新房间列表
+ *   牌桌右上：#btnLeave 退出房间(danger) · #btnEndSeries 结束场次(danger 同色) · #btnHistory 历史分数
+ *          #btnFullscreen 全屏/退出全屏 · #btnStart 对局配置(gold) · #btnRefresh 整页刷新
+ *   牌桌内：#btnReady 准备 · #btnPlay 出牌 · #btnHint 提示 · #btnPass 不要
+ *          #btnSort 排序 · #btnSize 牌大小 · #btnAI AI出牌 · #btnSettle 计分板 · #btnNext 下一局
+ *   .kickSeatBtn .......... 未开场房主踢出按钮（JS 按座位动态生成）
+ *
+ * 维护约定：规则保持原有顺序（后写覆盖先写）；改规则请同步改注释，注释只描述元素与布局意图。
  * ============================================================================= */
 
 /* ===== 全局重置与主题 ===== */
@@ -27,7 +47,7 @@
 :root{
   /* 主题色：桌布绿 / 木框 / 金黄（强调）/ 红（危险）/ 墨色 / 背景两级 */
   --felt:#1d5c3f; --felt2:#2a7952; --wood:#5a3a1e; --gold:#e8c15a;
-  --red:#c0392b; --ink:#2b2b2b; --bg:#0f3d2a; --bg2:#0c2a1e;
+  --red:#c0392b; --ink:#2b2b2b; --bg:#0f3d2a; --bg2:#0c2a1e; --title:#eef3ea; --danger:#c0392b;
   --card-zoom:1.6; /* 牌面整体缩放：手牌 + 桌面出牌，按钮可调（标准/大/特大/巨无霸），默认第三档「特大」 */
 }
 body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-family:"Microsoft YaHei",system-ui,sans-serif;min-height:100vh;padding:10px;}
@@ -48,7 +68,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .topMeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 /* 徽标（房间号/我/房主 等）：小圆角胶囊 */
 .chip{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:3px 12px;font-size:13px;color:#cfe6da;}
-/* 通用按钮基类：绿色底 */
+/* 通用按钮基类（绿色底）：大厅/牌桌/弹窗所有按钮共用，如 #btnLeave #btnReady #btnPlay #btnHistory 等 */
 .btn{background:#2f7c57;border:1px solid #4a9a74;color:#fff;border-radius:7px;padding:7px 18px;cursor:pointer;font-size:14px;}
 .btn:hover{background:#3a9167;}
 /* 金色按钮（对局配置等强调项） */
@@ -87,8 +107,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .teamMark.host{color:#e8c15a;}
 /* 计分板身份列：红/绿圆圈标识队伍（绿=胜/牌面+滚笼净额胜、红=负或平） */
 .teamDot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:3px;vertical-align:middle;border:1px solid rgba(255,255,255,.4);}
-.teamDot.g{background:#2ecc71;box-shadow:0 0 4px rgba(46,204,113,.7);}
-.teamDot.r{background:#e74c3c;box-shadow:0 0 4px rgba(231,76,60,.7);}
+.teamDot.r{background:#2ecc71;box-shadow:0 0 4px rgba(46,204,113,.7);}
+.teamDot.g{background:#e74c3c;box-shadow:0 0 4px rgba(231,76,60,.7);}
 /* 信息框头行：头像 + 昵称 */
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
 /* 头像圆圈（默认灰底首字）；微信头像 .avImg 铺满，庄标/首字 .avTxt 浮其上 */
@@ -268,9 +288,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
 .warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:14px;line-height:1;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 5px rgba(0,0,0,.7);}
 /* 座位状态提示（插底 / x游）：南=准备按钮右侧；东/西=信息框下方；北=信息框右侧 */
-.southHint{display:flex;align-items:center;gap:8px;color:#ffe9b0;font-size:16px;font-weight:bold;white-space:nowrap;align-self:center;}
+.southHint{display:flex;align-items:center;gap:8px;color: var(--gold);font-size:16px;font-weight:bold;white-space:nowrap;align-self:center;}
 .southHint:empty{display:none;}
-.seatHint{position:absolute;z-index:6;white-space:nowrap;font-size:16px;font-weight:bold;color:#ffe9b0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+.seatHint{position:absolute;z-index:6;white-space:nowrap;font-size:16px;font-weight:bold;color: var(--gold);display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
 .seatE .seatHint{align-items:flex-end;}
 .seatHint .readyHint{order:-1;font-size:13px;font-weight:bold;color:#cfe6da;} /* 未准备在上、x游在下 */
 .seatHint:empty{display:none;}
@@ -283,10 +303,14 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 未开场踢出按钮（房主视角，掉线满30s 的真人牌桌前方） */
 .kickSeatBtn{position:absolute;top:0;right:0;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
 .kickSeatBtn:hover{background:#a5533f;}
-/* 历史分数弹窗表格 */
-#historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#e8dcc0;}
+/* 历史分数弹窗 #historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
+ *   文字默认白；昵称用 --danger、分数用 --gold */
+#historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;}
 #historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;}
-#historyTable th{background:rgba(255,255,255,.06);color:#ffd98a;}
+#historyTable th{background:rgba(255,255,255,.06);color:#fff;}
+#historyTable .hName{color:var(--danger);}   /* 历史行·玩家昵称 */
+#historyTable .hScore{color:var(--gold);}    /* 历史行·场末分 */
+#mTable .fenGold{color:var(--gold);}         /* 计分板·本局分数列 */
 /* 南家信息框右侧：插底/准备提示跟随信息框 */
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
 .handRow .seatS .southHint:empty{display:none;}
@@ -302,8 +326,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 玩家出的牌多行时：行间叠放（下一行微遮上一行，更紧凑） */
 #t0 .trickRow + .trickRow, #t1 .trickRow + .trickRow,
 #t2 .trickRow + .trickRow, #t3 .trickRow + .trickRow{ margin-top:-6px; }
-/* 弹窗通用：标题/表格/说明/按钮排 */
-.modalBox h2{color:var(--gold);margin-bottom:10px;}
+/* 弹窗通用（所有 overlay 弹窗共用）：
+ *   标题 .modalBox h2 —— 计分板(#modal #mTitle) / 历史分数(#historyModal) / 顶替座位 / 提前结束本场 / 牌局设置 / 建房·加入·重连 */
+.modalBox h2{color:var(--title);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
 .modalBox th,.modalBox td{border:1px solid rgba(255,255,255,.18);padding:6px 8px;text-align:left;}
 .modalBox th{background:rgba(255,255,255,.08);}

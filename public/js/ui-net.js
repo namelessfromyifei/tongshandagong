@@ -1448,7 +1448,7 @@ function finishLocal(settle){
         `<td>${place}</td><td>${teamDotHtml(s,i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
         `<td>${cageC>0?'+':''}${cageC}</td>`+
         `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
-        `<td>${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
+        `<td class="fenGold">${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
     }
     // 说明 + 轮累计
     const noteTxt = `牌面(笼) + 滚笼(笼) + 奖金(笼) = 番数；番数 × 2 × 半番 = 本局分（半番默认1 → ×2）`;

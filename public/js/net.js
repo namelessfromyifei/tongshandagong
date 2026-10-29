@@ -541,7 +541,7 @@ function bindLobby(){
     let html='<tr><th>时间</th><th>局数</th><th>玩家与场末分</th></tr>';
     for(const e of history){
       const tm=new Date(e.t).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-      const body=(e.players||[]).map((n,i)=>{ const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0; return `${esc(n)} ${sc>0?'+':''}${sc}分`; }).join(' · ');
+      const body=(e.players||[]).map((n,i)=>{ const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0; return `<span class="hName">${esc(n)}</span> <span class="hScore">${sc>0?'+':''}${sc}分</span>`; }).join(' · ');
       html+=`<tr><td>${tm}</td><td>${e.rounds||1}</td><td>${body}</td></tr>`;
     }
     tb.innerHTML=html;
