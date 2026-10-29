@@ -676,7 +676,8 @@ body.landscapeCompat .tableTopRight{right:6px;top:2px;gap:3px;}
 body.landscapeCompat .tableTopRight .chip{font-size:13px;padding:2px 7px;}
 body.landscapeCompat .tableTopRight .btn{padding:4px 9px;font-size:12px;}
 body.landscapeCompat .tableWho{left:96px;top:34px;font-size:9px;}
-body.landscapeCompat .modalBox{max-width:94%;padding:12px 14px;}
+body.landscapeCompat .modalBox{max-width:94%;padding:12px 14px;max-height:86vw;} /* 旋转兜底：可见高度=竖屏宽(vw)，封顶改用 86vw；86vh 会按竖屏高把弹窗顶出屏幕 */
+body.landscapeCompat #historyWrap{max-height:60vw;} /* 历史表体兜底封顶：60vw（对应常规 60vh） */
 body.landscapeCompat .modalBox .lobbyRow input,body.landscapeCompat .modalBox input{font-size:15px;padding:7px 10px;}
 body.landscapeCompat .modalBox .btn{font-size:14px;padding:6px 12px;}
 body.landscapeCompat .modalBox .mBtn{gap:8px;margin-top:10px;}

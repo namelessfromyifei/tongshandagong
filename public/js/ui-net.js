@@ -676,7 +676,6 @@ function applyState(snap){
   hintCursor=0; hintList=[];
   if(!G){
     // 未开局：更新房间信息 + 座位名，显示等待
-    if($('lblMode')) $('lblMode').style.display='none';
     if($('lblRound')) $('lblRound').textContent='等待开场';
     if($('msg')) $('msg').textContent='等待全员准备…';
     if($('btnAI')){ if(aiAutoOn) aiAutoSet(false); $('btnAI').style.display='none'; }
@@ -705,7 +704,6 @@ function applyState(snap){
     if((!settings.aiAuto || seriesOver) && aiAutoOn) aiAutoSet(false);
     $('btnAI').style.display = (settings.aiAuto && !seriesOver) ? 'inline-block' : 'none';
   }
-  paintModeChip(); // 模式徽标：仅硬牌局显示（2V2 不显示）
   // 结算弹窗：局末先静默构建计分板，3 秒后再显示
   if(G.ended){
     const rk=G.seq||G.roundNo;
@@ -782,14 +780,7 @@ function render(){
   renderSeats(); renderHand(); renderCenter(); renderTop();
   syncHandLayout();
 }
-// 模式徽标（#lblMode）：只在硬牌局显示「硬牌 · XX」；2V2（默认）不显示任何文案（去掉「2V2」字样）
-function paintModeChip(){
-  const e=$('lblMode'); if(!e) return;
-  if(G.mode==='hard'){ e.textContent='硬牌 · '+seatNames[G.hardSeat]; e.style.display=''; }
-  else{ e.textContent=''; e.style.display='none'; }
-}
 function renderTop(){
-  paintModeChip();
   // 局数直接用服务端下发的 G.roundNo：进行中即显示当前局，不再等本局结算后才 +1
   const total=settings.rounds||1;
   // 提前收场（局间共识收场，场末冻结）：局数文案改「本场提前结束」；其余（局中/局末/自然场末）照常第 x/y 局
@@ -881,7 +872,6 @@ function renderReadyIndicators(inTrick){
  *      此时 G 仍冻结，render() 会把旧局信息重画回来，这里在帧末统一覆盖成「刚进房」，
  *      并清掉旧局「庄」徽标残留。不碰 G / boardCleared 标志本身。 */
 function renderWaitingView(){
-  if($('lblMode')) $('lblMode').style.display='none';
   if($('lblRound')) $('lblRound').textContent='等待开场';
   if($('msg')) $('msg').textContent='等待全员准备…';
   if($('tableMsg')) $('tableMsg').textContent='';
