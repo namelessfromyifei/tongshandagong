@@ -78,7 +78,7 @@ function toast(msg){
   setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见
-// 对局配置弹窗只读开关：一场未结束时除「返回」外全部禁用（对局中设置不可改）
+// 对局配置弹窗只读开关：一场未结束时除「保存」外全部禁用（对局中设置不可改）
 function syncSetLock(){
   const m=$('setModal'); if(!m) return;
   const locked = !!(curG && !curSeriesOver);
@@ -363,7 +363,7 @@ async function initAuth(){
   // 微信内且已配置：自动发起一次授权；拒绝/失败后用按钮重试，不再自动跳转
   let blocked=false;
   try{ blocked=sessionStorage.getItem('tsWxManual')==='1' || sessionStorage.getItem('tsWxTried')==='1'; }catch(e){}
-  if(!me && wxConfig.enabled && wxConfig.wechat && !blocked && !IS_APP){
+  if(!me && wxConfig.enabled && wxConfig.ready && wxConfig.wechat && !blocked && !IS_APP){
     try{ sessionStorage.setItem('tsWxTried','1'); }catch(e){}
     authReady=true;
     location.replace('/api/wx/start?next='+encodeURIComponent(authNext()));
@@ -407,18 +407,6 @@ function renderRoomList(list){
       };
     } else {
       item.title = r.started?'对局已开始':'房间已满';
-    }
-    // 删除按钮：仅房主可删（决策 B，无关是否开局）；常驻房不显示
-    if(r.host===myName && r.code!=='LOVE' && r.code!=='HOME'){
-      const del=document.createElement('button');
-      del.className='btn small roomDel';
-      del.textContent='删除';
-      del.onclick=(e)=>{
-        e.stopPropagation();
-        connect();
-        socket.emit('deleteRoom', {code:r.code});
-      };
-      item.appendChild(del);
     }
     box.appendChild(item);
   });
@@ -532,17 +520,22 @@ function bindLobby(){
     connect();
     socket.emit('toggleReady', {});
   };
-  $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
+  $('btnSetBack').onclick=()=>{ if(socket) socket.emit('setSettings', collectSettings()); const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };
   // 历史分数：展示本房间最近 10 场（服务端记录）
   const renderHistory=()=>{
     const tb=$('historyTable'); if(!tb) return;
     if(!history || !history.length){ tb.innerHTML='<tr><td>暂无历史分数记录</td></tr>'; return; }
-    let html='<tr><th>时间</th><th>局数</th><th>玩家与场末分</th></tr>';
+    let html='<tr><th>时间</th><th>局数</th><th>玩家1</th><th>玩家2</th><th>玩家3</th><th>玩家4</th></tr>';
     for(const e of history){
-      const tm=new Date(e.t).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-      const body=(e.players||[]).map((n,i)=>{ const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0; return `<span class="hName">${esc(n)}</span> <span class="hScore">${sc>0?'+':''}${sc}分</span>`; }).join(' · ');
-      html+=`<tr><td>${tm}</td><td>${e.rounds||1}</td><td>${body}</td></tr>`;
+      const tm=new Date(e.t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      // 每位玩家一列（昵称在上、分数在下）：昵称/分数长度变化不影响行对齐
+      const cells=[0,1,2,3].map(i=>{
+        const n=(e.players&&e.players[i])||'—';
+        const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0;
+        return `<td><div class="hName">${esc(n)}</div><div><span class="hScore">${sc>0?'+':''}${sc}</span>分</div></td>`;
+      }).join('');
+      html+=`<tr><td>${tm}</td><td>${e.rounds||1}</td>${cells}</tr>`;
     }
     tb.innerHTML=html;
   };

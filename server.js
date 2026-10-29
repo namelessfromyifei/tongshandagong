@@ -258,8 +258,10 @@ async function fetchJson(url, timeoutMs){
 
 /* ---------- 微信授权：路由 ---------- */
 app.get('/api/wx/config', (req, res) => {
+  const ready = WX_ENABLED && (WX_MOCK || !!WX_OAUTH_BASE); // 授权基址就绪才允许自动跳授权，避免跳进微信错误页
   res.set('Cache-Control', 'no-store').json({
     enabled: WX_ENABLED,
+    ready,
     mock: WX_MOCK,
     wechat: /MicroMessenger/i.test(req.get('user-agent') || ''),
   });

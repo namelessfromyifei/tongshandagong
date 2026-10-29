@@ -213,6 +213,7 @@
       <div id="setModal" class="overlay" hidden>
         <div class="modalBox">
           <h2>牌局设置</h2>
+          <button id="btnSetBack" class="btn small">保存</button>
           <div class="setGrid">
             <label>一场局数 <select id="setRounds"><option value="1">1</option><option value="4" selected>4</option><option value="8">8</option><option value="12">12</option><option value="16">16</option></select></label>
             <label>王总数 <select id="setKings"><option value="8">8</option><option value="10">10</option><option value="12">12</option></select></label>
@@ -227,9 +228,6 @@
             <label class="chk"><input type="checkbox" id="setAIAuto"> 允许 AI 代打（可开启 AI出牌 按钮）</label>
           </div>
           <p id="setLockHint" style="color:#ffb39a;display:none">对局进行中，设置已锁定，本场结束后可修改</p>
-          <div class="mBtn">
-            <button id="btnSetBack" class="btn">返回</button>
-          </div>
         </div>
       </div>
 
@@ -271,10 +269,10 @@
       <div id="historyModal" class="overlay" hidden>
         <div class="modalBox">
           <h2>历史分数（最近 10 场）</h2>
+          <button id="btnHistoryClose" class="btn small">关闭</button>
           <div id="historyWrap" style="max-height:60vh;overflow:auto">
             <table id="historyTable"></table>
           </div>
-          <div class="mBtn"><button id="btnHistoryClose" class="btn">关闭</button></div>
         </div>
       </div>
 

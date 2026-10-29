@@ -20,7 +20,7 @@
  *   └─ 响应式 ............. 竖屏(≤560px) / 横屏(landscape≤920px) / 强制横屏旋转兜底 landscapeCompat
  *
  * 二、弹窗明细（共用 .overlay 遮罩 + .modalBox 盒子；标题统一 .modalBox h2）
- *   #setModal ............. 牌局设置（对局配置，返回按钮 #btnSetBack）
+ *   #setModal ............. 牌局设置（对局配置，右上角「保存」#btnSetBack）
  *   #modal ............... 本局/本场结算「计分板」—— #mTitle 弹窗标题、#mTable 成绩表、
  *                          #btnPeek 关闭计分板（右上角）；下一局按钮已移除，改走桌下 #btnNext
  *   #historyModal ......... 历史分数弹窗—— #historyTable 最近 10 场成绩表、#btnHistoryClose 关闭
@@ -274,8 +274,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* ===== 弹窗 ===== */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;}
 .modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
-/* 结算弹窗右上角「关闭计分板」 */
-#btnPeek{position:absolute;right:8px;top:8px;z-index:2;font-size:12px;padding:2px 8px;}
+/* 结算弹窗右上角「关闭计分板」；历史分数弹窗「关闭」、牌局设置「保存」同款 */
+#btnPeek, #btnHistoryClose, #btnSetBack{position:absolute;right:8px;top:8px;z-index:2;font-size:12px;padding:2px 8px;}
 /* 局末摊牌：没出完的牌当作一手牌摊在桌面上。
    尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色，多行时上下叠起来。 */
 .trickRow.remainDesk{margin-top:6px;zoom:1;}
@@ -308,7 +308,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 #historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;}
 #historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;}
 #historyTable th{background:rgba(255,255,255,.06);color:#fff;}
-#historyTable .hName{color:var(--danger);}   /* 历史行·玩家昵称 */
+#historyTable .hName{color:#fff;}   /* 历史行·玩家昵称 */
 #historyTable .hScore{color:var(--gold);}    /* 历史行·场末分 */
 #mTable .fenGold{color:var(--gold);}         /* 计分板·本局分数列 */
 /* 南家信息框右侧：插底/准备提示跟随信息框 */
@@ -545,8 +545,6 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .tableTitle .tMsg .m2 b{color:#ffd24a;font-weight:bold;}
 @media (max-width:560px){ .tableTitle .tMsg{font-size:12px;} }
 body.landscapeCompat .tableTitle .tMsg{font-size:12px;}
-/* 房间删除按钮（房主列表行内） */
-.roomDel{margin-left:8px;background:#8a3a2e;border-color:#a85345;color:#fff;border-radius:5px;padding:1px 7px;font-size:11px;cursor:pointer;}
 .roomCodeLbl{font-weight:bold;color:var(--gold);}
 
 /* ===== 移动端弹窗适配 ===== */
