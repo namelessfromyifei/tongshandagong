@@ -263,8 +263,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 }
 /* padding-top 随牌面缩放增加：给选中牌上浮（translateY 会被 zoom 放大）留出空间，避免顶部被滚动容器裁掉 */
 #hand{display:flex;justify-content:flex-start;align-items:flex-end;width:max-content;max-width:100%;min-width:0;min-height:100px;padding-top:calc(6px * var(--card-zoom) + 6px);overflow-x:auto;}
-/* 圆角必须给外层：选中态的 box-shadow 画在 .hcard 上，没有圆角时阴影是方的，左下角会露出直角 */
-.hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;border-radius:7px;}
+/* 圆角必须给外层：选中态的 box-shadow 画在 .hcard 上，没有圆角时阴影是方的，左下角会露出直角。
+   flex:0 0 auto 关键：手牌(.hcard)与出牌区(.card)一致不压缩，否则横屏(>920px，如 iPhone 18)走不到移动端媒体查询，
+   flex-shrink 默认 1 会把 28 张手牌压进 #hand 的 max-width:100%，导致牌显示不全（只看到约 22 张）。 */
+.hcard{cursor:pointer;transition:transform .12s ease;position:relative;touch-action:none;z-index:1;border-radius:7px;flex:0 0 auto;}
 .hcard + .hcard{margin-left:-34px;}
 .hcard:first-child{margin-left:0;}
 @media (hover:hover){ /* 仅鼠标设备悬停上浮，触摸端不粘 :hover（避免"收回一半"） */
