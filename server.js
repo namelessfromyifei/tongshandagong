@@ -692,6 +692,23 @@ function describe(cards){
 }
 
 /* ---------- 确认轮结束 / 开局 ---------- */
+// 场末冻结房里新玩家进入「空位/AI」座：清掉该索引上一局的残局数据并打 blanked 标记，
+// 让牌桌对该行按「刚进房间的空座位」渲染（只留名字/头像，不再显示上局玩家的手牌/抓分/游次等）。
+// 注意不动 room.series.totals / lastSettle —— 计分板仍按原局身份累计展示。
+function blankGameSeatData(G, i){
+  if(!G || !G.seats || !G.seats[i]) return;
+  const s=G.seats[i];
+  s.blanked = true;
+  s.hand=[];
+  s.lastCards=null;
+  s.out=false; s.outOrder=0;
+  s.caught=0; s.rollcages=[];
+  s.kings=0; s.kingPlayed=false;
+  s.hardBombBonus=0;
+  s.passed=false;
+  if('choice' in s) s.choice=null;
+  if('dizhi' in s) s.dizhi=false;
+}
 // 房主座位卫生：确保 hostSeat 指向真人座（含离线——掉线的房主保留身份，防他人加入抢走）；
 // 否则修复——
 //  - 有在线真人 → 移交给座位号最小的在线真人（promotedHost + 房内提示）；
@@ -1013,8 +1030,11 @@ io.on('connection', (socket)=>{
     if(seatIdx<0) seatIdx=r.seats.findIndex(s=>s.type==='ai');
     if(seatIdx<0){ socket.emit('toast','房间已满'); return; }
     clearOfflineKick(r, seatIdx); // 入座/顶替：取消该座的离线踢出计时器
+    const wasAi = r.seats[seatIdx].type!=='human'; // 顶替离线真人座(type=human)不算、不扰其残局；空位/AI 座被新玩家入座才清
     r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
     if(!takeOver) r.humanCount++; // 顶替：座位上真人仍在，人数不变
+    // 场末冻结房新玩家进入空位/AI 座：清该索引的上一局残局数据（牌桌按「刚进房间的空座」渲染）
+    if(wasAi && r.G && r.G.ended) blankGameSeatData(r.G, seatIdx);
     room=r; mySeat=seatIdx;
     socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);

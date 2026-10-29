@@ -610,11 +610,15 @@ function applyState(snap){
     const clearKey = curRoomCode + ':' + (G.seq||G.roundNo);
     let saved=null;
     try{ saved=JSON.parse(localStorage.getItem('tsCleared')||'null'); }catch(e){}
+    const curSO = !!snap.seriesOver;
     if(snap.ready && snap.ready[mySeat]){
       boardCleared=true;
-      try{ localStorage.setItem('tsCleared', JSON.stringify({key:clearKey})); }catch(e){}
-    } else if(saved && saved.key===clearKey){
-      // 已经点过准备（哪怕中途退出/刷新/重连回来）：继续按已清桌显示
+      try{ localStorage.setItem('tsCleared', JSON.stringify({key:clearKey, seriesOver:curSO})); }catch(e){}
+    } else if(saved && saved.key===clearKey && saved.seriesOver===curSO){
+      // 已经在同一房间同局、且「当时状态(局末/场末)一致」时点过准备/下一局：
+      // 哪怕中途退出/刷新/重连回来也继续按已清桌显示。
+      // 记上 seriesOver 可避免局末(非场末)的记忆被误用于之后同样同局的「场末冻结帧」，
+      // 否则冻结的场末桌会被误冲刷成进房空桌。
       boardCleared=true;
     } else {
       boardCleared=false;
@@ -928,6 +932,20 @@ function renderSeats(){
     const i=realOf(v);
     const s=G.seats[i];
     const el=document.querySelector(`.seat[data-seat="${v}"]`); if(!el) continue;
+    // 新玩家入座场末空位：G 侧已 blanked —— 只画名字/头像的「刚进房间空座」，跳过对局信息
+    if(s && s.blanked){
+      const nmEl=$('nm'+v);
+      if(nmEl) nmEl.textContent = (seatNames[i]||'空位').trim();
+      paintAvatar($('av'+v), seatAvatars[i]||'', (seatNames[i]||'').trim().charAt(0));
+      const tEl=$('tag'+v); if(tEl) tEl.innerHTML='';
+      const pE=$('p'+v); if(pE) pE.textContent='';
+      const tR=$('t'+v); if(tR) tR.innerHTML='';
+      const hR=$('h'+v); if(hR) hR.innerHTML='';
+      const hN=$('hint'+v); if(hN) hN.innerHTML='';
+      el.classList.remove('teamA','teamB','plain','active','hasCalled');
+      el.querySelectorAll('.cumSco,.roundSco').forEach(n=>n.remove()); // 上一帧该行残留的分数徽标一并收掉
+      continue;
+    }
     // —— 廉价段（每帧都执行）：纯 classList 翻转，无 DOM 重建 ——
     el.classList.toggle('active', G.turn===i && !G.ended);
     // 明鸡牌小卡：始终显示在叫牌方（庄家）tag 上（明鸡出/跑/局中都不消失）；队友 tag 不显示。
@@ -954,7 +972,7 @@ function renderSeats(){
     if(!rebuild) continue;
     const nm=$('nm'+v);
     nm.textContent = (seatNames[i]||s.name);
-    if(seatTypes[i]==='ai' && !s.out) nm.textContent += ' 🤖';
+    if(seatTypes[i]==='ai' && !s.out && (seatNames[i]||s.name)!=='空位') nm.textContent += ' 🤖';
     // 掉线：在名字框显示"掉线·等待重连"
     if(seatTypes[i]==='human' && snapSeatOffline(i)) nm.textContent += ' ⚠️掉线·等待重连';
     // 4+ 王信息显示在头像上；头像圆圈不显示东南西北字，庄家（老板）圆圈里显示"庄"
