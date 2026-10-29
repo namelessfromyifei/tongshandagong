@@ -230,6 +230,14 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatN .seatHint{left:100%;bottom:0;margin-left:6px;}
 .seatE .seatHint{right:100%;bottom:0;margin-right:4px;} /* 右侧玩家名次/插底：信息框左侧下方 */
 .seatW .seatHint{left:100%;bottom:0;margin-left:4px;} /* 左侧玩家名次/插底：信息框右侧下方 */
+
+/* 未开场踢出按钮（房主视角，掉线满30s 的真人牌桌前方） */
+.kickSeatBtn{position:absolute;top:0;right:0;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
+.kickSeatBtn:hover{background:#a5533f;}
+/* 历史分数弹窗表格 */
+#historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#e8dcc0;}
+#historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;}
+#historyTable th{background:rgba(255,255,255,.06);color:#ffd98a;}
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
 .handRow .seatS .southHint:empty{display:none;}
 /* 准备状态：显示在各家牌桌上 */

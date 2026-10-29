@@ -11,6 +11,7 @@ let mySeat=-1, myName='';
 let roomCode='';
 let inGame=false; // 是否已在对局中（用于退出时判断保留重连）
 let roomCache=[]; // 最近一次服务器房间列表（加入/重连弹窗复用）
+let history=[];   // 本房历史分数（最近 10 场，服务端下发）
 let me=null;      // 微信授权身份 {nickname, avatar}
 let wxConfig={enabled:false, mock:false, wechat:false};
 let authReady=false;
@@ -142,6 +143,7 @@ function connect(){
   socket.on('state', (snap)=>{
     inGame = !!(snap.G && !snap.G.ended);  // 仅"本局进行中"视为对局中：局末/场末退出即真退（不再视作掉线）
     curG = snap.G || null; curSeriesOver = !!snap.seriesOver; curHostSeat = (snap.hostSeat!=null ? snap.hostSeat : -1);
+    history = (snap.history) || [];
     syncSetLock(); // 一场未结束 → 对局配置弹窗只读（除“返回”外全部禁用）
     // 提前收场表决已结束/作废 → 收起弹窗
     if(endAskRequester!==-1 && !snap.endVote){
@@ -532,6 +534,20 @@ function bindLobby(){
   };
   $('btnSetBack').onclick=()=>{ const m=$('setModal'); if(m) m.hidden=true; };
   $('btnLeave').onclick=()=>{ leaveRoom(); };
+  // 历史分数：展示本房间最近 10 场（服务端记录）
+  const renderHistory=()=>{
+    const tb=$('historyTable'); if(!tb) return;
+    if(!history || !history.length){ tb.innerHTML='<tr><td>暂无历史分数记录</td></tr>'; return; }
+    let html='<tr><th>时间</th><th>局数</th><th>玩家与场末分</th></tr>';
+    for(const e of history){
+      const tm=new Date(e.t).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+      const body=(e.players||[]).map((n,i)=>{ const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0; return `${esc(n)} ${sc>0?'+':''}${sc}分`; }).join(' · ');
+      html+=`<tr><td>${tm}</td><td>${e.rounds||1}</td><td>${body}</td></tr>`;
+    }
+    tb.innerHTML=html;
+  };
+  const bh=$('btnHistory'); if(bh) bh.onclick=()=>{ renderHistory(); const m=$('historyModal'); if(m) m.hidden=false; };
+  const bc=$('btnHistoryClose'); if(bc) bc.onclick=()=>{ const m=$('historyModal'); if(m) m.hidden=true; };
   // 提前结束本场（全真人房共识）
   const es=$('btnEndSeries'); if(es) es.onclick=()=>{ if(socket) socket.emit('endSeries'); };
   const ea=$('btnEndAgree'); if(ea) ea.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:true}); };
@@ -608,6 +624,6 @@ function applySettings(s){
   if($('setAIAuto')) $('setAIAuto').checked=!!s.aiAuto; // 漏同步：换房主/重进后勾选应跟服务器一致
 }
 
-window.NET = { connect, act, nextRound, start, toggleAI, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, get roomCode(){return roomCode;} };
+window.NET = { connect, act, nextRound, start, toggleAI, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
 window.addEventListener('DOMContentLoaded', bindLobby);
 })();

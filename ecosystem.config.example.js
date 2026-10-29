@@ -32,7 +32,8 @@ module.exports = {
 
       // 可选：保持默认即可
       ROOM_IDLE_KICK_MS: 1800000, // 未开局/场结束 30 分钟闲置解散；局间（等下一局）不超时
-      OFFLINE_KICK_MS: 180000,
+      OFFLINE_KICK_WAIT_MS: 30000,   // 未开场/场末：非房主掉线满此值(ms)后房主可手动踢出（默认 30s）
+      HOST_OFFLINE_KICK_MS: 300000,  // 未开场/场末：房主掉线超过此值(ms)自动移出（默认 5 分钟）
       REJOIN_TAKEOVER_MS: 30000, // 「网络波动」窗口：座主掉线超过此时长(ms)才允许他人手动重连顶替其座位（默认 30s）
       AI_TURN_MS: 1500,
     },

@@ -113,6 +113,7 @@
           <span class="chip" id="lblMode">2V2</span>
         </div>
         <div class="toolBtns">
+          <button id="btnHistory" class="btn small">历史分数</button>
           <button id="btnFullscreen" class="btn small toolBtn" style="display:none">退出全屏</button>
           <button id="btnQuick" class="btn small toolBtn">生崽</button>
           <button id="btnAI" class="btn small toolBtn" style="display:none">AI出牌</button>
@@ -263,6 +264,17 @@
           <h2 id="mTitle">本局结果</h2>
           <button id="btnPeek" class="btn small">关闭计分板</button>
           <table id="mTable"></table>
+        </div>
+      </div>
+
+      <!-- 历史分数：本房间最近 10 场（服务端记录，随快照下发） -->
+      <div id="historyModal" class="overlay" hidden>
+        <div class="modalBox">
+          <h2>历史分数（最近 10 场）</h2>
+          <div id="historyWrap" style="max-height:60vh;overflow:auto">
+            <table id="historyTable"></table>
+          </div>
+          <div class="mBtn"><button id="btnHistoryClose" class="btn">关闭</button></div>
         </div>
       </div>
 

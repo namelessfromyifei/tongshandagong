@@ -21,7 +21,10 @@ const PORT = process.env.PORT || 8080;
 // 局间（等下一局）不超时；create/join/准备会重置计时。
 const IDLE_KICK_MS = Number(process.env.ROOM_IDLE_KICK_MS || 30*60*1000); // 闲置解散仅限「未开局/场结束」且 30 分钟；局间（等下一局）不超时
 // 未开局时真人掉线超过该时长（毫秒）→ 踢出座位还原为 AI；默认 3 分钟。
-const OFFLINE_KICK_MS = Number(process.env.OFFLINE_KICK_MS || 3*60*1000);
+// 未开场/场末：非房主真人掉线满此时间 → 房主牌桌上出现「踢出房间」按钮（房主手动踢）
+const OFFLINE_KICK_WAIT_MS = Number(process.env.OFFLINE_KICK_WAIT_MS || 30*1000);
+// 未开场/场末：房主掉线超过此时间 → 自动移出房间（座位还原空位）
+const HOST_OFFLINE_KICK_MS = Number(process.env.HOST_OFFLINE_KICK_MS || 5*60*1000);
 // AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
 const AI_TURN_MS = Number(process.env.AI_TURN_MS || 1500);
 
@@ -384,6 +387,7 @@ function createRoom(code){
     aiTimer: null,
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
+    history: [],        // 本房历史分数（最近 10 场，每场结束记录）
     settings: {         // 牌局设置（房主可调）
       rounds: 4,        // 一轮打多少局（默认 4；界面可选 1/4/8/12/16）
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
@@ -452,9 +456,10 @@ function snapshot(room){
     settings: Object.assign({aiFill: room.aiFill}, room.settings),
     series: room.series,
     hostSeat: room.hostSeat, // 房主座位号（与座位归属解耦）：客户端据此显示「你是房主」/设置按钮
-    seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, avatar:s.avatar||'', humanCount:room.humanCount})),
+    seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, offlineAt:s.offlineAt||0, avatar:s.avatar||'', humanCount:room.humanCount})),
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
     earlyEnded: !!room.earlyEnded, // 本场系「提前结束」收场（局间共识收场）：局数文案显示「本场(已)提前结束」
+    history: room.history || [],  // 本房历史分数（最近 10 场）
     endVote: room.endVote ? { requester: room.endVote.requester, need: room.endVote.need, agree: room.endVote.agree.size } : null,
     endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
     G: room.G,
@@ -555,6 +560,7 @@ function finalizeEndSeries(room){
   room.seriesOver=true;
   clearAllOfflineKicks(room); clearIdleKick(room);
   scheduleIdleKick(room);                               // 场结束后可闲置解散
+  pushRoomHistory(room);                                // 提前收场：本场结束，记一条历史分数
   broadcast(room);
 }
 /* ---------- 应变：本地房间码列表（LOVE/HOME 等常驻房不可删除、不闲置解散） ---------- */
@@ -605,29 +611,32 @@ function clearOfflineKick(room, seatIdx){
   if(t){ clearTimeout(t); delete room.offlineTimers[seatIdx]; }
 }
 function scheduleOfflineKick(room, seatIdx){
-  if(!room || !room.offlineTimers || !(OFFLINE_KICK_MS>0)) return;
+  if(!room || !room.offlineTimers) return;
   clearOfflineKick(room, seatIdx);
-  // 一场（可能多局）未结束时不可踢人：对局中/局间掉线一律保留座位等重连；一场结束后才允许踢。
+  // 对局进行中/局间：掉线一律保留座位等重连（不踢）。
   if(room.G && !room.seriesOver) return;
+  const s=room.seats[seatIdx];
+  if(!s || s.type!=='human' || !s.offline) return;
+  // 仅「房主」掉线才自动踢（超过 HOST_OFFLINE_KICK_MS）；普通真人掉线由房主手动踢（掉线满 OFFLINE_KICK_WAIT_MS 出现按钮）。
+  if(seatIdx!==room.hostSeat) return;
+  if(!(HOST_OFFLINE_KICK_MS>0)) return;
   room.offlineTimers[seatIdx]=setTimeout(()=>{
     delete room.offlineTimers[seatIdx];
     // 房间已删/同号被替换 → 忽略
     if(rooms.get(room.code)!==room) return;
     // 场进行中 → 不再踢（转为等待重连）
     if(room.G && !room.seriesOver) return;
-    const s=room.seats[seatIdx];
-    if(!s || s.type!=='human' || !s.offline) return; // 已重连/已离开则作罢
-    // 未开局掉线超时：直接踢出（座位恢复为空位，可被新玩家加入；不当作 AI 处理）
-    logLine(room, `${s.name} 未开局掉线超时，已移出房间`);
+    const s2=room.seats[seatIdx];
+    if(!s2 || s2.type!=='human' || !s2.offline) return; // 已重连/已离开则作罢
+    logLine(room, `${s2.name} 房主掉线超时，已移出房间`);
     room.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
-    // 房主掉线被踢/座位被换：房主卫生——在线真人在则移交最少号在线真人，否则悬空(-1)，不挂在 AI 座
     ensureValidHost(room);
-    // 房间无人时自动删除（常驻房除外）
-    if(room.humanCount===0 && !isPreserve(room.code)){ clearIdleKick(room); rooms.delete(room.code); }
+    // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
+    if(room.humanCount===0 && !isPreserve(room.code)) scheduleIdleKick(room);
     else broadcast(room);
-  }, OFFLINE_KICK_MS);
+  }, HOST_OFFLINE_KICK_MS);
 }
 
 // 服务器日志：存入房间并推给所有人
@@ -708,6 +717,19 @@ function blankGameSeatData(G, i){
   s.passed=false;
   if('choice' in s) s.choice=null;
   if('dizhi' in s) s.dizhi=false;
+}
+// 本房历史分数：场末（自然走完或提前收场）记一条；只保留最近 10 场。
+// 每场玩家昵称可能不同——按该场结束时各座的名字记录。
+function pushRoomHistory(room){
+  if(!room) return;
+  room.history = room.history || [];
+  room.history.unshift({
+    t: Date.now(),
+    rounds: room.series.roundCount || room.settings.rounds || 1,
+    players: room.seats.map(s=>s.name),
+    scores: (room.series.totals || [0,0,0,0]).slice(),
+  });
+  if(room.history.length > 10) room.history.length = 10;
 }
 // 房主座位卫生：确保 hostSeat 指向真人座（含离线——掉线的房主保留身份，防他人加入抢走）；
 // 否则修复——
@@ -820,6 +842,7 @@ function finishRoom(room){
   // 达到设置局数 → 输出本场结算并重置（下场比赛需重新准备）
   if(room.series.roundCount >= room.settings.rounds){
     logLine(room, `══════ 本场 ${room.settings.rounds} 局全部结束 ══════`);
+    pushRoomHistory(room); // 自然场末：记录历史分数
     logLine(room, `  累计：${room.seats.map((se,i)=>`${se.name} ${room.series.totals[i]>0?'+':''}${room.series.totals[i]}分`).join('｜')}`);
     room.series.active=false; room.series.lastRound=null;
     // 累计/轮数保留：冻结屏与计分板继续显示最终累计；新的一场开始时由 startRound 归零
@@ -851,6 +874,7 @@ const RATE_LIMITS = {
   endSeriesVote:[10000, 10],
   takeoverVote: [10000, 10],
   toggleAI:     [5000, 4],
+  kickSeat:     [10000, 20],
   toggleReady:  [3000, 4],
   nextRound:    [3000, 4],
   start:        [10000, 5],
@@ -1349,6 +1373,28 @@ io.on('connection', (socket)=>{
     else broadcast(room);
   });
 
+  // 房主手动踢出「未开场/场末」掉线满 OFFLINE_KICK_WAIT_MS 的真人（非房主掉线不自动踢）
+  on('kickSeat', (data)=>{ if(!permit(socket,'kickSeat')) return;
+    if(!room || mySeat<0) return;
+    if(mySeat!==room.hostSeat){ socket.emit('toast','只有房主能踢人'); return; }
+    if(room.G && !room.G.ended){ socket.emit('toast','对局进行中，不能踢人'); return; }
+    const idx=Number(data && data.seat);
+    if(!Number.isInteger(idx) || idx<0 || idx>3) return;
+    const s=room.seats[idx];
+    if(!s || s.type!=='human' || !s.offline){ socket.emit('toast','该玩家不在掉线状态'); return; }
+    const age = s.offlineAt ? (Date.now()-s.offlineAt) : 0;
+    if(age < OFFLINE_KICK_WAIT_MS){ socket.emit('toast','该玩家掉线未满 30 秒，还不能踢'); return; }
+    clearOfflineKick(room, idx);
+    logLine(room, `房主移出掉线的 ${s.name}`);
+    room.seats[idx]={type:'ai', name:'空位', avatar:'', openid:''};
+    room.humanCount=Math.max(0, room.humanCount-1);
+    room.ready[idx]=false;
+    ensureValidHost(room);
+    // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
+    if(room.humanCount===0 && !isPreserve(room.code)) scheduleIdleKick(room);
+    else broadcast(room);
+  });
+
   // 主动退出房间（对局中视作掉线保留座位；未开局才真正退出）
   on('leave', ()=>{
     if(!room || mySeat<0){ return; }
@@ -1395,8 +1441,8 @@ io.on('connection', (socket)=>{
     socket.data.room=null; socket.data.seat=-1;
     // 房主卫生：在线真人在 → 移交最少号在线真人（原逻辑）；否则悬空(-1)，不能落在 AI/离线座
     ensureValidHost(r);
-    // 房间无人时自动删除（常驻房 LOVE/HOME 除外）
-    if(r.humanCount===0 && !isPreserve(r.code)){ clearIdleKick(r); rooms.delete(r.code); }
+    // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
+    if(r.humanCount===0 && !isPreserve(r.code)){ scheduleIdleKick(r); }
     else broadcast(r);
   });
 

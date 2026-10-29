@@ -26,6 +26,9 @@ let seatNames = [];        // 服务器房间座位名
 let seatAvatars = [];      // 服务器座位头像 URL（微信授权头像）
 let seatTypes = [];        // 服务器座位类型 human/ai
 let seatOffline = [];      // 服务器座位掉线标记
+let seatOfflineAt = [0,0,0,0]; // 服务器座位掉线时刻（ms，踢出按钮判断用）
+let hostSeat = -1;         // 房主座位号（快照下发）
+const KICK_WAIT_MS = 30000; // 掉线满此时长(ms)后，房主可踢（对应服务端 OFFLINE_KICK_WAIT_MS）
 let seatReady = [];        // 服务器座位准备标记
 let settings = {};         // 房间设置
 let series = null;         // 轮结算累计
@@ -635,6 +638,8 @@ function applyState(snap){
   seatAvatars = snap.seats.map(s=>s.avatar||'');
   seatTypes = snap.seats.map(s=>s.type);
   seatOffline = snap.seats.map(s=>!!s.offline);
+  seatOfflineAt = snap.seats.map(s=>s.offlineAt||0);
+  hostSeat = (snap.hostSeat!=null ? snap.hostSeat : -1);
   aiFill = snap.aiFill;
   settings = snap.settings || settings;
   // 房主可在「对局配置」里开启出牌记录框（默认不显示）
@@ -681,6 +686,7 @@ function applyState(snap){
     renderSeatNames();
     boardCleared=false;
     renderWaitingView(); // 空桌态：顶部条/按钮/出牌排/圆点全按「刚进房」（公共出口，见函数定义）
+    renderKickButtons();
     return;
   }
   // 刚点过【准备】/【下一局】（本局已结束、G 仍冻结等全员就绪）：显示同「刚进房」的空桌态。
@@ -688,6 +694,7 @@ function applyState(snap){
   // 覆盖：自然场末点【准备】、局末点【下一局】、提前收场（局间结束场次）冻结点【准备】。
   if(G && G.ended && boardCleared){
     renderWaitingView();
+    renderKickButtons();
     return;
   }
   // 发牌后显示排序/牌大小
@@ -719,6 +726,7 @@ function applyState(snap){
     $('modal').hidden = true;
   }
   render();
+  renderKickButtons(); // 未开场/场末：房主视角给掉线满 30s 的真人显示「踢出房间」
   if(G && G.ended && boardCleared) renderReadyIndicators(false); // 点过下一局、桌面清空后才显示各家准备状态
   // 场末计分板按钮兜底：本场结束且计分板弹窗未开时始终可见，可重开计分板
   if(G && G.ended && seriesOver){ const b=$('btnSettle'); if(b && $('modal').hidden) b.style.display='inline-block'; }
@@ -927,6 +935,24 @@ function seatSig(v){
     cumTotals[i]
   ].join('|');
 }
+// 未开场/场末：房主视角给「掉线满 30s 的真人」显示「踢出房间」按钮（牌桌前方）
+function renderKickButtons(){
+  document.querySelectorAll('.kickSeatBtn').forEach(n=>n.remove());
+  if(mySeat<0 || hostSeat!==mySeat) return;   // 仅房主视角
+  if(G && !G.ended) return;                    // 对局进行中不显示
+  const realOf = v => (mySeat + v) % 4;
+  for(let v=0;v<4;v++){
+    const i=realOf(v);
+    if(seatTypes[i]!=='human' || !seatOffline[i]) continue;
+    if(Date.now() - (seatOfflineAt[i]||0) < KICK_WAIT_MS) continue;
+    const el=document.querySelector('.seat[data-seat="'+v+'"]'); if(!el) continue;
+    const b=document.createElement('button');
+    b.className='kickSeatBtn';
+    b.textContent='踢出房间';
+    b.onclick=()=>{ if(window.NET && window.NET.kickSeat) window.NET.kickSeat(i); };
+    el.appendChild(b);
+  }
+}
 function renderSeats(){
   // 视图重排：自己的座位(real=mySeat)显示在下方(南位 view0)
   const realOf = v => (mySeat + v) % 4;
@@ -1088,7 +1114,7 @@ function renderSeats(){
       if(!hintEl) return;
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
-      d.style.cssText='color:#fff;font-size:17px;font-weight:bold;';
+      d.style.cssText='color:#b8860b;font-size:17px;font-weight:normal;'; // x游：与「对局配置」按钮同色黄色、不加粗
       hintEl.appendChild(d);
     };
     // 局末摊牌：没出完的牌当作一手牌摊到桌面上（替代原先塞在信息框里的缩略牌）。

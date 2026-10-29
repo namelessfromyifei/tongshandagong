@@ -231,12 +231,12 @@ function connect(port){
     const s2Ended = await until(() => clients.some(x => x.lastSnap && x.lastSnap.seriesOver && !!x.lastSnap.G), 10000);
     T('四人全票 → 场结束（决策 A 原路径仍通）', s2Ended);
 
-    // 场末全员退出 → 房间清空（大厅列表不再有 roomB）
+    // 场末全员退出 → 空房保留 30 分钟（新规则：不立即删除；本测试 spawn 关闲置解散，故断言「仍在大厅列表」）
     for(let i=0;i<4;i++) clients[i].c.emit('leave');
     if(r3 && r3.connected) r3.emit('leave');
     await wait(600);
     const lrB = await new Promise(res => { clients[0].c.once('rooms', r => res(r||[])); clients[0].c.emit('listRooms'); });
-    T('场末全员退出后房间被清（不在大厅列表）', !lrB.some(r => r.code === roomB));
+    T('场末全员退出后空房保留（30 分钟宽容，不立即删除）', !!lrB.some(r => r.code === roomB));
     r3.close();
 
     // ---------- 场景三：未开局 offline 真人座被新玩家顶替 ----------
