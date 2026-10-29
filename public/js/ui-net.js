@@ -1041,11 +1041,16 @@ function renderSeats(){
     pEl.append(caughtEl);
     pEl.append(
       // 跑完：其打出的带番炸已生效，直接显示已得番数
-      (s.out
-        ? (` · 得<span class="cageNum">${rollFan}</span>笼`)
-        : (rollN>0?(` · 已打<span class="cageNum">${rollFan}</span>笼`):''))+
-      // 信息框里不再显示“一游/二游…”（名次在牌桌提示和计分板里已有）
-      (G.mode==='hard'&&i===G.hardSeat?' · 硬牌':'')
+      // 笼数带色（.cageNum → --num）：append() 只认文本/元素节点，不能拼 HTML 字符串，
+      // 否则页面会原样显示 <span…> 字面量；此处数字为服务端下发的纯数值，无注入面
+      ...(()=>{
+        const cage = (s.out || rollN>0)
+          ? (()=>{ const sp=document.createElement('span'); sp.className='cageNum'; sp.textContent=rollFan; return sp; })()
+          : null;
+        const body = s.out ? [' · 得', cage, '笼'] : (rollN>0 ? [' · 已打', cage, '笼'] : []);
+        body.push((G.mode==='hard'&&i===G.hardSeat) ? ' · 硬牌' : '');
+        return body;
+      })()
     );
     // 其他玩家手牌背面（自己的手牌在手牌区渲染）
     if(v!==0){

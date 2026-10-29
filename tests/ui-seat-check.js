@@ -138,6 +138,24 @@ function T(name, cond, extra){
   T('局末（ended 翻转）触发座位重绘（t1 已变化）', seat(1).outerHTML !== t1Pre, { same: seat(1).outerHTML === t1Pre });
   G.ended = false;
 
+  // 9) 笼数数字上色回归（cageNum）：数字是 .cageNum 元素，而非 <span …> 字面量
+  //    （append() 不解析 HTML；若有人在 pEl 里拼 HTML 串会原样显示 → 泄露检测走文本节点）
+  const leakedSpan = el => [...el.childNodes].some(n => n.nodeType === 3 && n.data.indexOf('<span') !== -1);
+  G.seats[1].rollcages = [{ type:'bomb', size:4, soft:true, fan:2 }];
+  apply();
+  {
+    const c1 = pEl(1).querySelector('.cageNum');
+    T('「已打X笼」数字是 .cageNum 元素（无 <span 字面量文本）',
+      !!c1 && c1.textContent === '2' && !leakedSpan(pEl(1)), { html: pEl(1).innerHTML });
+  }
+  G.seats[1].out = true; G.seats[1].outOrder = 3; apply();
+  {
+    const c2 = pEl(1).querySelector('.cageNum');
+    T('「得X笼」数字同理（.cageNum 元素）',
+      !!c2 && c2.textContent === '2' && !leakedSpan(pEl(1)), { html: pEl(1).innerHTML });
+  }
+  G.seats[1].out = false; G.seats[1].outOrder = 0;
+
   console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
   process.exit(fail ? 1 : 0);
 })();
