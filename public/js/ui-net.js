@@ -1042,8 +1042,8 @@ function renderSeats(){
     pEl.append(
       // 跑完：其打出的带番炸已生效，直接显示已得番数
       (s.out
-        ? (` · 得${rollFan}笼`)
-        : (rollN>0?(` · 已打${rollFan}笼`):''))+
+        ? (` · 得<span class="cageNum">${rollFan}</span>笼`)
+        : (rollN>0?(` · 已打<span class="cageNum">${rollFan}</span>笼`):''))+
       // 信息框里不再显示“一游/二游…”（名次在牌桌提示和计分板里已有）
       (G.mode==='hard'&&i===G.hardSeat?' · 硬牌':'')
     );
@@ -1114,7 +1114,7 @@ function renderSeats(){
       if(!hintEl) return;
       const d=document.createElement('div');
       d.textContent=['一','二','三','四'][s.outOrder-1]+'游';
-      d.style.cssText='color:#b8860b;font-size:17px;font-weight:normal;'; // x游：与「对局配置」按钮同色黄色、不加粗
+      d.style.cssText='color:var(--num);font-size:17px;font-weight:normal;'; // x游：与「抓分 xx」数字同色、不加粗
       hintEl.appendChild(d);
     };
     // 局末摊牌：没出完的牌当作一手牌摊到桌面上（替代原先塞在信息框里的缩略牌）。
@@ -1484,6 +1484,9 @@ function resetTable(){
   selected.clear(); hintList=[]; lastRoundNo=-1; lastSettle=null; lastSettleSeq=0;
   curRoomCode=''; // 下次进房强制走「换房间」清理路径
 }
+
+/* ---------- 当前时间（#lblClock，第 x/y 局下方） ---------- */
+setInterval(()=>{ const c=$('lblClock'); if(c) c.textContent=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}); }, 5000);
 
 /* ---------- 网络回调用（net.js 调用） ---------- */
 window.GameUI = {

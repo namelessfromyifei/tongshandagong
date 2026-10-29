@@ -109,7 +109,10 @@
       <!-- 牌桌右上角：局数/模式/配置/退出 -->
       <div class="tableTopRight">
         <div class="topRightInfo">
-          <span class="chip" id="lblRound"></span>
+          <div class="metaClock">
+            <span class="chip" id="lblRound"></span>
+            <span class="chip" id="lblClock"></span>
+          </div>
           <span class="chip" id="lblMode">2V2</span>
         </div>
         <div class="toolBtns">
@@ -270,7 +273,7 @@
         <div class="modalBox">
           <h2>历史分数（最近 10 场）</h2>
           <button id="btnHistoryClose" class="btn small">关闭</button>
-          <div id="historyWrap" style="max-height:60vh;overflow:auto">
+          <div id="historyWrap">
             <table id="historyTable"></table>
           </div>
         </div>

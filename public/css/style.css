@@ -47,7 +47,7 @@
 :root{
   /* 主题色：桌布绿 / 木框 / 金黄（强调）/ 红（危险）/ 墨色 / 背景两级 */
   --felt:#1d5c3f; --felt2:#2a7952; --wood:#5a3a1e; --gold:#e8c15a;
-  --red:#c0392b; --ink:#2b2b2b; --bg:#0f3d2a; --bg2:#0c2a1e; --title:#eef3ea; --danger:#c0392b;
+  --red:#c0392b; --ink:#2b2b2b; --bg:#0f3d2a; --bg2:#0c2a1e; --title:#eef3ea; --danger:#c0392b; --num:#ffd24a; /* 数字统一色：抓分xx的xx / x游 / 得X笼 */
   --card-zoom:1.6; /* 牌面整体缩放：手牌 + 桌面出牌，按钮可调（标准/大/特大/巨无霸），默认第三档「特大」 */
 }
 body{background:linear-gradient(160deg,#0f3d2a,#0c2a1e);color:#eef3ea;font-family:"Microsoft YaHei",system-ui,sans-serif;min-height:100vh;padding:10px;}
@@ -77,8 +77,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .btn.danger{background:#8a3a2e;border-color:#a85345;}
 /* 全屏 / 结束场次：与「退出房间」(.btn.danger) 同色 */
 #btnFullscreen, #btnEndSeries{background:#8a3a2e;border-color:#a85345;}
-/* 牌桌局数标签（第 x/y 局 / 本场提前结束）：白色 */
+/* 牌桌局数标签（第 x/y 局 / 本场提前结束）：白色；下方附当前时间 */
 #lblRound{color:#fff;}
+.metaClock{display:flex;flex-direction:column;align-items:flex-start;gap:2px;} /* 局数+当前时间竖排 */
 .btn:disabled{opacity:.4;cursor:not-allowed;}
 
 /* ===== 牌桌桌布 ===== */
@@ -107,8 +108,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .teamMark.host{color:#e8c15a;}
 /* 计分板身份列：红/绿圆圈标识队伍（绿=胜/牌面+滚笼净额胜、红=负或平） */
 .teamDot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:3px;vertical-align:middle;border:1px solid rgba(255,255,255,.4);}
-.teamDot.r{background:#2ecc71;box-shadow:0 0 4px rgba(46,204,113,.7);}
-.teamDot.g{background:#e74c3c;box-shadow:0 0 4px rgba(231,76,60,.7);}
+.teamDot.g{background:#2ecc71;box-shadow:0 0 4px rgba(46,204,113,.7);}
+.teamDot.r{background:#e74c3c;box-shadow:0 0 4px rgba(231,76,60,.7);}
 /* 信息框头行：头像 + 昵称 */
 .head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
 /* 头像圆圈（默认灰底首字）；微信头像 .avImg 铺满，庄标/首字 .avTxt 浮其上 */
@@ -133,7 +134,8 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .calledMini .tl,.calledMini .br{line-height:1;}
 /* 抓分行（抓分 X · 得Y笼）：浅绿；抓分数金黄 */
 .pts{font-size:15px;color:#a8c8b8;}
-.pts .caughtNum{color:#ffd24a;}
+.pts .caughtNum{color:var(--num);}
+.pts .cageNum{color:var(--num);} /* 得X笼/已打X笼 数字 */
 
 /* ===== 背面牌叠 / 四家出牌区 ===== */
 /* 未跑玩家的手牌背面（占位或局末余牌） */
@@ -148,7 +150,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .trick .ministat{font-size:11px;color:#ffd;}
 /* 四家出牌区：摆在桌面各朝向，不套方框；牌像手牌一样叠起来，JS 每排 7 张自动换行成两排 */
 .trick.trickN{position:absolute;left:50%;top:157px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
-.trick.trickS{position:absolute;left:50%;bottom:169px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
+.trick.trickS{position:absolute;left:50%;bottom:176px;transform:translateX(-50%);justify-content:center;min-height:48px;margin-top:0;}
 .trick.trickW{position:absolute;left:234px;top:41%;transform:translateY(-50%);margin-top:0;}
 .trick.trickE{position:absolute;right:234px;top:41%;transform:translateY(-50%);margin-top:0;}
 .trick.trickN,.trick.trickS,.trick.trickW,.trick.trickE{flex-direction:column;align-items:center;}
@@ -272,10 +274,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .log:empty{display:none;} /* 无日志时不占位 */
 
 /* ===== 弹窗 ===== */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;z-index:50;overflow:auto;} /* 兜底：极小屏由遮罩滚动 */
 .modalBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:14px;max-width:940px;width:94%;padding:18px 22px;max-height:86vh;overflow-y:auto;}
 /* 结算弹窗右上角「关闭计分板」；历史分数弹窗「关闭」、牌局设置「保存」同款 */
-#btnPeek, #btnHistoryClose, #btnSetBack{position:absolute;right:8px;top:8px;z-index:2;font-size:12px;padding:2px 8px;}
+#btnPeek, #btnHistoryClose, #btnSetBack{position:absolute;right:8px;top:8px;z-index:2;font-size:16px;padding:5px 13px;}
 /* 局末摊牌：没出完的牌当作一手牌摊在桌面上。
    尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色，多行时上下叠起来。 */
 .trickRow.remainDesk{margin-top:6px;zoom:1;}
@@ -303,10 +305,15 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 未开场踢出按钮（房主视角，掉线满30s 的真人牌桌前方） */
 .kickSeatBtn{position:absolute;top:0;right:0;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
 .kickSeatBtn:hover{background:#a5533f;}
-/* 历史分数弹窗 #historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
- *   文字默认白；昵称用 --danger、分数用 --gold */
-#historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;}
-#historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;}
+/* 历史分数弹窗 #historyWrap/#historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
+ *   文字默认白；昵称白、分数用 --gold。
+ *   防「记录多了无限放大」：表体在内层流动（≤ min(60vh,560px)），表格 table-layout:fixed，
+ *   宽度恒等于容器——长昵称在列内换行，不把表格/弹窗撑宽。 */
+#historyWrap{max-height:min(60vh,560px);overflow:auto;overscroll-behavior:contain;}
+#historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;table-layout:fixed;}
+#historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;word-break:break-word;}
+#historyTable th:first-child{width:22%;}   /* 时间列收窄 */
+#historyTable th:nth-child(2){width:10%;}  /* 局数列收窄，其余宽度均分给 4 位玩家列 */
 #historyTable th{background:rgba(255,255,255,.06);color:#fff;}
 #historyTable .hName{color:#fff;}   /* 历史行·玩家昵称 */
 #historyTable .hScore{color:var(--gold);}    /* 历史行·场末分 */
@@ -382,7 +389,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .trickRow .card{width:30px!important;height:42px!important;margin-left:-16px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:13px!important;}
-  .trick.trickN{top:128px;} .trick.trickS{bottom:161px;} .trick.trickW{left:204px;} .trick.trickE{right:204px;}
+  .trick.trickN{top:128px;} .trick.trickS{bottom:168px;} .trick.trickW{left:204px;} .trick.trickE{right:204px;}
   .handRow .seatS{max-width:37%;min-width:0;} /* 窄屏：本家信息框不挤到出牌按钮区 */
   .center{top:49%;}
   #msg{font-size:12px;}
@@ -449,7 +456,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
   .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
   .trickRow .card .tl{font-size:8px!important;} .trickRow .card .br{font-size:8px!important;}
   .trickRow .card .ctr{font-size:12px!important;}
-  .trick.trickN{top:96px;} .trick.trickS{bottom:115px;} .trick.trickW{left:190px;} .trick.trickE{right:190px;}
+  .trick.trickN{top:96px;} .trick.trickS{bottom:122px;} .trick.trickW{left:190px;} .trick.trickE{right:190px;}
   .center{top:49%;} #msg{font-size:12px;} #trickScore{font-size:13px;}
   /* 手牌区在底部，横屏下尽量扁 */
   .south{bottom:-4px;}
@@ -619,7 +626,7 @@ body.landscapeCompat .trickRow .card .tl{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
 body.landscapeCompat .trickRow .card .ctr{font-size:12px!important;}
 body.landscapeCompat .trick.trickN{top:96px;}
-body.landscapeCompat .trick.trickS{bottom:115px;}
+body.landscapeCompat .trick.trickS{bottom:122px;}
 body.landscapeCompat .trick.trickW{left:190px;}
 body.landscapeCompat .trick.trickE{right:190px;}
 body.landscapeCompat .center{top:49%;}
