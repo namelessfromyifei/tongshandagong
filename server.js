@@ -385,7 +385,7 @@ function createRoom(code){
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
     settings: {         // 牌局设置（房主可调）
-      rounds: 3,        // 一轮打多少局
+      rounds: 4,        // 一轮打多少局（默认 4；界面可选 1/4/8/12/16）
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
       showCorner: false, // 是否显示牌桌信息框（叫牌/局数/半番等），默认不显示
       showLog: false,    // 是否显示出牌记录框（右上角日志），默认不显示
@@ -619,7 +619,6 @@ function scheduleOfflineKick(room, seatIdx){
     if(!s || s.type!=='human' || !s.offline) return; // 已重连/已离开则作罢
     // 未开局掉线超时：直接踢出（座位恢复为空位，可被新玩家加入；不当作 AI 处理）
     logLine(room, `${s.name} 未开局掉线超时，已移出房间`);
-    const wasHost = (seatIdx===room.hostSeat);
     room.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''}; // "空位"：未加入玩家，ai 类型仅为可被 join 替换的标记
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[seatIdx]=false;
