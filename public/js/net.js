@@ -268,7 +268,7 @@ function toggleAI(){
 function leaveRoom(){
   // 局末（非末局）：不可退出房间，只能【结束场次】提前收场（含手机返回键触发的退出，一律拦下）
   if(curG && curG.ended && !curSeriesOver){
-    toast('本局尚未结束，请点【结束场次】提前收场');
+    toast('本局尚未结束，请点【提前结束】');
     return;
   }
   roomCode=''; // 退出标记：杜绝”点了退出后网络闪断又被自动 rejoin 回桌”

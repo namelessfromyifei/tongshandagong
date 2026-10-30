@@ -753,8 +753,10 @@ function blankGameSeatData(G, i){
 }
 // 本房历史分数：场末（自然走完或提前收场）记一条，写 SQLite（每房只保留最近 10 场）。
 // 每场玩家昵称可能不同——按该场结束时各座的名字记录。
+// 提前结束且一局都没完成（roundCount=0）→ 不计入历史分数。
 function pushRoomHistory(room){
   if(!room) return;
+  if(!(Number.isFinite(room.series.roundCount) && room.series.roundCount > 0)) return;
   const rec = insertHistory(room); // 写入 DB（含裁剪到 10 场；rounds 逻辑见 db.js），返回新记录
   room.historyCache = [rec, ...(room.historyCache || [])].slice(0, 10); // 同步内存缓存，避免快照每次查库
 }
@@ -1468,7 +1470,7 @@ io.on('connection', (socket)=>{
     // 局末（非末局，等大家点【下一局】）：不允许直接退出，只能【结束场次】提前收场；
     // 要中途离开先进【结束场次】收场（AI 房同样适用：在线真人共识即生效）
     if(r.G && r.G.ended && !r.seriesOver){
-      socket.emit('toast','本局尚未结束，请点【结束场次】提前收场');
+      socket.emit('toast','本局尚未结束，请点【提前结束】');
       return;
     }
     const leftName = r.seats[seatIdx].name;

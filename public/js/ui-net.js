@@ -708,7 +708,12 @@ function applyState(snap){
   if(G.ended){
     const rk=G.seq||G.roundNo;
     const shouldShow=!!(G.lastSeries || !seatReady[mySeat]);
-    if(shouldShow){
+    // 提前收场（局间共识收场）：强制弹本场计分板——即使上一局已弹过（settleShown 仍 true）也要重新弹「本场提前结束」结果
+    if(earlyEnded && G.lastSeries){
+      settleShown=false; clearSettleTimer();
+      finishLocal(lastSettle);
+      scheduleSettleModal(rk, true);
+    } else if(shouldShow){
       if(settleSeq!==rk){ settleSeq=rk; settleShown=false; clearSettleTimer(); }
       finishLocal(lastSettle); // 只填充表格，不在这里弹出
       if(!settleShown) scheduleSettleModal(rk, !!G.lastSeries);
