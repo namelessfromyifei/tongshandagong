@@ -49,9 +49,11 @@ function insertHistory(room) {
   const names = room.seats.map(s => s.name);
   const scores = (room.series.totals || [0, 0, 0, 0]).slice();
   const rounds = Number.isFinite(room.series.roundCount) ? room.series.roundCount : (room.settings.rounds || 1);
-  ins.run(room.code, Date.now(), rounds,
+  const finishedAt = Date.now();
+  ins.run(room.code, finishedAt, rounds,
     names[0], scores[0], names[1], scores[1], names[2], scores[2], names[3], scores[3]);
   prune.run(room.code, room.code, MAX_KEEP);
+  return { t: finishedAt, rounds, players: names, scores }; // 返回新记录（旧格式），供调用方更新内存缓存
 }
 
 // 读取某房最近 10 场，转回旧内存格式 {t, rounds, players, scores}（客户端/测试零改动）

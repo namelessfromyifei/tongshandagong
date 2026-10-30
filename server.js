@@ -390,6 +390,7 @@ function createRoom(code){
     aiTimer: null,
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
+    historyCache: getHistory(code), // 本房历史分数内存缓存（最近 10 场，启动时从 DB 加载；快照直接读它，不每次查库）
     settings: {         // 牌局设置（房主可调）
       rounds: 4,        // 一轮打多少局（默认 4；界面可选 1/4/8/12/16）
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
@@ -461,7 +462,7 @@ function snapshot(room){
     seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, offlineAt:s.offlineAt||0, avatar:s.avatar||'', humanCount:room.humanCount})),
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
     earlyEnded: !!room.earlyEnded, // 本场系「提前结束」收场（局间共识收场）：局数文案显示「本场(已)提前结束」
-    history: getHistory(room.code),  // 本房历史分数（最近 10 场，SQLite）
+    history: room.historyCache || [],  // 本房历史分数（内存缓存，最近 10 场）
     endVote: room.endVote ? { requester: room.endVote.requester, need: room.endVote.need, agree: room.endVote.agree.size } : null,
     endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
     G: room.G,
@@ -503,16 +504,18 @@ function maskGame(G, seatIdx){
   }
   return c;
 }
-function snapshotFor(room, seatIdx){
-  const snap = snapshot(room);
+function snapshotFor(room, seatIdx, base){
+  const snap = Object.assign({}, base); // 浅拷贝基础快照，G 按座位脱敏替换（其余字段各成员共享）
   const G = room.G;
   snap.G = G ? maskGame(G, seatIdx) : null;
   snap.youArePartner = !!(G && seatIdx>=0 && G.partner===seatIdx);
   if(G && G.ended && room.lastSettle) snap.settle = room.lastSettle;
   return snap;
 }
-// 按接收者分发脱敏快照：入座者拿本人视角，游离 socket 拿公共视角（全隐藏）
+// 按接收者分发脱敏快照：入座者拿本人视角，游离 socket 拿公共视角（全隐藏）。
+// 全量快照只生成一次（base），各成员仅做脱敏差异——省掉重复的 seats.map/getHistory/mask 序列化开销。
 function broadcast(room){
+  const base = snapshot(room);
   const seats=room.seats;
   const memberIds=io.sockets.adapter.rooms.get(room.code)||[];
   for(const id of memberIds){
@@ -520,7 +523,7 @@ function broadcast(room){
     if(!so) continue;
     let seatIdx=-1;
     for(let i=0;i<4;i++){ if(seats[i] && seats[i].socketId===id){ seatIdx=i; break; } }
-    so.emit('state', snapshotFor(room, seatIdx));
+    so.emit('state', snapshotFor(room, seatIdx, base));
   }
 }
 /* ---------- 提前结束本场（在线真人共识表决） ----------
@@ -724,7 +727,8 @@ function blankGameSeatData(G, i){
 // 每场玩家昵称可能不同——按该场结束时各座的名字记录。
 function pushRoomHistory(room){
   if(!room) return;
-  insertHistory(room); // 写入 DB（含裁剪到 10 场；rounds 逻辑见 db.js）
+  const rec = insertHistory(room); // 写入 DB（含裁剪到 10 场；rounds 逻辑见 db.js），返回新记录
+  room.historyCache = [rec, ...(room.historyCache || [])].slice(0, 10); // 同步内存缓存，避免快照每次查库
 }
 // 房主座位卫生：确保 hostSeat 指向真人座（含离线——掉线的房主保留身份，防他人加入抢走）；
 // 否则修复——
