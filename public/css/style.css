@@ -291,13 +291,14 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 计分板「关闭计分板」单独调小一档（历史分数/牌局设置仍保持两档放大） */
 #btnPeek{font-size:14px;padding:4px 10px;}
 /* 局末摊牌：没出完的牌当作一手牌摊在桌面上。
-   尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色，多行时上下叠起来。 */
+   尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色；
+   多行时后一行压住前一行（DOM 靠后的行自然绘制在上层、完整可见），前一行只露左上角点数花色。 */
 .trickRow.remainDesk{margin-top:6px;zoom:1;}
 .trickRow.remainDesk .card{width:26px!important;height:36px!important;zoom:1!important;margin-left:-14px!important;border-radius:4px!important;}
 .trickRow.remainDesk .card:first-child{margin-left:0!important;}
 .trickRow.remainDesk .card .tl,.trickRow.remainDesk .card .br{font-size:10px!important;}
 .trickRow.remainDesk .card .ctr{font-size:13px!important;}
-.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-14px;}
+.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-26px;} /* 后一行上压 26px：前一行(高36px)只露 10px 左上角点数花色 */
 /* 插底警报：红色圆徽标（白！）+ 文字 */
 .warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
 .warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:14px;line-height:1;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 5px rgba(0,0,0,.7);}
