@@ -84,6 +84,7 @@ async function createRoomAs(A, name){
       PORT: String(PORT), AI_TURN_MS: '60',
       ROOM_IDLE_KICK_MS: '0', OFFLINE_KICK_MS: '0',
       REJOIN_TAKEOVER_MS: '2000', TAKEOVER_ASK_MS: '1500', TAKEOVER_APPROVE_MS: '3000',
+      DB_PATH: ':memory:',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

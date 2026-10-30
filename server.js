@@ -15,6 +15,7 @@ const { Server } = require('socket.io');
 const { execFile } = require('child_process');
 const TS = require('./js/engine.js');
 const TSAI = require('./js/ai.js');
+const { insertHistory, getHistory } = require('./db');
 
 const PORT = process.env.PORT || 8080;
 // 房间闲置自动解散（毫秒）；设为 0 可关闭。仅「未开局/场结束」计时，默认 30 分钟；
@@ -389,7 +390,6 @@ function createRoom(code){
     aiTimer: null,
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
-    history: [],        // 本房历史分数（最近 10 场，每场结束记录）
     settings: {         // 牌局设置（房主可调）
       rounds: 4,        // 一轮打多少局（默认 4；界面可选 1/4/8/12/16）
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
@@ -461,7 +461,7 @@ function snapshot(room){
     seats: room.seats.map(s=>({name:s.name, type:s.type, offline:!!s.offline, offlineAt:s.offlineAt||0, avatar:s.avatar||'', humanCount:room.humanCount})),
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
     earlyEnded: !!room.earlyEnded, // 本场系「提前结束」收场（局间共识收场）：局数文案显示「本场(已)提前结束」
-    history: room.history || [],  // 本房历史分数（最近 10 场）
+    history: getHistory(room.code),  // 本房历史分数（最近 10 场，SQLite）
     endVote: room.endVote ? { requester: room.endVote.requester, need: room.endVote.need, agree: room.endVote.agree.size } : null,
     endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
     G: room.G,
@@ -720,21 +720,11 @@ function blankGameSeatData(G, i){
   if('choice' in s) s.choice=null;
   if('dizhi' in s) s.dizhi=false;
 }
-// 本房历史分数：场末（自然走完或提前收场）记一条；只保留最近 10 场。
+// 本房历史分数：场末（自然走完或提前收场）记一条，写 SQLite（每房只保留最近 10 场）。
 // 每场玩家昵称可能不同——按该场结束时各座的名字记录。
 function pushRoomHistory(room){
   if(!room) return;
-  room.history = room.history || [];
-  room.history.unshift({
-    t: Date.now(),
-    // 局数 = 实际已完成局数：提前收场（含局中弃局）按 series.roundCount 记（可为 0）；
-    // 自然场末 roundCount===计划局数，两者一致。不在此用 settings.rounds 兜底，
-    // 否则「第一局中就提前收场」会把 0 显示成计划局数。
-    rounds: Number.isFinite(room.series.roundCount) ? room.series.roundCount : (room.settings.rounds || 1),
-    players: room.seats.map(s=>s.name),
-    scores: (room.series.totals || [0,0,0,0]).slice(),
-  });
-  if(room.history.length > 10) room.history.length = 10;
+  insertHistory(room); // 写入 DB（含裁剪到 10 场；rounds 逻辑见 db.js）
 }
 // 房主座位卫生：确保 hostSeat 指向真人座（含离线——掉线的房主保留身份，防他人加入抢走）；
 // 否则修复——

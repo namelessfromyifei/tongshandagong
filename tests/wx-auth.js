@@ -65,6 +65,7 @@ function createRoom(url, cookie, name){
       NODE_ENV: 'test',
       WX_MOCK: '1',
       SESSION_SECRET: 'test-session-secret',
+      DB_PATH: ':memory:',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

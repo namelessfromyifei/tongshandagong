@@ -37,7 +37,7 @@ async function until(fn, ms){
 (async () => {
   const srv = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: Object.assign({}, process.env, { PORT: String(PORT), ROOM_IDLE_KICK_MS: '0', OFFLINE_KICK_MS: '0' }),
+    env: Object.assign({}, process.env, { PORT: String(PORT), ROOM_IDLE_KICK_MS: '0', OFFLINE_KICK_MS: '0', DB_PATH: ':memory:' }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';

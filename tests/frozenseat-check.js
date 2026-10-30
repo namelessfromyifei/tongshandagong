@@ -26,7 +26,7 @@ function connect(port){
 }
 (async () => {
   const srv = spawn(process.execPath, ['server.js'], { cwd: ROOT,
-    env: Object.assign({}, process.env, { PORT: String(PORT), AI_TURN_MS: '60', ROOM_IDLE_KICK_MS: '0', OFFLINE_KICK_MS: '0' }),
+    env: Object.assign({}, process.env, { PORT: String(PORT), AI_TURN_MS: '60', ROOM_IDLE_KICK_MS: '0', OFFLINE_KICK_MS: '0', DB_PATH: ':memory:' }),
     stdio: ['ignore', 'pipe', 'pipe'] });
   let out=''; srv.stdout.on('data', d=>out+=d.toString()); srv.stderr.on('data', d=>out+=d.toString());
   while(!/服务器已启动/.test(out)) await wait(100);

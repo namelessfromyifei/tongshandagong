@@ -30,6 +30,7 @@ function connect(port){
       PORT: String(PORT), AI_TURN_MS: '60', ROOM_IDLE_KICK_MS: '1500',
       OFFLINE_KICK_WAIT_MS: '600', HOST_OFFLINE_KICK_MS: '100000', // 关闭房主自踢干扰
       REJOIN_TAKEOVER_MS: '0', TAKEOVER_ASK_MS: '2000', TAKEOVER_APPROVE_MS: '3000',
+      DB_PATH: ':memory:',
     }),
     stdio: ['ignore', 'pipe', 'pipe'] });
   let out=''; srv.stdout.on('data', d=>out+=d.toString()); srv.stderr.on('data', d=>out+=d.toString());

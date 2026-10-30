@@ -44,6 +44,7 @@ function connect(port){
       AI_TURN_MS: '80',
       ROOM_IDLE_KICK_MS: '0',
       OFFLINE_KICK_MS: '0',
+      DB_PATH: ':memory:',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
