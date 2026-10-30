@@ -903,7 +903,7 @@ function updateSeriesInfo(){
   el.textContent='';
 }
 function seatTag(i){
-  if(G.mode==='hard') return i===G.hardSeat?'<span class="teamMark hard">硬</span>':'';
+  if(G.mode==='hard') return i===G.hardSeat?'<span class="teamMark hard">独</span>':'';
   // 庄家标记已放到头像圆圈里（"庄"字），信息框 tag 不再显示"老板"
   return '';
 }
@@ -1042,7 +1042,6 @@ function renderSeats(){
           ? (()=>{ const sp=document.createElement('span'); sp.className='cageNum'; sp.textContent=rollFan; return sp; })()
           : null;
         const body = s.out ? [' · 得', cage, '笼'] : (rollN>0 ? [' · 已打', cage, '笼'] : []);
-        body.push((G.mode==='hard'&&i===G.hardSeat) ? ' · 硬牌' : '');
         return body;
       })()
     );
@@ -1186,7 +1185,7 @@ function renderSeats(){
   if(!G.ended){
     msg.textContent = G.mode!=='hard'
       ? (G.revealed ? `对家已明：${seatNames[G.partner]}` : `对家未明（叫牌 ${TS.cardName(G.called)}）`)
-      : `${seatNames[G.hardSeat]} 硬牌 1打3`;
+      : `${seatNames[G.hardSeat]} 明独 1打3`;
   } else msg.textContent = seriesOver ? '本场结束' : '本局结束';
   renderCorner();
 }
@@ -1432,7 +1431,7 @@ function finishLocal(settle){
     // 标题改 innerHTML：获胜玩家名与局数数字上金色 .mtGold（名字先 esc 转义，防 XSS）
     const mtName=i=>`<span class="mtGold">${esc(seatNames[i])}</span>`;
     const namesHtml = G.mode==='hard'
-      ? `硬牌者 ${mtName(G.hardSeat)} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
+      ? `明独者 ${mtName(G.hardSeat)} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
       : `${s.winnerSeats.map(mtName).join('、')}赢`;
     const roundHtml = (seriesOver && earlyEnded)
       ? `（第<span class="mtGold">${G.roundNo||1}</span>局/本场已提前结束）`
