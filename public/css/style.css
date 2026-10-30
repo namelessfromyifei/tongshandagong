@@ -649,15 +649,17 @@ body.landscapeCompat .center{top:49%;}
 body.landscapeCompat #msg{font-size:12px;}
 body.landscapeCompat #trickScore{font-size:13px;}
 body.landscapeCompat .south{bottom:-4px;}
-body.landscapeCompat .southMain #hand .hcard + .hcard{margin-left:-27px;}
+/* iOS Safari 的 zoom 不参与 flex 布局（只视觉放大），牌视觉变大但布局间距不变→28 张重叠、后面被遮住显示不全。
+   兜底手牌改用 calc 物理尺寸（width/height/margin/font-size 直接乘 --card-zoom），跨浏览器一致，牌大小可调且布局同步缩放。 */
+body.landscapeCompat .southMain #hand .hcard + .hcard{margin-left:calc(-27px * var(--card-zoom));}
 body.landscapeCompat .southMain #hand .hcard:first-child{margin-left:0;}
-body.landscapeCompat .southMain #hand .card{width:42px;height:60px;}
-body.landscapeCompat .southMain #hand .card .tl{font-size:10px;}
-body.landscapeCompat .southMain #hand .card .br{font-size:10px;}
-body.landscapeCompat .southMain #hand .card .ctr{font-size:18px;}
-body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:15px;}
+body.landscapeCompat .southMain #hand .card{width:calc(42px * var(--card-zoom));height:calc(60px * var(--card-zoom));}
+body.landscapeCompat .southMain #hand .card .tl{font-size:calc(10px * var(--card-zoom));}
+body.landscapeCompat .southMain #hand .card .br{font-size:calc(10px * var(--card-zoom));}
+body.landscapeCompat .southMain #hand .card .ctr{font-size:calc(18px * var(--card-zoom));}
+body.landscapeCompat .southMain #hand .card.jk .ctr{font-size:calc(15px * var(--card-zoom));}
 body.landscapeCompat #hand{display:flex;justify-content:flex-start;overflow-x:auto;max-width:100%;min-width:0;width:max-content;padding:calc(6px * var(--card-zoom) + 6px) 0 2px;min-height:0;}
-body.landscapeCompat #hand .hcard{flex:0 0 auto;}
+body.landscapeCompat #hand .hcard{flex:0 0 auto;zoom:1;} /* 兜底手牌关掉 zoom，尺寸由上方 calc 控制，避免 iOS zoom 布局 bug */
 body.landscapeCompat .toolBtns{gap:4px;}
 body.landscapeCompat .actions{gap:4px;margin:0;}
 body.landscapeCompat .southMain{gap:2px;}
