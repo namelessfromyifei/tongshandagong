@@ -635,12 +635,12 @@ body.landscapeCompat .seatE{right:3px;}
 body.landscapeCompat .handRow .seatS{max-width:37%;min-width:0;} /* 旋转兜底同窄屏：信息框不盖住出牌按钮/手牌 */
 body.landscapeCompat .avatar{width:24px;height:24px;font-size:15px;}
 body.landscapeCompat .head{gap:4px;margin-bottom:3px;}
-body.landscapeCompat .trickRow .card{width:28px!important;height:40px!important;margin-left:-15px!important;}
+body.landscapeCompat .trickRow .card{width:calc(28px * var(--card-zoom))!important;height:calc(40px * var(--card-zoom))!important;margin-left:calc(-15px * var(--card-zoom))!important;zoom:1;} /* 兜底出牌区同手牌：calc 物理尺寸 + 关 zoom，规避 iOS zoom 不缩放 margin 的布局 bug */
 /* 兜底旋转时首张牌不缩进，否则西家出牌区会向左压住信息框 */
 body.landscapeCompat .trickRow .card:first-child{margin-left:0!important;}
-body.landscapeCompat .trickRow .card .tl{font-size:8px!important;}
-body.landscapeCompat .trickRow .card .br{font-size:8px!important;}
-body.landscapeCompat .trickRow .card .ctr{font-size:12px!important;}
+body.landscapeCompat .trickRow .card .tl{font-size:calc(8px * var(--card-zoom))!important;}
+body.landscapeCompat .trickRow .card .br{font-size:calc(8px * var(--card-zoom))!important;}
+body.landscapeCompat .trickRow .card .ctr{font-size:calc(12px * var(--card-zoom))!important;}
 body.landscapeCompat .trick.trickN{top:96px;}
 body.landscapeCompat .trick.trickS{bottom:122px;}
 body.landscapeCompat .trick.trickW{left:190px;}
@@ -649,8 +649,8 @@ body.landscapeCompat .center{top:49%;}
 body.landscapeCompat #msg{font-size:12px;}
 body.landscapeCompat #trickScore{font-size:13px;}
 body.landscapeCompat .south{bottom:-4px;}
-/* iOS Safari 的 zoom 不参与 flex 布局（只视觉放大），牌视觉变大但布局间距不变→28 张重叠、后面被遮住显示不全。
-   兜底手牌改用 calc 物理尺寸（width/height/margin/font-size 直接乘 --card-zoom），跨浏览器一致，牌大小可调且布局同步缩放。 */
+/* iOS Safari 的 zoom 只放大牌视觉尺寸、不放大负 margin：牌视觉变大但重叠量不变，每张牌露出过多，
+   28 张总宽被撑到 1152px 溢出屏幕（只能看到约 22 张）。兜底手牌改用 calc 物理尺寸（width/height/margin/font-size 直接乘 --card-zoom），跨浏览器一致，牌大小可调且布局同步缩放。 */
 body.landscapeCompat .southMain #hand .hcard + .hcard{margin-left:calc(-27px * var(--card-zoom));}
 body.landscapeCompat .southMain #hand .hcard:first-child{margin-left:0;}
 body.landscapeCompat .southMain #hand .card{width:calc(42px * var(--card-zoom));height:calc(60px * var(--card-zoom));}

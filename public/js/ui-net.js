@@ -966,7 +966,7 @@ function renderSeats(){
       const tR=$('t'+v); if(tR) tR.innerHTML='';
       const hR=$('h'+v); if(hR) hR.innerHTML='';
       const hN=$('hint'+v); if(hN) hN.innerHTML='';
-      el.classList.remove('teamA','teamB','plain','active','hasCalled');
+      el.classList.remove('teamA','plain','active','hasCalled');
       el.querySelectorAll('.cumSco,.roundSco').forEach(n=>n.remove()); // 上一帧该行残留的分数徽标一并收掉
       continue;
     }
