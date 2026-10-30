@@ -136,7 +136,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
    抓分行变长 → .seat(width:max-content) 变宽 → 牌 right:6px 锚定右缘自动右移，
    右侧 padding-right 通道保证抓分文字不压到牌（动态跟随，无需 JS）。 */
 .calledMini .card.mini{width:30px;height:44px;border-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.4);}
-.seat .tag .calledMini{position:absolute;right:6px;bottom:9px;transform:none;}
+.seat .tag .calledMini{position:absolute;right:6px;bottom:21px;transform:none;}
 /* 给叫牌卡留出右侧通道，避免盖住名字/标签 */
 .seat.hasCalled{padding-right:40px;}
 .calledMini .tl,.calledMini .br{line-height:1;}
