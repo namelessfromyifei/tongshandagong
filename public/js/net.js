@@ -407,6 +407,7 @@ function renderRoomList(list){
       };
     } else {
       item.title = r.started?'对局已开始':'房间已满';
+      item.onclick=()=>{ toast(r.started?'对局已开始，无法加入':'房间已满，无法加入'); };
     }
     box.appendChild(item);
   });

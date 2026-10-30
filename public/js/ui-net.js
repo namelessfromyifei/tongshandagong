@@ -1368,6 +1368,11 @@ function describeShort(p){
   if(p.type==='fiftyK') return p.tonghua?'五十K（同花）':'杂五十K';
   if(p.type==='fiftyCage') return `五十K大炸 ${p.t}张×3（${p.soft?'软':'硬'} ${p.fan} 笼）`;
   if(p.type==='kingBomb') return `王炸（${p.fan} 笼）`;
+  if(p.type==='single') return `单张 ${TS.RANKS[p.val]}`;
+  if(p.type==='pair') return `对 ${TS.RANKS[p.val]}`;
+  if(p.type==='triple') return `三条 ${TS.RANKS[p.val]}`;
+  if(p.type==='seqPair') return '连对';
+  if(p.type==='airplane') return '飞机';
   return p.type;
 }
 

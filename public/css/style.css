@@ -79,8 +79,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .btn.danger{background:#8a3a2e;border-color:#a85345;}
 /* 全屏 / 结束场次：与「退出房间」(.btn.danger) 同色 */
 #btnFullscreen, #btnEndSeries{background:#8a3a2e;border-color:#a85345;}
-/* 牌桌局数标签（第 x/y 局 / 等待开场 / 本场提前结束）：白色；当前时间在左上「房主：xx」下方（#lblClock，随 .tableTitle 竖排） */
+/* 牌桌局数标签（第 x/y 局 / 等待开场 / 本场提前结束）：白色；下方附当前时间 */
 #lblRound{color:#fff;}
+.metaClock{display:flex;flex-direction:column;align-items:flex-start;gap:2px;} /* 局数+当前时间竖排 */
 .btn:disabled{opacity:.4;cursor:not-allowed;}
 
 /* ===== 牌桌桌布 ===== */
@@ -528,10 +529,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 
 /* ===== 大厅房间列表 ===== */
 .roomListWrap{margin-top:14px;border-top:1px solid rgba(255,255,255,.15);padding-top:10px;}
-.roomListWrap .rlTitle{font-size:13px;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.roomListWrap .rlTitle{font-size:14px;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .roomListWrap .rlTitle .btn{padding:2px 10px;font-size:12px;}
-#roomList{max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
-.roomItem{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:7px 10px;font-size:13px;color:#eef3ea;cursor:default;}
+#roomList{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+.roomItem{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 14px;font-size:15px;color:#eef3ea;cursor:default;}
 .roomItem:hover{background:rgba(255,255,255,.1);}
 .roomItem.roomFull{opacity:.5;cursor:not-allowed;}
 /* 加入/重连弹窗：房间可点选列表 */

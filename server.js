@@ -446,6 +446,15 @@ function applySettings(r, data){
   if(data.aiFill!=null) r.aiFill=!!data.aiFill;
   if(data.aiAuto!=null) s.aiAuto=!!data.aiAuto;
 }
+// 房间无人时恢复对局配置默认（房主改过的设置随最后一人退出/被踢而还原，新进房从默认开始）
+function resetRoomSettings(room){
+  if(!room) return;
+  room.settings = {
+    rounds: 4, showRemain: false, showCorner: false, showLog: false,
+    aiAuto: false, kings: 8, jokerValue: 3, tailBonus: false, fanCap: 32, halfFan: 1,
+  };
+  room.aiFill = false;
+}
 // 标记"刚结束的这局是否为一场的最后一局"，随快照带给客户端（避免客户端猜错）
 function markLast(room){
   if(room.G && room.G.ended && room.G.lastSeries===undefined){
@@ -570,7 +579,7 @@ function finalizeEndSeries(room){
   broadcast(room);
 }
 /* ---------- 应变：本地房间码列表（LOVE/HOME 等常驻房不可删除、不闲置解散） ---------- */
-const PRESERVE_ROOMS = new Set(['LOVE','HOME']);
+const PRESERVE_ROOMS = new Set(['LOVE','HOME','AAAA','BBBB','CCCC','DDDD','EEEE']);
 function isPreserve(code){ return PRESERVE_ROOMS.has(code); }
 
 /* ---------- 牌局结束后房间闲置超时自动解散 ---------- */
@@ -1394,6 +1403,7 @@ io.on('connection', (socket)=>{
     room.recentKicks.push({ name: s.name, openid: s.openid || '', at: Date.now() });
     room.seats[idx]={type:'ai', name:'空位', avatar:'', openid:''};
     room.humanCount=Math.max(0, room.humanCount-1);
+    if(room.humanCount===0) resetRoomSettings(room); // 房间无人：对局配置恢复默认
     room.ready[idx]=false;
     ensureValidHost(room);
     // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
@@ -1437,6 +1447,7 @@ io.on('connection', (socket)=>{
     // 退出后座位显示「空位」（不是 AI 接管）：ai 类型只是"可被新玩家加入"的标记
     r.seats[seatIdx]={type:'ai', name:'空位', avatar:'', openid:''};
     r.humanCount=Math.max(0,r.humanCount-1);
+    if(r.humanCount===0) resetRoomSettings(r); // 房间无人：对局配置恢复默认
     // 最后一位在线玩家退出：清空残局 G（牌局信息）。
     // 普通房随后解散无影响；常驻房（LOVE/HOME）不删，残局一并清除，
     // 避免"场末退出后再进房仍显示上一场的牌局信息"。
@@ -1502,10 +1513,8 @@ io.on('connection', (socket)=>{
   });
 });
 
-// 常驻房 LOVE：作为常用房间，固定存在，即使无人也不删除
-createRoom('LOVE');
-// 常驻房 HOME：第二个固定房间（供群友联机/测试用），同样不删除
-createRoom('HOME');
+// 常驻房：固定存在，即使无人也不删除（启动时创建；listRooms 时也会兜底重建）
+for(const code of PRESERVE_ROOMS) createRoom(code);
 
 server.listen(PORT, ()=>{
   console.log(`通山打拱服务器已启动：http://0.0.0.0:${PORT}`);
