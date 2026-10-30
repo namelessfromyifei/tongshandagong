@@ -455,6 +455,24 @@ function resetRoomSettings(room){
   };
   room.aiFill = false;
 }
+// 对比设置快照与当前值，返回「变化的字段」中文描述（供 setSettings 广播给全房）
+function settingChanges(old, room){
+  const s = room.settings;
+  const on = v => v ? '开' : '关';
+  const ch = [];
+  if(old.rounds !== s.rounds) ch.push(`局数 ${s.rounds}`);
+  if(old.kings !== s.kings) ch.push(`王总数 ${s.kings}`);
+  if(old.jokerValue !== s.jokerValue) ch.push(`王单出算 ${s.jokerValue}`);
+  if(old.halfFan !== s.halfFan) ch.push(`半番 ${s.halfFan}`);
+  if(old.fanCap !== s.fanCap) ch.push(`笼数封顶 ${s.fanCap===0?'不封顶':s.fanCap}`);
+  if(old.tailBonus !== s.tailBonus) ch.push(`未跑可拿王奖金 ${on(s.tailBonus)}`);
+  if(old.showRemain !== s.showRemain) ch.push(`显示剩余张数 ${on(s.showRemain)}`);
+  if(old.showCorner !== s.showCorner) ch.push(`牌局信息框 ${on(s.showCorner)}`);
+  if(old.showLog !== s.showLog) ch.push(`出牌记录 ${on(s.showLog)}`);
+  if(old.aiFill !== room.aiFill) ch.push(`AI补位 ${on(room.aiFill)}`);
+  if(old.aiAuto !== s.aiAuto) ch.push(`AI代打 ${on(s.aiAuto)}`);
+  return ch;
+}
 // 标记"刚结束的这局是否为一场的最后一局"，随快照带给客户端（避免客户端猜错）
 function markLast(room){
   if(room.G && room.G.ended && room.G.lastSeries===undefined){
@@ -1024,8 +1042,22 @@ io.on('connection', (socket)=>{
     if(!room || mySeat!==room.hostSeat){ socket.emit('toast','只有房主能设置'); return; }
     if(configLocked(room)){ socket.emit('toast','对局进行中，设置已锁定'); return; }
     data = data||{};
+    // 快照旧设置，检测变化（客户端每个控件 onchange 都发全量设置，需对比才知道哪些真变了）
+    const old = {
+      rounds: room.settings.rounds, kings: room.settings.kings, jokerValue: room.settings.jokerValue,
+      halfFan: room.settings.halfFan, fanCap: room.settings.fanCap, tailBonus: room.settings.tailBonus,
+      showRemain: room.settings.showRemain, showCorner: room.settings.showCorner, showLog: room.settings.showLog,
+      aiFill: room.aiFill, aiAuto: room.settings.aiAuto,
+    };
     // 逐键白名单（与 create 共用 applySettings）；wantStart 在下方单独处理
     applySettings(room, data);
+    const changes = settingChanges(old, room);
+    if(changes.length > 0){
+      // 设置确有变化：所有已准备玩家退回未准备（避免按旧设置开局），并广播变化给全房
+      let hadReady = false;
+      for(let i=0;i<4;i++){ if(room.ready[i]){ room.ready[i]=false; hadReady=true; } }
+      io.to(room.code).emit('toast', '牌局设置：' + changes.join('，') + (hadReady ? '（已准备玩家退回未准备）' : ''));
+    }
     // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
     const wantStart = (data.start===true);
     if(wantStart) room.ready[room.hostSeat]=true;  // 房主自己标记准备（hostSeat 与座位 0 解耦）
@@ -1033,8 +1065,6 @@ io.on('connection', (socket)=>{
     if(wantStart){
       const started=checkAllReady(room);
       socket.emit('toast', started? '开始对局！' : '已准备，等待其他玩家就绪后开局');
-    } else {
-      socket.emit('toast','牌局设置已更新');
     }
   });
 
