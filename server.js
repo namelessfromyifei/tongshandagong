@@ -391,6 +391,7 @@ function createRoom(code){
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
     offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
     historyCache: getHistory(code), // 本房历史分数内存缓存（最近 10 场，启动时从 DB 加载；快照直接读它，不每次查库）
+    recentKicks: [],    // 近期被踢玩家（{name,openid,at}，rejoin 命中时给明确「已被移出」提示）
     settings: {         // 牌局设置（房主可调）
       rounds: 4,        // 一轮打多少局（默认 4；界面可选 1/4/8/12/16）
       showRemain: false, // 是否显示剩余张数（默认关，关闭时显示固定"10张"）
@@ -1106,6 +1107,10 @@ io.on('connection', (socket)=>{
       seatIdx=r.seats.findIndex(s=>s.type==='human' && !s.openid && s.name===ident.name);
     }
     if(seatIdx<0){
+      // 被踢的明确提示：rejoin 时身份命中近期被踢名单 → 说明座位已被房主移出（而非不存在/被占）
+      const kicked = (r.recentKicks||[]).find(k =>
+        (ident.openid && k.openid===ident.openid) || (!ident.openid && k.name===ident.name));
+      if(kicked){ socket.emit('toast', '你已被房主移出房间'); return; }
       const wxSeat=r.seats.some(s=>s.type==='human' && s.openid && s.name===ident.name);
       socket.emit('toast', wxSeat ? '该座位已绑定微信，请先完成微信授权再重连' : '未找到与你身份匹配的座位');
       return;
@@ -1385,6 +1390,8 @@ io.on('connection', (socket)=>{
     if(age < OFFLINE_KICK_WAIT_MS){ socket.emit('toast','该玩家掉线未满 30 秒，还不能踢'); return; }
     clearOfflineKick(room, idx);
     logLine(room, `房主移出掉线的 ${s.name}`);
+    room.recentKicks = (room.recentKicks || []).filter(k => Date.now()-k.at < 300000); // 只留 5 分钟内的
+    room.recentKicks.push({ name: s.name, openid: s.openid || '', at: Date.now() });
     room.seats[idx]={type:'ai', name:'空位', avatar:'', openid:''};
     room.humanCount=Math.max(0, room.humanCount-1);
     room.ready[idx]=false;

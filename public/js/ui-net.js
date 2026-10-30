@@ -995,8 +995,8 @@ function renderSeats(){
     const nm=$('nm'+v);
     nm.textContent = (seatNames[i]||s.name);
     if(seatTypes[i]==='ai' && !s.out && (seatNames[i]||s.name)!=='空位') nm.textContent += ' 🤖';
-    // 掉线：在名字框显示"掉线·等待重连"
-    if(seatTypes[i]==='human' && snapSeatOffline(i)) nm.textContent += ' ⚠️掉线·等待重连';
+    // 掉线：在名字框显示"掉线"
+    if(seatTypes[i]==='human' && snapSeatOffline(i)) nm.textContent += ' ⚠️掉线';
     // 4+ 王信息显示在头像上；头像圆圈不显示东南西北字，庄家（老板）圆圈里显示"庄"
     const av=$('av'+v);
     if(av){
