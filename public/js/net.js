@@ -236,10 +236,12 @@ function connect(){
     if(r) r.style.display = mine ? 'none' : '';
     if(c) c.style.display = mine ? '' : 'none';
     if(mine){
-      if(txt) txt.textContent='你已发起【提前结束本场】，等待其他三家在 30 秒内同意…';
+      if(txt) txt.textContent='你已发起【提前结束本场】，等待其他在线玩家在 30 秒内同意…';
     } else {
       const who=(d && d.name) || '有玩家';
-      if(txt) txt.textContent=`${who} 发起【提前结束本场】。需要其他三家在 30 秒内全部同意才生效；若本局进行中会直接废弃。`;
+      const need=(d && Number.isInteger(d.need)) ? d.need : 0;
+      const askTxt = need>1 ? `需要其他 ${need-1} 位在线玩家在 30 秒内全部同意才生效` : '需要其他在线玩家在 30 秒内同意才生效';
+      if(txt) txt.textContent=`${who} 发起【提前结束本场】。${askTxt}；若本局进行中会直接废弃。`;
     }
     m.hidden=false;
   });

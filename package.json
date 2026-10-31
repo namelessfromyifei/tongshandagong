@@ -9,7 +9,7 @@
     "cap:sync": "npm run sync:vendor && cap sync android",
     "android:apk": "npm run cap:sync && cd android && gradlew assembleDebug",
     "apk": "node tools/build-apk.js",
-    "test": "node tests/engine.test.js && node tests/ai-sanity.js && node tests/check-sync.js && node tests/mask-check.js && node tests/endseries-check.js && node tests/host-check.js && node tests/exit-check.js",
+    "test": "node tests/engine.test.js && node tests/ai-sanity.js && node tests/check-sync.js && node tests/mask-check.js && node tests/endseries-check.js && node tests/offline-end-check.js && node tests/host-check.js && node tests/exit-check.js",
     "test:engine": "node tests/engine.test.js && node tests/ai-sanity.js && node tests/check-sync.js",
     "bench:ai": "node tests/ai-bench.js"
   },

@@ -28,6 +28,11 @@ const OFFLINE_KICK_WAIT_MS = Number(process.env.OFFLINE_KICK_WAIT_MS || 30*1000)
 const HOST_OFFLINE_KICK_MS = Number(process.env.HOST_OFFLINE_KICK_MS || 5*60*1000);
 // AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
 const AI_TURN_MS = Number(process.env.AI_TURN_MS || 1500);
+// 一场（局中/局间）无人值守兜底，默认 10 分钟：
+//  ① 全房真人全部离线超过该时长 → 自动提前结束本场（已完成局累计保留；0 局不记历史），房间随后按闲置解散；
+//  ② 「3 人掉线剩 1 人」：离线座位全部超过该时长仍未回来 → 允许剩下的在线真人收场（避免牌局卡在离线玩家回合永久死锁）。
+// 设为 0 可关闭自动收场（此时剩 1 人永远不能自行收场）。
+const OFFLINE_END_MS = Number(process.env.OFFLINE_END_MS || 10*60*1000);
 
 /* ---------- 微信网页授权 ----------
  * 公众号 H5：OAuth2 scope=snsapi_userinfo，服务端换取昵称/头像/openid。
@@ -389,6 +394,7 @@ function createRoom(code){
     G: null,            // 当前局（null = 等待开局）
     aiTimer: null,
     idleTimer: null,    // 牌局结束后的闲置自动解散计时器
+    allOfflineTimer: null, // 场进行中（局中/局间）全房真人离线的自动收场计时器
     offlineTimers: {},  // 座位号 -> 未开局掉线踢出计时器（seatIdx -> timeout）
     historyCache: getHistory(code), // 本房历史分数内存缓存（最近 10 场，启动时从 DB 加载；快照直接读它，不每次查库）
     recentKicks: [],    // 近期被踢玩家（{name,openid,at}，rejoin 命中时给明确「已被移出」提示）
@@ -491,8 +497,12 @@ function snapshot(room){
     seriesOver: !!room.seriesOver, // 本场已结束：G 仍保留（牌桌冻结），等玩家准备开下一场
     earlyEnded: !!room.earlyEnded, // 本场系「提前结束」收场（局间共识收场）：局数文案显示「本场(已)提前结束」
     history: room.historyCache || [],  // 本房历史分数（内存缓存，最近 10 场）
-    endVote: room.endVote ? { requester: room.endVote.requester, need: room.endVote.need, agree: room.endVote.agree.size } : null,
-    endVote: room.endVote ? {requester:room.endVote.requester, name:room.seats[room.endVote.requester].name} : null,
+    endVote: room.endVote ? {
+      requester: room.endVote.requester,
+      name: room.seats[room.endVote.requester].name,
+      need: room.endVote.need,
+      agree: room.endVote.agree.size,
+    } : null,
     G: room.G,
   };
 }
@@ -556,11 +566,14 @@ function broadcast(room){
 }
 /* ---------- 提前结束本场（在线真人共识表决） ----------
  * 规则：一场未结束时任何人不可被动踢；"场进行中"可经在线真人共识提前收场。
- * 满员真人房（4 座皆真人）：维持决策 A——4 位真人且全员在线才可发起，全票同意才生效。
- * 含 AI 座/真人不足 4 的房：门禁放宽——任意在线真人可发起，票数门槛 = 发起时「在线真人
- *   人数」（离线真人座与 AI 座不占票、不阻塞）；仅一名在线真人时发起即收场。
- * 任一人反对或 30 秒未全票 → 作废。生效以已完成局累计收场；请求时局中则本局废弃不计分，
- * 随后进入"本场结束"冻结态。 */
+ * 票数门槛 = 发起时「在线真人人数」（含发起者）：离线真人座与 AI 座不占票、不阻塞——
+ *   1 人掉线 → 其余 3 人在线全票；2 人掉线 → 其余 2 人在线全票。
+ * 满员真人房（4 真人）只剩 1 名在线时：不允许一人替全场拍板，仅当离线座位全部超过
+ *   OFFLINE_END_MS 未回归（确认已离场）才允许独自收场——防止牌局卡在离线玩家回合死锁。
+ * 含 AI 座/真人不足 4 的房：任意在线真人可发起，门槛同上；仅一名在线真人时发起即收场。
+ * 任一人反对或 30 秒未全票 → 作废。有人掉线/重连 → 进行中的表决作废，需重新发起。
+ * 生效以已完成局累计收场（0 局不记历史）；请求时局中则本局废弃不计分，随后进入"本场结束"冻结态。
+ * 全房真人离线超过 OFFLINE_END_MS → 无需表决，自动收场（见 refreshOfflineEnd）。 */
 const END_VOTE_MS = 30000;
 function seriesInProgress(room){ return !!(room && room.G && !room.seriesOver); }
 function clearEndVote(room){
@@ -573,12 +586,53 @@ function cancelEndVote(room, why){
   if(why) logLine(room, why);
   broadcast(room);
 }
-function finalizeEndSeries(room){
-  if(!room || !room.endVote) return;
+/* ---------- 场进行中无人值守兜底（局中/局间） ---------- */
+function onlineHumanCount(room){
+  if(!room || !room.seats) return 0;
+  return room.seats.filter(s=>s.type==='human' && !s.offline).length;
+}
+function offlineHumans(room){
+  if(!room || !room.seats) return [];
+  return room.seats.filter(s=>s.type==='human' && s.offline);
+}
+// 离线座位是否都已超过 OFFLINE_END_MS 未回来（确认已离场，而非短暂网络波动）
+function offlineHumansCooled(room){
+  const offs = offlineHumans(room);
+  if(!offs.length || !(OFFLINE_END_MS>0)) return false;
+  const now = Date.now();
+  return offs.every(s => (now - (s.offlineAt || 0)) >= OFFLINE_END_MS);
+}
+function clearOfflineEnd(room){
+  if(room && room.allOfflineTimer){ clearTimeout(room.allOfflineTimer); room.allOfflineTimer=null; }
+}
+// 每次「座位在线状态」变化后调用：全房真人离线 → 起 OFFLINE_END_MS 自动收场计时；
+// 有人回来/场已结束/没有真人座位 → 撤销（由 refresh 统一处理，避免漏清计时器）。
+function refreshOfflineEnd(room){
+  if(!room) return;
+  clearOfflineEnd(room);
+  if(!(OFFLINE_END_MS>0)) return;
+  if(!seriesInProgress(room)) return;          // 仅局中/局间兜底；未开局/场末交给离线踢与闲置解散
+  if(room.humanCount<=0) return;               // 已无真人座位
+  if(onlineHumanCount(room) > 0) return;       // 还有在线真人
+  room.allOfflineTimer=setTimeout(()=>{
+    room.allOfflineTimer=null;
+    if(rooms.get(room.code)!==room) return;    // 房间已删/同号被替换
+    if(!seriesInProgress(room)) return;        // 期间已自然结束/已收场
+    if(onlineHumanCount(room) > 0) return;     // 期间有人重连
+    const mins = Math.max(1, Math.round(OFFLINE_END_MS/60000));
+    logLine(room, `全房真人已离线超过 ${mins} 分钟，自动提前结束本场（已完成局累计保留）`);
+    finalizeEndSeries(room, '全房离线超时');
+  }, OFFLINE_END_MS);
+}
+// 收场统一出口：共识表决达成、剩 1 人离线超时、全房离线超时都走这里。
+// why：收场缘由，写进日志（'共识' / '全房离线超时'）。
+function finalizeEndSeries(room, why){
+  if(!room || !seriesInProgress(room)) return; // 幂等：无进行中的场/已收场则忽略
   clearEndVote(room);
+  clearOfflineEnd(room); // 本场已收：撤销无人值守兜底计时
   const curGame = (room.G && !room.G.ended) ? room.G : null;
   if(curGame) logLine(room, '提前收场：本局进行中，直接废弃（不计分）');
-  logLine(room, '══════ 本场提前结束（共识）══════');
+  logLine(room, `══════ 本场提前结束（${why || '共识'}）══════`);
   logLine(room, `已完成局累计：${room.series.totals.map((t,i)=>`${room.seats[i].name} ${t>0?'+':''}${t}分`).join('｜')}`);
   // 提前收场：
   //  - 局中结束：丢掉当前局，客户端回到「刚进房间」状态（牌桌清空、准备提示回出牌区）
@@ -615,6 +669,7 @@ function kickIdleRoom(room){
   room.idleTimer=null;
   // 房间已被删除，或同号房间已被新房间替换 → 忽略
   if(rooms.get(room.code)!==room) return;
+  clearOfflineEnd(room);
   // 常驻房（LOVE/HOME）即使闲置也不解散
   if(isPreserve(room.code)){ clearIdleKick(room); return; }
   // 只有牌局已结束（本局已结束或本场已无当前局）才解散
@@ -669,6 +724,7 @@ function scheduleOfflineKick(room, seatIdx){
     // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
     if(room.humanCount===0 && !isPreserve(room.code)) scheduleIdleKick(room);
     else broadcast(room);
+    refreshOfflineEnd(room);
   }, HOST_OFFLINE_KICK_MS);
 }
 
@@ -830,6 +886,7 @@ function startRound(room){
   logLine(room, `—— 第 ${room.G.roundNo} 局 ——`);
   logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
   broadcast(room);
+  refreshOfflineEnd(room); // 开局后若仍有真人离线，按当前在线情况重新计时
   aiPlayTurn(room);
 }
 
@@ -847,6 +904,7 @@ function startNext(room){
   logLine(room, `—— 第 ${room.G.roundNo} 局 ——`);
   logLine(room, `庄家 ${room.seats[room.G.landlord].name}，叫牌 ${TS.cardName(room.G.called)}`);
   broadcast(room);
+  refreshOfflineEnd(room);
   aiPlayTurn(room);
 }
 
@@ -886,6 +944,7 @@ function finishRoom(room){
     logLine(room, `请各玩家点击【下一局】就绪，全员就绪自动开下一局`);
   }
   broadcast(room);
+  refreshOfflineEnd(room); // 场末/局间：场末撤销自动收场计时；局间按在线情况重算
   // 不自动开下一局，等所有玩家就绪
 }
 
@@ -970,6 +1029,9 @@ function takeOverSeat(room, seatIdx, ident, newSocket){
   seat.takeRejectUntil=0;
   seat.takeApproved=null;
   if(seat.takeApprTimer){ clearTimeout(seat.takeApprTimer); seat.takeApprTimer=null; }
+  // 有人重连回来 → 之前按「在线人数」把他排除在外的提前结束表决作废，等他重新参与
+  if(room.endVote) cancelEndVote(room, '有人重连，提前结束表决作废');
+  refreshOfflineEnd(room); // 有人在线 → 撤销全房离线自动收场计时
   if(oldId && oldId!==newSocket.id){
     const os=io.sockets.sockets.get(oldId);
     if(os && os!==newSocket){
@@ -1107,6 +1169,7 @@ io.on('connection', (socket)=>{
     ensureValidHost(room); // 房主悬空/落在 AI 座时：真人入座立即补位成房主
     broadcast(r);
     scheduleIdleKick(r); // 有人加入＝房间有活动：重置闲置解散计时
+    refreshOfflineEnd(r); // 有人在线 → 撤销全房离线自动收场计时
     socket.emit('toast', `已加入房间 ${r.code}，你是第 ${r.humanCount} 位玩家`);
   });
 
@@ -1370,32 +1433,32 @@ io.on('connection', (socket)=>{
     aiPlayTurn(room);
   });
 
-  // 提前结束本场（全真人房共识）：发起
+  // 提前结束本场（在线真人共识）：发起
   on('endSeries', ()=>{ if(!permit(socket,'endSeries')) return;
     if(!room) return;
     if(!seriesInProgress(room)){ socket.emit('toast','当前没有进行中的本场'); return; }
     if(room.endVote){ socket.emit('toast','已有人发起提前结束，请先表决'); return; }
     if(mySeat<0 || room.seats[mySeat].type!=='human') return;
     if(room.seats[mySeat].socketId !== socket.id) return; // 旧标签的请求：座位已被新连接接管
-    // 满员真人房维持决策 A：4 位真人且全员在线才可发起；
-    // 含 AI 座/真人不足 4 的房：门禁放宽为「在线真人全票」——离线真人座与 AI 座不占票、不阻塞
-    if(room.humanCount===4){
-      for(let i=0;i<4;i++){
-        const st=room.seats[i];
-        if(st.type!=='human' || st.offline){ socket.emit('toast','需要 4 位在线真人才能提前结束本场'); return; }
-      }
+    // 票数门槛 = 发起时在线真人人数（含发起者）——离线真人座与 AI 座不占票、不阻塞：
+    //   1 人掉线 → 其余 3 人在线全同意；2 人掉线 → 其余 2 人在线全同意。
+    const online = onlineHumanCount(room);
+    // 满员真人房（4 真人）只剩 1 名在线时，不允许一人替全场拍板；
+    // 仅当离线座位全部超过 OFFLINE_END_MS 未回归（确认已离场、不会在回合卡死）才放行。
+    if(room.humanCount===4 && online<2 && !offlineHumansCooled(room)){
+      socket.emit('toast','需要至少 2 位在线真人同意才能提前结束本场');
+      return;
     }
-    // 票数门槛 = 发起时在线真人人数（含发起者），表决中按此收敛，而不是写死 4 票
-    const need = room.seats.filter(s=>s.type==='human' && !s.offline).length;
+    const need = Math.max(1, online);
     room.endVote={ requester:mySeat, need, agree:new Set([mySeat]), timer:null };
     room.endVote.timer=setTimeout(()=>{
       if(room && room.endVote) cancelEndVote(room, '提前结束表决超时（30 秒内未全票同意），请求作废');
     }, END_VOTE_MS);
     logLine(room, `${room.seats[mySeat].name} 发起【提前结束本场】，请各在线真人在 30 秒内表决`);
-    io.to(room.code).emit('endSeriesAsk', {requester:mySeat, name:room.seats[mySeat].name});
+    io.to(room.code).emit('endSeriesAsk', {requester:mySeat, name:room.seats[mySeat].name, need});
     broadcast(room);
-    // 门槛=1（该房仅一名在线真人）时发起即达成 → 直接收场（finalize 会带出真正的场末帧）
-    if(room.endVote && room.endVote.agree.size >= room.endVote.need) finalizeEndSeries(room);
+    // 门槛=1（仅剩一名在线真人，且离线者已超时离场）时发起即达成 → 直接收场
+    if(room.endVote && room.endVote.agree.size >= room.endVote.need) finalizeEndSeries(room, '离线超时后仅存在线真人');
   });
 
   // 提前结束本场：其他三人表决
@@ -1441,6 +1504,7 @@ io.on('connection', (socket)=>{
     // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
     if(room.humanCount===0 && !isPreserve(room.code)) scheduleIdleKick(room);
     else broadcast(room);
+    refreshOfflineEnd(room);
   });
 
   // 主动退出房间（对局中视作掉线保留座位；未开局才真正退出）
@@ -1465,6 +1529,7 @@ io.on('connection', (socket)=>{
       room=null; mySeat=-1;
       socket.data.room=null; socket.data.seat=-1;
       broadcast(r);
+      refreshOfflineEnd(r); // 场进行中：最后一名在线真人退出 → 起自动收场计时
       return;
     }
     // 局末（非末局，等大家点【下一局】）：不允许直接退出，只能【结束场次】提前收场；
@@ -1493,6 +1558,7 @@ io.on('connection', (socket)=>{
     // 房间无人：不立即删除——30 分钟没人加入再由闲置计时解散（常驻房 LOVE/HOME 永不删）
     if(r.humanCount===0 && !isPreserve(r.code)){ scheduleIdleKick(r); }
     else broadcast(r);
+    refreshOfflineEnd(r); // 本场未在进行中 → 仅清理可能残留的自动收场计时
   });
 
   // 删除房间（房主可删自己的房间）
@@ -1511,7 +1577,7 @@ io.on('connection', (socket)=>{
       return;
     }
     // 清房：结束表决/闲置与离线计时器/aiTimer，并清理其他成员绑定（防闭包盯住已删房间、旧 aiTimer 串房）
-    clearEndVote(r); clearIdleKick(r); clearAllOfflineKicks(r); clearAllTakeoverAsks(r);
+    clearEndVote(r); clearIdleKick(r); clearOfflineEnd(r); clearAllOfflineKicks(r); clearAllTakeoverAsks(r);
     if(r.aiTimer){ clearTimeout(r.aiTimer); r.aiTimer=null; }
     io.to(r.code).emit('roomClosed');
     rooms.delete(code);
@@ -1542,6 +1608,8 @@ io.on('connection', (socket)=>{
     broadcast(room);
     // 未开局：超时（默认3分钟）后踢出座位；已开局则由掉线保留逻辑处理
     scheduleOfflineKick(room, mySeat);
+    // 场进行中全房离线 → 起 10 分钟自动收场计时（有人重连会撤销）
+    refreshOfflineEnd(room);
   });
 });
 
