@@ -597,6 +597,7 @@ function applyState(snap){
     lastRoundKey=null;
     lastPassSeq=0;
     prevKingPlayed=[false,false,false,false];
+    lastSeatSig=['','','','']; // 换房间：清座位行差量签名，防新房间沿用上房间的旧渲染判断
     voiceInit=true;
     prevSeatState=[{passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false},
                    {passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false}];
@@ -692,6 +693,9 @@ function applyState(snap){
   // 桌面已在上面 609 行清过一次；这里不再按旧局信息重画/重播（render/播报/结算调度一并跳过）。
   // 覆盖：自然场末点【准备】、局末点【下一局】、提前收场（局间结束场次）冻结点【准备】。
   if(G && G.ended && boardCleared){
+    // 新玩家进入「场末冻结」房间（本座 blanked）也会走这里：必须刷新昵称/头像，
+    // 否则停在 index.html 的占位文案（东家/西家/南家/北家）。
+    renderSeatNames();
     renderWaitingView();
     renderKickButtons();
     return;

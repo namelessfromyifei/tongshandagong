@@ -394,8 +394,15 @@ function renderRoomList(list){
     const isMineHost = r.host && r.host===myName;
     const item=document.createElement('div');
     item.className='roomItem'+(canJoin||isMineHost?'':' roomFull');
-    const status = r.started?'对局中':`${r.humans}/4人`;
-    item.innerHTML = `<span class="roomCodeLbl">${esc(r.code)}</span> · ${status}`;
+    const offline = Number(r.offline || 0);
+    const meta = [
+      r.started ? '对局中' : '',
+      offline > 0 ? `<span class="roomOffline">${offline}人掉线</span>` : '',
+    ].filter(Boolean).join(' · ');
+    // 房间信息：房号(左) · 状态/掉线(中) · 人数(最右)
+    item.innerHTML = `<span class="roomCodeLbl">${esc(r.code)}</span>`
+      + `<span class="roomMeta">${meta}</span>`
+      + `<span class="roomHumans">${r.humans}/4人</span>`;
     // 进入：未开局缺人 → join；自己的房间 → rejoin 归位
     if(canJoin || isMineHost){
       item.title='点击进入';

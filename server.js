@@ -1064,6 +1064,7 @@ io.on('connection', (socket)=>{
       list.push({
         code:r.code,
         humans:r.humanCount,
+        offline:r.seats.filter(s=>s.type==='human' && s.offline).length, // 大厅列表：掉线真人数量
         aiFill:r.aiFill,
         started: !!(r.G && !r.seriesOver), // 对局中（含确认轮）：可加入/状态判断不再依赖 G.started（首手才算开局太晚）
         hasGame: !!r.G,   // 房间已创建对局（含确认轮），供重连列表判断
