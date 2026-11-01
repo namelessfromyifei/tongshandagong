@@ -940,7 +940,10 @@ function seatSig(v){
     cumTotals[i]
   ].join('|');
 }
-// 未开场/场末：房主视角给「掉线满 30s 的真人」显示「踢出房间」按钮（牌桌前方）
+// 未开场/场末：房主视角给掉线真人显示「踢出房间」按钮；未满 30 秒时显示倒计时并禁用
+function kickRemainSec(offlineAt){
+  return Math.max(0, Math.ceil((KICK_WAIT_MS - (Date.now() - (offlineAt||0))) / 1000));
+}
 function renderKickButtons(){
   document.querySelectorAll('.kickSeatBtn').forEach(n=>n.remove());
   if(mySeat<0 || hostSeat!==mySeat) return;   // 仅房主视角
@@ -949,15 +952,31 @@ function renderKickButtons(){
   for(let v=0;v<4;v++){
     const i=realOf(v);
     if(seatTypes[i]!=='human' || !seatOffline[i]) continue;
-    if(Date.now() - (seatOfflineAt[i]||0) < KICK_WAIT_MS) continue;
     const el=document.querySelector('.seat[data-seat="'+v+'"]'); if(!el) continue;
+    const at=seatOfflineAt[i]||0;
+    const remain=kickRemainSec(at);
     const b=document.createElement('button');
     b.className='kickSeatBtn';
-    b.textContent='踢出房间';
-    b.onclick=()=>{ if(window.NET && window.NET.kickSeat) window.NET.kickSeat(i); };
+    b.dataset.seat=String(i);
+    b.dataset.offlineAt=String(at);
+    b.disabled = remain>0;
+    b.textContent = remain>0 ? `踢出（${remain}s）` : '踢出房间';
+    b.onclick=()=>{
+      if(kickRemainSec(Number(b.dataset.offlineAt||0))>0) return; // 未满 30 秒
+      if(window.NET && window.NET.kickSeat) window.NET.kickSeat(i);
+    };
     el.appendChild(b);
   }
 }
+// 每秒刷新踢人按钮的倒计时（不发请求，只更新文案/可点状态）
+function updateKickCountdowns(){
+  document.querySelectorAll('.kickSeatBtn').forEach(b=>{
+    const remain=kickRemainSec(Number(b.dataset.offlineAt||0));
+    if(remain>0){ b.disabled=true; b.textContent=`踢出（${remain}s）`; }
+    else { b.disabled=false; b.textContent='踢出房间'; }
+  });
+}
+setInterval(updateKickCountdowns, 1000);
 function renderSeats(){
   // 视图重排：自己的座位(real=mySeat)显示在下方(南位 view0)
   const realOf = v => (mySeat + v) % 4;
