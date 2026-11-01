@@ -101,10 +101,13 @@ function connect(port){
     });
     await joinRoom(1, roomA, '乙');
     await joinRoom(2, roomA, '丙');
+    // 改设置会让已准备玩家退回未准备：先改设置，再准备，最后 start
+    clients[0].c.emit('setSettings', { aiFill: true, rounds: 3 });
+    await wait(300);
     clients[1].c.emit('toggleReady', {});
     clients[2].c.emit('toggleReady', {});
     await wait(350);
-    clients[0].c.emit('setSettings', { aiFill: true, rounds: 3, start: true });
+    clients[0].c.emit('setSettings', { start: true });
     const r1Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 15000);
     T('AI 房开局成功（3 真人 + AI 补位）', r1Started);
 
@@ -117,7 +120,7 @@ function connect(port){
     clients[2].toasts.length = 0;
     const c2seat = clients[2].seat;
     clients[2].c.emit('leave');
-    const leaveBlocked = await until(() => clients[2].toasts.some(t => /请点【结束场次】/.test(t)), 5000);
+    const leaveBlocked = await until(() => clients[2].toasts.some(t => /请点【提前结束】/.test(t)), 5000);
     await wait(300);
     const stillSeated = clients.some(x => x.lastSnap && x.lastSnap.seats[c2seat].type === 'human'
       && x.lastSnap.seats[c2seat].humanCount === 3);
@@ -179,9 +182,12 @@ function connect(port){
     await wait(350);
     T('房主 start 受就绪门槛约束（未全员就绪不开局）', clients[0].toasts.some(t => /等待其他玩家就绪/.test(t)));
 
+    // 先改设置（改设置会让已准备玩家退回未准备），再准备，最后 start
+    clients[0].c.emit('setSettings', { rounds: 3 });
+    await wait(300);
     for(let i=1;i<4;i++) clients[i].c.emit('toggleReady', {});
     await wait(350);
-    clients[0].c.emit('setSettings', { rounds: 3, start: true });
+    clients[0].c.emit('setSettings', { start: true });
     const r2Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 15000);
     T('满员房开局成功', r2Started);
 
@@ -193,24 +199,24 @@ function connect(port){
     // 局末：满员 4 真人 → 退出被拦（与 AI 房同口径）
     clients[2].toasts.length = 0;
     clients[2].c.emit('leave');
-    const blocked2 = await until(() => clients[2].toasts.some(t => /请点【结束场次】/.test(t)), 5000);
+    const blocked2 = await until(() => clients[2].toasts.some(t => /请点【提前结束】/.test(t)), 5000);
     await wait(300);
     const stillFull = clients[2].lastSnap
       && clients[2].lastSnap.seats[clients[2].seat].type === 'human'
       && clients[2].lastSnap.seats[clients[2].seat].humanCount === 4;
     T('满员真人房局末退出被拦（toast + 座位未动）', blocked2 && stillFull);
 
-    // 满员房有真人掉线 → 提前结束被拒（决策 A 原口径仍生效）
+    // 满员房有真人掉线 → 其余 3 位在线真人可发起（票数门槛 = 在线真人数，离线座不占票）
     const c3seat = clients[3].seat;
     clients[3].c.close();
     const c3off = await until(() => clients[0].lastSnap && clients[0].lastSnap.seats[c3seat].offline === true, 8000);
     T('满员房 c3 断线后座位 offline=true', c3off);
     clients[0].toasts.length = 0;
     clients[0].c.emit('endSeries');
-    await wait(350);
-    T('满员房有人掉线 → 提前结束被拒', clients[0].toasts.some(t => /需要 4 位在线真人/.test(t)));
+    const voteSeen1 = await until(() => clients.some(x => x.lastSnap && x.lastSnap.endVote), 5000);
+    T('满员房 1 人掉线 → 其余 3 人可发起提前结束', voteSeen1);
 
-    // 重连恢复 → 可重新发起并全票收场
+    // 有人重连 → 进行中的表决作废；重连恢复后可重新发起并全票收场
     const r3 = await connect(PORT);
     const r3joined = await new Promise(res => {
       r3.on('joined', d => res(d));

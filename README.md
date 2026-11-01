@@ -25,7 +25,7 @@ Node.js 服务器权威：发牌、规则判定、结算、AI 托管全部在服
 
 | 层 | 实现 |
 |---|---|
-| 服务端 | Node.js 18+（推荐 20+）、Express、Socket.IO |
+| 服务端 | Node.js 24+（`node:sqlite` 内置）、Express、Socket.IO |
 | 前端 | 原生 HTML / CSS / JavaScript（无框架、无构建步骤） |
 | 规则引擎 | `js/engine.js`，Node 与浏览器共用同一份逻辑 |
 | AI | `js/ai.js`，候选生成 + 启发式决策 |
@@ -249,7 +249,7 @@ export GIT_URL=git@github.com:<账号>/tongshandagong.git
 sudo ./deploy.sh
 ```
 
-脚本会安装 Node 20+ / PM2、拉代码、装依赖并守护进程；需在云控制台安全组放行 TCP 8080。
+脚本会安装 Node 24 / PM2、拉代码、装依赖并守护进程；需在云控制台安全组放行 TCP 8080。
 
 ---
 
@@ -289,7 +289,7 @@ node tools/build-apk.js --server http://8.148.29.231
 
 | 项 | 要求 | 说明 |
 |---|---|---|
-| Node | 20+ | 仅用于跑 Capacitor CLI |
+| Node | 24+ | 构建/测试/Capacitor CLI（`node:sqlite` 需要 Node 24） |
 | JDK | 21+ | Capacitor 7 的源码级别是 Java 21；在 `android/gradle.properties` 的 `org.gradle.java.home` 指定 |
 | Android SDK | Platform 35 + Build-Tools 35 | 用 Android Studio 的 SDK Manager 安装 |
 | Gradle | 8.11.1 | 已在 `android/gradle/wrapper` 固定，并从腾讯云镜像下载 |

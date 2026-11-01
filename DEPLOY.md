@@ -66,7 +66,7 @@ sudo ./deploy.sh   # 会装 Node/PM2、拉代码、装依赖、起服务
 ### 方式 B：手动
 ```bash
 # 1. 装 Node 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - && sudo apt-get install -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash - && sudo apt-get install -y nodejs
 # 2. 拉代码
 sudo git clone git@github.com:zhanghan4141-oss/tongshandagong.git /home/admin/tongshandagong
 cd /home/admin/tongshandagong && sudo npm install --production

@@ -75,10 +75,12 @@ async function until(fn, ms){
     }
     T('四人全部入座', clients.every(cl => cl.seat >= 0) && new Set(clients.map(c=>c.seat)).size===4);
 
-    // 开局（3 局场）
-    for(let i=1;i<4;i++) clients[i].c.emit('toggleReady', {});
+    // 开局（3 局场）：先改设置（改设置会让已准备玩家退回未准备），再准备、最后 start
+    clients[0].c.emit('setSettings', { rounds:3 });
     await wait(300);
-    clients[0].c.emit('setSettings', { rounds:3, start:true });
+    for(let i=1;i<4;i++) clients[i].c.emit('toggleReady', {});
+    await wait(350);
+    clients[0].c.emit('setSettings', { start:true });
     const started = await until(() => clients.some(cl => cl.lastSnap && cl.lastSnap.G && !cl.lastSnap.seriesOver));
     T('已开局（场进行中）', started);
 
