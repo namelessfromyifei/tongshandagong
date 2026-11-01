@@ -32,7 +32,7 @@ function connect(){
 function reg(c){
   const o = { c, seat:-1, snap:null, toasts:[], joined:null, promoted:0 };
   c.on('state', s => { o.snap = s; });
-  c.on('toast', m => { o.toasts.push(String(m)); });
+  c.on('toast', m => { o.toasts.push(String(m && typeof m === 'object' ? m.text : m)); });
   c.on('joined', d => { o.seat = d.seat; o.joined = d; });
   c.on('promotedHost', () => { o.promoted++; });
   return o;

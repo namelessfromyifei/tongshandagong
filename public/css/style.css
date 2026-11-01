@@ -315,10 +315,12 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatW .seatHint{left:100%;bottom:0;margin-left:4px;} /* 左侧玩家名次/插底：信息框右侧下方 */
 
 /* 未开场踢出按钮（房主视角，掉线满30s 的真人牌桌前方） */
-.kickSeatBtn{position:absolute;top:0;right:0;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
+/* 掉线踢出按钮：信息框右下角（不压昵称/掉线标记）；底行留通道避免盖住抓分 */
+.kickSeatBtn{position:absolute;right:4px;bottom:4px;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
 .kickSeatBtn:hover{background:#a5533f;}
 .kickSeatBtn[disabled]{opacity:.55;cursor:not-allowed;background:#5a4a45;border-color:#6d5a54;}
 .kickSeatBtn[disabled]:hover{background:#5a4a45;}
+.seat.hasKick .pts{padding-right:58px;} /* 给右下角按钮留位置，抓分文字不压按钮 */
 /* 历史分数弹窗 #historyWrap/#historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
  *   文字默认白；昵称白、分数用 --gold。
  *   防「记录多了无限放大」：表体在内层流动（≤60vh，纯 vh 不用 min()——旧安卓 WebView 不解析会整条丢弃导致无限变高），

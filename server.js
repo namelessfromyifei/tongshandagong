@@ -29,6 +29,8 @@ const HOST_OFFLINE_HANDOVER_MS = Number(
   process.env.HOST_OFFLINE_HANDOVER_MS || process.env.HOST_OFFLINE_KICK_MS || 3*60*1000);
 // AI 每手间隔：留足语音播报时间（默认 1.5 秒，可用 AI_TURN_MS 调整）
 const AI_TURN_MS = Number(process.env.AI_TURN_MS || 1500);
+// 掉线/房主移交/踢人等提示的 toast 停留时长（毫秒）；比普通提示久，避免玩家错过
+const OFFLINE_TOAST_MS = 8000;
 // 一场（局中/局间）无人值守兜底，默认 10 分钟：
 //  ① 全房真人全部离线超过该时长 → 自动提前结束本场（已完成局累计保留；0 局不记历史），房间随后按闲置解散；
 //  ② 「3 人掉线剩 1 人」：离线座位全部超过该时长仍未回来 → 允许剩下的在线真人收场（避免牌局卡在离线玩家回合永久死锁）。
@@ -714,7 +716,7 @@ function handoverHost(room, oldSeat){
       const so=io.sockets.sockets.get(s.socketId);
       if(so){ try{ so.emit('promotedHost', {hostSeat:j}); }catch(e){} }
       logLine(room, `房主 ${oldName} 掉线超时，房主移交给 ${s.name}`);
-      io.to(room.code).emit('toast', `房主 ${oldName} 掉线超时，房主已移交给 ${s.name}`);
+      toastRoom(room, `房主 ${oldName} 掉线超时，房主已移交给 ${s.name}`, OFFLINE_TOAST_MS);
       broadcast(room);
       return true;
     }
@@ -756,17 +758,17 @@ function notifyPlayerOffline(room, seatIdx){
   if(seatIdx===room.hostSeat){
     if(room.G && !room.seriesOver){
       // 场进行中不移交房主，等本场结束后再起 3 分钟计时
-      io.to(room.code).emit('toast', `房主 ${s.name} 掉线，本场结束后再判定房主移交`);
+      toastRoom(room, `房主 ${s.name} 掉线，本场结束后再判定房主移交`, OFFLINE_TOAST_MS);
     } else {
       const mins = Math.max(1, Math.round(HOST_OFFLINE_HANDOVER_MS/60000));
-      io.to(room.code).emit('toast', `房主 ${s.name} 掉线，${mins} 分钟内未重连将自动移交房主`);
+      toastRoom(room, `房主 ${s.name} 掉线，${mins} 分钟内未重连将自动移交房主`, OFFLINE_TOAST_MS);
     }
   } else if(room.G && !room.seriesOver){
     // 场进行中不可踢人：只提示掉线，不移出
-    io.to(room.code).emit('toast', `${s.name} 掉线，等待重连`);
+    toastRoom(room, `${s.name} 掉线，等待重连`, OFFLINE_TOAST_MS);
   } else {
     const secs = Math.round(OFFLINE_KICK_WAIT_MS/1000);
-    io.to(room.code).emit('toast', `${s.name} 掉线，等待重连${secs>0?`（房主 ${secs} 秒后可移出）`:'（房主可移出）'}`);
+    toastRoom(room, `${s.name} 掉线，等待重连${secs>0?`（房主 ${secs} 秒后可移出）`:'（房主可移出）'}`, OFFLINE_TOAST_MS);
   }
 }
 // 场结束（自然场末/提前收场）后：若房主仍离线，重新起移交计时
@@ -776,6 +778,10 @@ function armHostHandoverIfNeeded(room){
   if(s && s.type==='human' && s.offline) scheduleOfflineKick(room, room.hostSeat);
 }
 
+// 房间内 toast；ms 可指定停留时长（0/省略=客户端默认）
+function toastRoom(room, msg, ms){
+  io.to(room.code).emit('toast', ms ? { text: msg, ms } : msg);
+}
 // 服务器日志：存入房间并推给所有人
 function logLine(room, msg){
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -885,7 +891,7 @@ function ensureValidHost(room){
       room.hostSeat=j;
       const so=io.sockets.sockets.get(s.socketId);
       if(so){ try{ so.emit('promotedHost', {hostSeat:j}); }catch(e){} }
-      try{ io.to(room.code).emit('toast', `房主切换为${s.name}`); }catch(e){}
+      try{ toastRoom(room, `房主切换为${s.name}`, OFFLINE_TOAST_MS); }catch(e){}
       logLine(room, `${s.name} 成为房主`);
       return true;
     }
@@ -1544,7 +1550,7 @@ io.on('connection', (socket)=>{
     if(age < OFFLINE_KICK_WAIT_MS){ socket.emit('toast','该玩家掉线未满 30 秒，还不能踢'); return; }
     clearOfflineKick(room, idx);
     logLine(room, `房主移出掉线的 ${s.name}`);
-    io.to(room.code).emit('toast', `房主移出掉线玩家 ${s.name}`); // 提示所有在线玩家
+    toastRoom(room, `房主移出掉线玩家 ${s.name}`, OFFLINE_TOAST_MS); // 提示所有在线玩家
     room.recentKicks = (room.recentKicks || []).filter(k => Date.now()-k.at < 300000); // 只留 5 分钟内的
     room.recentKicks.push({ name: s.name, openid: s.openid || '', at: Date.now() });
     room.seats[idx]={type:'ai', name:'空位', avatar:'', openid:''};

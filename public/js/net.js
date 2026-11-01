@@ -69,13 +69,13 @@ function enterTable(){
   if(window.enterGameFullscreen) window.enterGameFullscreen();
 }
 
-function toast(msg){
+function toast(msg, ms){
   const app=document.getElementById('app');
   const inTable = !!(app && app.classList.contains('inTable'));
-  if(inTable){ showTableToast(String(msg)); return; } // 牌桌内：浮动 toast
+  if(inTable){ showTableToast(String(msg), ms); return; } // 牌桌内：浮动 toast
   const el=$('status');
   if(el) el.textContent=msg;
-  setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
+  setTimeout(()=>{ if(el) el.textContent=''; }, ms || 4000);
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见
 // 对局配置弹窗只读开关：一场未结束时除「保存」外全部禁用（对局中设置不可改）
@@ -88,13 +88,13 @@ function syncSetLock(){
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见。
 // 位置由 CSS 锚定在出牌排左侧（随旋转/窄屏自适应），这里只负责显隐。
-function showTableToast(msg){
+function showTableToast(msg, ms){
   const t=document.getElementById('tableToast');
   if(!t) return;
   t.textContent=String(msg);
   t.classList.add('show');
   if(t._tt){ clearTimeout(t._tt); t._tt=null; }
-  t._tt=setTimeout(()=>{ t.classList.remove('show'); }, 3200);
+  t._tt=setTimeout(()=>{ t.classList.remove('show'); }, ms || 3200);
 }
 window.showTableToast = showTableToast;
 // HTML 转义：任何来自服务器/用户的名字、房间号在拼 innerHTML 前必须过这里（服务端已加 4 位白名单，双保险）
@@ -223,7 +223,11 @@ function connect(){
     toast('你的座位已被其他玩家接管，已退回大厅');
   });
 
-  socket.on('toast', (m)=>{ toast(m); });
+  // toast 支持字符串，或 {text, ms}（掉线/移交等提示显示更久）
+  socket.on('toast', (m)=>{
+    if(m && typeof m === 'object'){ toast(String(m.text || ''), Number(m.ms) || 0); return; }
+    toast(m);
+  });
 
   // 提前结束本场：发起方显示「等待表决」，其他三家显示同意/拒绝
   socket.on('endSeriesAsk', (d)=>{

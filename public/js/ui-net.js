@@ -904,6 +904,8 @@ function renderWaitingView(){
     if(at && /^庄/.test(at.textContent)) at.textContent = at.textContent.replace(/^庄/,'');
   }
   renderReadyIndicators(true); // 场初样式：准备圆点在出牌区
+  // 昵称/「⚠️掉线」会改变信息框宽度：重算两侧出牌区与准备提示的位置，避免提示压住信息框
+  syncHandLayout();
 }
 // 准备提示改由 renderReadyIndicators 显示在牌桌（出牌区）上：#13 座位徽标方案已弃用
 // 显示本场累计分数：改显示在每人 tag 右上侧（局数>1），不再放牌桌上方
@@ -946,6 +948,7 @@ function kickRemainSec(offlineAt){
 }
 function renderKickButtons(){
   document.querySelectorAll('.kickSeatBtn').forEach(n=>n.remove());
+  document.querySelectorAll('.seat.hasKick').forEach(n=>n.classList.remove('hasKick'));
   if(mySeat<0 || hostSeat!==mySeat) return;   // 仅房主视角
   if(G && !G.ended) return;                    // 对局进行中不显示
   const realOf = v => (mySeat + v) % 4;
@@ -965,6 +968,7 @@ function renderKickButtons(){
       if(kickRemainSec(Number(b.dataset.offlineAt||0))>0) return; // 未满 30 秒
       if(window.NET && window.NET.kickSeat) window.NET.kickSeat(i);
     };
+    el.classList.add('hasKick'); // 底行留出按钮位置（CSS .seat.hasKick）
     el.appendChild(b);
   }
 }
@@ -1768,6 +1772,8 @@ function syncHandLayoutCore(){
     const ro=new ResizeObserver(()=>syncHandLayout());
     if(row) ro.observe(row);
     if(hand) ro.observe(hand);
+    // 信息框宽度会随昵称/掉线标记/抓分变化：跟着重排出牌区与准备提示，避免压住信息框
+    document.querySelectorAll('.seatN,.seatW,.seatE,.handRow .seatS').forEach(el=>ro.observe(el));
   }
   window.addEventListener('resize', ()=>setTimeout(syncHandLayout,120));
   window.addEventListener('orientationchange', ()=>setTimeout(syncHandLayout,350));
