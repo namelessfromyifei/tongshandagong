@@ -3,6 +3,7 @@
  * - 沉浸式：隐藏状态栏，内容铺满
  * - SplashScreen：页面就绪后收起
  * - 返回键：牌桌内确认退出房间，大厅直接退出 App
+ * - 应用内更新（方案1）：启动拉 /api/app/update，发现新版弹窗提示下载
  * 浏览器中不做任何事。
  * ========================================================= */
 (function(){
@@ -42,4 +43,99 @@ try{
     });
   }
 }catch(e){}
+
+/* ---------- 应用内更新检查 ---------- */
+function plugins(){ return (window.Capacitor && window.Capacitor.Plugins) || {}; }
+// 本机已装版本：优先读 App 插件（versionName）；不可用时返回 null（跳过检查）
+function getInstalledVersion(){
+  try{
+    var A = plugins().App;
+    if(A && typeof A.getInfo === 'function'){
+      return A.getInfo().then(function(i){ return (i && i.version) ? String(i.version) : null; });
+    }
+  }catch(e){}
+  return Promise.resolve(null);
+}
+// a>b 返回正数；缺段按 0 补
+function cmpVersion(a, b){
+  var pa = String(a || '0').split('.').map(function(x){ return parseInt(x, 10) || 0; });
+  var pb = String(b || '0').split('.').map(function(x){ return parseInt(x, 10) || 0; });
+  for(var i = 0; i < 3; i++){
+    if((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+function checkAppUpdate(){
+  try{
+    if(!window.NET || typeof window.NET.apiUrl !== 'function') return;
+    fetch(window.NET.apiUrl('/api/app/update'), { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d || !d.update || !d.version) return; // 服务器没配 manifest / 已是最新
+        getInstalledVersion().then(function(inst){
+          if(!inst || cmpVersion(d.version, inst) <= 0) return;
+          showUpdatePrompt(d);
+        });
+      })
+      .catch(function(){});
+  }catch(e){}
+}
+var _updateShown = false;
+function showUpdatePrompt(d){
+  if(_updateShown) return;
+  _updateShown = true;
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.68);z-index:99999;' +
+    'display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#0f3d2a;border:1px solid rgba(255,255,255,.25);border-radius:14px;' +
+    'padding:20px 18px;max-width:84vw;color:#eef3ea;font:15px/1.6 system-ui,-apple-system,sans-serif;' +
+    'box-shadow:0 10px 40px rgba(0,0,0,.6);';
+  var h = document.createElement('h3');
+  h.style.cssText = 'margin:0 0 10px;color:#e8c15a;font-size:19px;';
+  h.textContent = '发现新版本 v' + d.version;
+  box.appendChild(h);
+  if(d.note){
+    var nt = document.createElement('p');
+    nt.style.cssText = 'margin:0 0 12px;white-space:pre-wrap;color:#cfe6da;max-height:30vh;overflow:auto;';
+    nt.textContent = d.note;
+    box.appendChild(nt);
+  }
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:6px;';
+  function btn(label, primary, cb){
+    var b = document.createElement('button');
+    b.style.cssText = 'border:none;border-radius:8px;padding:9px 16px;font-size:15px;cursor:pointer;' +
+      (primary ? 'background:#e8c15a;color:#223;font-weight:bold;' : 'background:rgba(255,255,255,.12);color:#eef3ea;');
+    b.textContent = label;
+    b.onclick = cb;
+    return b;
+  }
+  row.appendChild(btn('稍后再说', false, function(){ ov.remove(); }));
+  row.appendChild(btn('立即下载', true, function(){ downloadApk(d.apkUrl); }));
+  box.appendChild(row);
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+}
+function downloadApk(url){
+  var abs = String(url || '');
+  if(!abs) return;
+  try{
+    var B = plugins().Browser;
+    if(B && typeof B.open === 'function'){
+      // 打开系统浏览器/自定义标签下载 APK，下载完成后从通知栏点按安装
+      B.open({ url: abs });
+      return;
+    }
+  }catch(e){}
+  try{ window.open(abs, '_blank'); }catch(e){}
+}
+function boot(){
+  checkAppUpdate();
+}
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
 })();

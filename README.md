@@ -302,6 +302,24 @@ node tools/build-apk.js --server http://8.148.29.231
 - 正式包需要在 `android/app/build.gradle` 配置 signingConfig，keystore 文件不入库（`.gitignore` 已忽略 `*.jks` / `*.keystore`），**务必备份**
 - 包名 `xyz.zhangyuning.dagong` 一旦上架不可更改
 
+### App 应用内更新（方案1：提示 + 下载）
+
+App 每次启动向 `GET /api/app/update` 检查版本，若服务器上有更新版本则弹窗「发现新版本 vX.Y.Z」，可点「立即下载」打开系统浏览器下载 APK（下载完成后从通知栏安装，需允许「未知来源安装」）。服务端无更新时静默跳过。
+
+**发布一条新版本**（一条命令）：
+
+```sh
+node tools/release-apk.js --note "更新说明，支持多行"
+# 可选：--version 1.2.0 指定版本号（默认 patch +1）
+```
+
+该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 更新 `app-update/latest.apk` + `app-update/manifest.json`。
+
+**服务器侧**（无需额外配置）：
+- 服务端读取 `app-update/manifest.json` 返回版本/下载链接，`/app-update/latest.apk` 静态托管
+- `app-update/` 已 gitignore、**只存在于服务器**；首次部署需手动放进该目录（后续 `redeploy.sh` 的 `git pull` 不会清除它）
+- App 弹窗前请先部署服务器，否则仍是旧版本信息
+
 ---
 
 ## 测试与工具

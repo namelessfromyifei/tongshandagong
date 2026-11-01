@@ -631,6 +631,6 @@ function applySettings(s){
   if($('setAIAuto')) $('setAIAuto').checked=!!s.aiAuto; // 漏同步：换房主/重进后勾选应跟服务器一致
 }
 
-window.NET = { connect, act, nextRound, start, toggleAI, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
+window.NET = { connect, act, nextRound, start, toggleAI, apiUrl, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
 window.addEventListener('DOMContentLoaded', bindLobby);
 })();

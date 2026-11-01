@@ -9,6 +9,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const compression = require('compression');
 const { Server } = require('socket.io');
@@ -100,6 +101,24 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+/* ---------- App 应用内更新（方案1）：检查 app-update/manifest.json + 下载 latest.apk ----------
+ * 发布流程：tools/release-apk.js（bump 版本 → 构建 → 拷 APK 到 app-update/latest.apk → 写 manifest.json）。
+ * app-update/ 已 gitignore，只存在于服务器上。
+ * App 每次启动拉 /api/app/update，发现版本更新则弹窗提示下载。 */
+app.get('/api/app/update', (req, res) => {
+  try{
+    const m = JSON.parse(fs.readFileSync(path.join(__dirname, 'app-update', 'manifest.json'), 'utf8'));
+    if(!m || !m.version) return res.json({ update: false });
+    let url = (m.apkUrl && String(m.apkUrl).trim()) || '/app-update/latest.apk';
+    if(!/^https?:\/\//i.test(url)){
+      url = req.protocol + '://' + req.get('host') + (url.startsWith('/') ? url : '/' + url);
+    }
+    return res.json({ update: true, version: String(m.version), apkUrl: url, note: m.note || '' });
+  }catch(e){
+    return res.json({ update: false });
+  }
+});
+
 /* ---------- GitHub Webhook：push 自动部署 ----------
  * GitHub → 仓库 → Settings → Webhooks → Add webhook：
  *   Payload URL: https://你的域名/webhook/deploy
@@ -145,6 +164,8 @@ app.post('/webhook/deploy', express.raw({ type: ['application/json', 'applicatio
 app.get('/webhook', (req, res) => res.json({ ok:true, webhook:'ready', secret: !!WEBHOOK_SECRET }));
 
 app.use(express.static(path.join(__dirname, 'public')));
+/* App 应用内更新：latest.apk 下载目录（app-update/，gitignore，仅服务器存在） */
+app.use('/app-update', express.static(path.join(__dirname, 'app-update'), { maxAge: 60*60*1000 }));
 
 /* ---------- 微信授权：Cookie / 会话 ---------- */
 function parseCookies(header){
