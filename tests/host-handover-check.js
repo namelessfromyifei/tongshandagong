@@ -128,6 +128,50 @@ async function until(fn, ms){
       T('⑤ 普通玩家掉线不触发房主移交', !!(B.snap && B.snap.hostSeat === A.seat), B.snap && B.snap.hostSeat);
       try{ A.c.close(); B.c.close(); }catch(e){}
     }
+
+    // ── ⑥⑦⑧ 房主单人房掉线超时：不移出、房主悬空；首位进房/重连者接管 ──
+    {
+      // ⑥⑦⑧ Room F：房主独自掉线 → 超时后座位保留、房主悬空；原房主重连回座并恢复房主
+      const A = reg(await connect());
+      A.c.emit('create', { name:'甲' });
+      while(!A.joined) await wait(50);
+      const codeF = A.joined.code;
+      A.c.close();
+      await wait(HOST_HANDOVER_MS + 300); // 超时：无在线真人可移交 → hostSeat 悬空
+
+      // 旁观 socket 只看房间列表：host 应为 null（悬空），人数仍 1（座位没被清）
+      const obs = reg(await connect());
+      const roomEntry = await new Promise(res => {
+        obs.c.on('rooms', list => res((list || []).find(x => x.code === codeF)));
+        obs.c.emit('listRooms');
+        setTimeout(() => res(null), 3000);
+      });
+      T('⑥ 房主单人掉线超时 → 房主悬空（列表 host 为空）', !!(roomEntry && roomEntry.host === null), roomEntry);
+      T('⑥ 房主座位未被清退（humans 仍为 1）', !!(roomEntry && roomEntry.humans === 1), roomEntry);
+
+      const A2 = reg(await connect());
+      A2.c.emit('rejoin', { code: codeF, name:'甲', auto:true });
+      while(!A2.joined) await wait(50);
+      const back = await until(() => A2.snap && A2.snap.hostSeat === A2.seat, 4000);
+      T('⑥ 原房主重连回座（座位保留，身份不变）', A2.joined && A2.seat === A.seat && !!(A2.snap && A2.snap.seats[A.seat] && A2.snap.seats[A.seat].name === '甲' && A2.snap.seats[A.seat].offline === false),
+        { seat: A2.seat, seat0: A2.snap && A2.snap.seats[0] });
+      T('⑧ 房主悬空由第一位回线的真人接管（重连即恢复房主）', !!back, A2.snap && A2.snap.hostSeat);
+      try{ obs.c.close(); A2.c.close(); }catch(e){}
+
+      // ⑦ Room G：房主独自掉线超时后，首位加入的新玩家自动成为房主
+      const G = reg(await connect());
+      G.c.emit('create', { name:'丙' });
+      while(!G.joined) await wait(50);
+      const codeG = G.joined.code;
+      G.c.close();
+      await wait(HOST_HANDOVER_MS + 300);
+      const D = reg(await connect());
+      D.c.emit('join', { code: codeG, name:'新来' });
+      while(!D.joined) await wait(50);
+      const dHost = await until(() => D.snap && D.snap.hostSeat === D.seat, 4000);
+      T('⑦ 无在线玩家 → 首个进房玩家成为房主', dHost, D.snap && D.snap.hostSeat);
+      try{ D.c.close(); }catch(e){}
+    }
   }catch(e){
     console.log('运行异常：', e && e.stack ? e.stack : e);
     if(out) console.log('--- server output ---\n' + out.slice(-2000));
