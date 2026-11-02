@@ -28,7 +28,7 @@ function connect(port){
   const srv = spawn(process.execPath, ['server.js'], { cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), AI_TURN_MS: '60', ROOM_IDLE_KICK_MS: '1500',
-      OFFLINE_KICK_WAIT_MS: '600', HOST_OFFLINE_KICK_MS: '100000', // 关闭房主自踢干扰
+      OFFLINE_KICK_WAIT_MS: '600', HOST_OFFLINE_HANDOVER_MS: '100000', // 关闭房主自动移交干扰
       REJOIN_TAKEOVER_MS: '0', TAKEOVER_ASK_MS: '2000', TAKEOVER_APPROVE_MS: '3000',
       DB_PATH: ':memory:',
     }),
@@ -82,8 +82,8 @@ function connect(port){
       T('A3 前置：甲已离线（丙视角）', offC, C.snap && C.snap.seats[H.seat]);
       await wait(900);
       C.cl.emit('kickSeat', { seat: H.seat });
-      const rej = await until(()=> C.toasts.length>0, 2500);
-      T('A3 非房主踢人 → 被拒（只有房主）', rej && C.toasts.some(t => /只有房主/.test(t)), C.toasts);
+      const rej = await until(()=> C.toasts.some(t => /只有房主/.test(t)), 2500);
+      T('A3 非房主踢人 → 被拒（只有房主）', rej, C.toasts);
     }
 
     // ── B：历史分数（一场自然打满 rounds=1）──

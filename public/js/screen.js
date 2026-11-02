@@ -5,6 +5,8 @@
  *   2) 锁定失败 / 浏览器不支持（WebView、iOS 等常见）→
  *      竖屏状态下把 #app 旋转 90° 铺满屏幕，同样呈横屏观感
  *   3) 回大厅时撤掉旋转、解除锁定（大厅可竖屏）
+ * Capacitor Android App（装了 @capacitor/screen-orientation）：
+ *   进房间用原生插件锁横屏、回大厅锁竖屏——大厅保持竖屏，仅牌桌横屏。
  * PC 端不受任何影响（isMobile 判断拦截）。
  * ========================================================= */
 (function(){
@@ -18,6 +20,17 @@ var rotated = false;   // 旋转兜底是否生效
 var locked  = false;   // 系统横屏锁定是否成功
 
 function isPortrait(){ return window.innerHeight > window.innerWidth; }
+
+// Capacitor 原生插件（仅原生 App 里存在；web 返回 null）
+function getOrientationPlugin(){
+  try{
+    var C = window.Capacitor;
+    if(C && C.Plugins && C.Plugins.ScreenOrientation && typeof C.Plugins.ScreenOrientation.lock === 'function'){
+      return C.Plugins.ScreenOrientation;
+    }
+  }catch(e){}
+  return null;
+}
 
 // 尝试系统横屏锁定（仅支持时有效）
 function tryLock(){
@@ -76,7 +89,25 @@ window.addEventListener('orientationchange', function(){ setTimeout(sync, 250); 
 window.addEventListener('resize', function(){ setTimeout(sync, 250); });
 
 window.LANDSCAPE = {
-  enter: function(){ inTable = true; setTimeout(sync, 250); },
-  exit:  function(){ inTable = false; clearRotate(); unlock(); },
+  enter: function(){
+    inTable = true;
+    // Capacitor 原生：直接锁横屏；失败则退回下面的 CSS 旋转兜底
+    var p = getOrientationPlugin();
+    if(p){
+      p.lock({ orientation: 'landscape' })
+        .then(function(){ clearRotate(); })
+        .catch(function(){ setTimeout(sync, 250); });
+      return;
+    }
+    setTimeout(sync, 250);
+  },
+  exit: function(){
+    inTable = false;
+    clearRotate();
+    unlock();
+    // Capacitor 原生：回大厅锁竖屏（大厅保持竖屏；web 无插件则无操作）
+    var p = getOrientationPlugin();
+    if(p){ p.lock({ orientation: 'portrait' }).catch(function(){}); }
+  },
 };
 })();

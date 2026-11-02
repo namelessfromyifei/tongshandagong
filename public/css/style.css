@@ -298,7 +298,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .trickRow.remainDesk .card:first-child{margin-left:0!important;}
 .trickRow.remainDesk .card .tl,.trickRow.remainDesk .card .br{font-size:10px!important;}
 .trickRow.remainDesk .card .ctr{font-size:13px!important;}
-.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-26px;} /* 后一行上压 26px：前一行(高36px)只露 10px 左上角点数花色 */
+.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-26px !important;} /* 后一行上压 26px：前一行(高36px)只露 10px 左上角点数花色；!important 压过 #t0 .trickRow+.trickRow 的 -6px（id 选择器特异性更高） */
 /* 插底警报：红色圆徽标（白！）+ 文字 */
 .warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
 .warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:14px;line-height:1;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 5px rgba(0,0,0,.7);}
@@ -316,8 +316,12 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seatW .seatHint{left:100%;bottom:0;margin-left:4px;} /* 左侧玩家名次/插底：信息框右侧下方 */
 
 /* 未开场踢出按钮（房主视角，掉线满30s 的真人牌桌前方） */
-.kickSeatBtn{position:absolute;top:0;right:0;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
+/* 掉线踢出按钮：信息框右下角（不压昵称/掉线标记）；底行留通道避免盖住抓分 */
+.kickSeatBtn{position:absolute;right:4px;bottom:4px;z-index:9;font-size:12px;padding:2px 6px;border-radius:6px;background:#8a3a2e;border:1px solid #a85345;color:#fff;cursor:pointer;}
 .kickSeatBtn:hover{background:#a5533f;}
+.kickSeatBtn[disabled]{opacity:.55;cursor:not-allowed;background:#5a4a45;border-color:#6d5a54;}
+.kickSeatBtn[disabled]:hover{background:#5a4a45;}
+.seat.hasKick .pts{padding-right:58px;} /* 给右下角按钮留位置，抓分文字不压按钮 */
 /* 历史分数弹窗 #historyWrap/#historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
  *   文字默认白；昵称白、分数用 --gold。
  *   防「记录多了无限放大」：表体在内层流动（≤60vh，纯 vh 不用 min()——旧安卓 WebView 不解析会整条丢弃导致无限变高），
@@ -534,9 +538,13 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .roomListWrap .rlTitle{font-size:14px;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .roomListWrap .rlTitle .btn{padding:2px 10px;font-size:12px;}
 #roomList{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
-.roomItem{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 14px;font-size:15px;color:#eef3ea;cursor:default;}
+/* 房间信息一行：房号(左) · 状态/掉线(中) · 人数(最右) */
+.roomItem{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 14px;font-size:15px;color:#eef3ea;cursor:default;}
 .roomItem:hover{background:rgba(255,255,255,.1);}
 .roomItem.roomFull{opacity:.5;cursor:not-allowed;}
+.roomItem .roomMeta{color:#a8c8b8;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.roomItem .roomMeta .roomOffline{color:#f0a35e;}
+.roomItem .roomHumans{margin-left:auto;color:#a8c8b8;font-size:13px;white-space:nowrap;}
 /* 加入/重连弹窗：房间可点选列表 */
 .narrowBox{max-width:360px !important;}
 .pickBox{max-height:170px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px;background:rgba(255,255,255,.04);margin-bottom:10px;}

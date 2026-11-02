@@ -9,7 +9,7 @@ GIT_URL="${GIT_URL:-}"   # 例：git@github.com:你的用户名/tongshandagong.g
 
 echo "==> 1/5 安装 Node.js 20+"
 if ! command -v node >/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   apt-get install -y nodejs
 fi
 node -v

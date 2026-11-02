@@ -117,12 +117,15 @@ function connect(port){
     T('三人都已入座（座位号互不重复）', new Set([seatOf.c0, seatOf.c1, seatOf.c2]).size === 3 && [seatOf.c0, seatOf.c1, seatOf.c2].every(x => x >= 0));
 
     // 其余真人就绪后由房主开局（AI 补位 + 1 局）
+    // 注意：改设置会让已准备玩家退回未准备，所以先改设置、再准备、最后 start
+    c0.emit('setSettings', { aiFill: true, rounds: 1 });
+    await new Promise(res => setTimeout(res, 300));
     await new Promise(res => {
       c1.emit('toggleReady', {});
       c2.emit('toggleReady', {});
       setTimeout(res, 400);
     });
-    c0.emit('setSettings', { aiFill: true, rounds: 1, start: true });
+    c0.emit('setSettings', { start: true });
 
     // #14 大厅可加入状态：确认轮/首手前也应显示「对局中」（不依赖 G.started）
     {

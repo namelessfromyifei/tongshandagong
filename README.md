@@ -25,7 +25,7 @@ Node.js 服务器权威：发牌、规则判定、结算、AI 托管全部在服
 
 | 层 | 实现 |
 |---|---|
-| 服务端 | Node.js 18+（推荐 20+）、Express、Socket.IO |
+| 服务端 | Node.js 24+（`node:sqlite` 内置）、Express、Socket.IO |
 | 前端 | 原生 HTML / CSS / JavaScript（无框架、无构建步骤） |
 | 规则引擎 | `js/engine.js`，Node 与浏览器共用同一份逻辑 |
 | AI | `js/ai.js`，候选生成 + 启发式决策 |
@@ -198,7 +198,11 @@ tongshandagong/
 |---|---|---|
 | `PORT` | `8080` | 监听端口 |
 | `ROOM_IDLE_KICK_MS` | `1800000`（30 分钟） | 闲置解散仅限「未开局/场末」；局间（等下一局）不超时；`0` 关闭 |
-| `OFFLINE_KICK_MS` | `180000`（3 分钟） | 未开局时真人掉线超时移出座位；`0` 关闭 |
+| `OFFLINE_KICK_WAIT_MS` | `30000`（30 秒） | 未开局/场末：非房主真人掉线满该时长后，房主可手动踢出 |
+| `HOST_OFFLINE_HANDOVER_MS` | `180000`（3 分钟） | 未开局/场末：房主掉线超过该时长自动把房主移交给在线真人（原座位保留）；`0` 关闭 |
+| `REJOIN_TAKEOVER_MS` | `30000`（30 秒） | 掉线多久后允许他人手动重连顶替该座位 |
+| `OFFLINE_END_MS` | `600000`（10 分钟） | 场进行中（局中/局间）：全房真人离线超时 → 自动提前结束本场；「3 人掉线剩 1 人」也需离线满此时长才允许收场；`0` 关闭 |
+| `ROOM_NO_ONLINE_CLEAR_MS` | `1800000`（30 分钟） | 等待/场末房间无任何在线真人超时 → 清退所有玩家（普通房解散，常驻房清空真人座）；`0` 关闭 |
 | `AI_TURN_MS` | `1500` | AI 每手间隔（留出语音播报时间） |
 | `WX_APPID` / `WX_APPSECRET` | 空 | 已认证服务号 AppID / AppSecret（配置后启用微信网页授权） |
 | `WX_OAUTH_BASE` | 按请求 Host 推导 | OAuth 回调基地址，如 `https://game.example.com`；必须与公众号「网页授权域名」一致 |
@@ -209,7 +213,10 @@ tongshandagong/
 
 - **常驻房间**：`LOVE`、`HOME` 固定存在，不会因闲置或无人被解散，也不能删除。
 - **重连**：输入房间号 + 原昵称即可回座；开局后不允许新玩家中途加入。
-- **掉线**：未开局超时被移出，座位还原为空位，房主掉线时房主身份移交；对局中掉线保留座位等待重连（不会由 AI 接管、也没有超时代打，重连是唯一恢复路径；一场未结束时任何人不可被踢）。
+- **掉线**：未开局/场末掉线保留座位并 toast 提示全房；掉线满 30 秒后房主可手动踢出（牌桌按钮带倒计时）；房主掉线满 3 分钟自动把房主移交给在线真人（原座位保留，可重连回来）。新玩家加入只进「空位/AI」座，**不会顶掉掉线玩家的座位**（离线座保留给本人重连）。对局中掉线一律保留座位等待重连（不会由 AI 接管、也没有超时代打；一场未结束时任何人不可被踢）。
+- **场中无人兜底**：场进行中（局中/局间）全房真人离线超过 `OFFLINE_END_MS` → 自动提前结束本场（已完成局累计保留，0 局不记历史），房间随后按闲置解散。
+- **房主掉线移交**：房主掉线满 `HOST_OFFLINE_HANDOVER_MS` → 房主移交给在线真人（座位保留、不掉出房间）；无在线真人时房主悬空，第一位回线/进房玩家自动成为房主；等待/场末房间长期无人在线超过 `ROOM_NO_ONLINE_CLEAR_MS` → 清退所有玩家（普通房解散，常驻房清空座位）。
+- **提前结束本场**：票数门槛 = 发起时在线真人人数（离线座不占票）——1 人掉线需其余 3 人同意，2 人掉线需其余 2 人同意；满员真人房只剩 1 人时不能立即收场，需离线座位全部超过 `OFFLINE_END_MS` 未回归才允许。
 - **服务端持局**：每次状态变更广播全量快照；客户端渲染所需的叫牌、手牌、当前轮次、结算等均以快照为准。
 
 ### 微信头像昵称授权
@@ -244,7 +251,7 @@ export GIT_URL=git@github.com:<账号>/tongshandagong.git
 sudo ./deploy.sh
 ```
 
-脚本会安装 Node 20+ / PM2、拉代码、装依赖并守护进程；需在云控制台安全组放行 TCP 8080。
+脚本会安装 Node 24 / PM2、拉代码、装依赖并守护进程；需在云控制台安全组放行 TCP 8080。
 
 ---
 
@@ -284,7 +291,7 @@ node tools/build-apk.js --server http://8.148.29.231
 
 | 项 | 要求 | 说明 |
 |---|---|---|
-| Node | 20+ | 仅用于跑 Capacitor CLI |
+| Node | 24+ | 构建/测试/Capacitor CLI（`node:sqlite` 需要 Node 24） |
 | JDK | 21+ | Capacitor 7 的源码级别是 Java 21；在 `android/gradle.properties` 的 `org.gradle.java.home` 指定 |
 | Android SDK | Platform 35 + Build-Tools 35 | 用 Android Studio 的 SDK Manager 安装 |
 | Gradle | 8.11.1 | 已在 `android/gradle/wrapper` 固定，并从腾讯云镜像下载 |
@@ -297,6 +304,24 @@ node tools/build-apk.js --server http://8.148.29.231
 - 正式包需要在 `android/app/build.gradle` 配置 signingConfig，keystore 文件不入库（`.gitignore` 已忽略 `*.jks` / `*.keystore`），**务必备份**
 - 包名 `xyz.zhangyuning.dagong` 一旦上架不可更改
 
+### App 应用内更新（方案1：提示 + 下载）
+
+App 每次启动向 `GET /api/app/update` 检查版本，若服务器上有更新版本则弹窗「发现新版本 vX.Y.Z」，可点「立即下载」打开系统浏览器下载 APK（下载完成后从通知栏安装，需允许「未知来源安装」）。服务端无更新时静默跳过。
+
+**发布一条新版本**（一条命令）：
+
+```sh
+node tools/release-apk.js --note "更新说明，支持多行"
+# 可选：--version 1.2.0 指定版本号（默认 patch +1）
+```
+
+该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 更新 `app-update/latest.apk` + `app-update/manifest.json`。
+
+**服务器侧**（无需额外配置）：
+- 服务端读取 `app-update/manifest.json` 返回版本/下载链接，`/app-update/latest.apk` 静态托管
+- `app-update/` 已 gitignore、**只存在于服务器**；首次部署需手动放进该目录（后续 `redeploy.sh` 的 `git pull` 不会清除它）
+- App 弹窗前请先部署服务器，否则仍是旧版本信息
+
 ---
 
 ## 测试与工具
@@ -305,15 +330,18 @@ node tools/build-apk.js --server http://8.148.29.231
 
 | 命令 | 说明 | 依赖服务端 |
 |---|---|---|
-| `npm test` | 一键全量：引擎单测 + AI 单测 + 双副本一致性 + 四个联机 e2e | 否 |
+| `npm test` | 一键全量：引擎单测 + AI 单测 + 双副本一致性 + 联机 e2e | 否 |
 | `npm run test:engine` | 仅引擎/AI 单测 + 双副本一致性 | 否 |
 | `node tests/engine.test.js` | 引擎单测（牌具/牌型/比较/结算/流程/模拟；断言数随用例增减，不再写死） | 否 |
 | `node tests/ai-sanity.js` | AI 行为单测（不乱出王、不炸队友等） | 否 |
 | `node tests/check-sync.js` | js/ 与 public/js/ 的引擎/AI 双副本一致性 | 否 |
 | `node tests/mask-check.js` | 快照脱敏 e2e（3 真人 + AI 补位自动打完一局，逐帧校验脱敏/结算） | 否（自动起服务） |
 | `node tests/endseries-check.js` | 提前结束本场（共识收场）e2e | 否（自动起服务） |
+| `node tests/offline-end-check.js` | 场中掉线兜底（1/2/3 人掉线表决门槛 + 全房离线下自动收场）e2e | 否（自动起服务） |
+| `node tests/host-handover-check.js` | 房主掉线移交 / 掉线提示 / 新房主踢人 e2e | 否（自动起服务） |
+| `node tests/no-online-clear-check.js` | 房间长期无在线真人 → 清退所有玩家 e2e | 否（自动起服务） |
 | `node tests/host-check.js` | 房主机制（hostSeat/删房）e2e | 否（自动起服务） |
-| `node tests/exit-check.js` | 局末退出口径 / 离线顶替 / start 收权 e2e | 否（自动起服务） |
+| `node tests/exit-check.js` | 局末退出口径 / join 只进空位（不顶掉线座）/ start 收权 e2e | 否（自动起服务） |
 | `node tests/net-sim.js` | 1 真人 + 3 AI 自动打完整局（联调脚本，需先起 8080 服务） | 是 |
 | `node tests/cdp-mobile-check.js` | 移动端布局裁剪检查（需调试端口 9224 的 Chrome） | 是 |
 | `node tests/wx-auth.js` | 微信授权（WX_MOCK）流程、Cookie 签名、Socket 身份覆盖 | 否（自起测试服务） |

@@ -597,6 +597,7 @@ function applyState(snap){
     lastRoundKey=null;
     lastPassSeq=0;
     prevKingPlayed=[false,false,false,false];
+    lastSeatSig=['','','','']; // 换房间：清座位行差量签名，防新房间沿用上房间的旧渲染判断
     voiceInit=true;
     prevSeatState=[{passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false},
                    {passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false}];
@@ -692,6 +693,9 @@ function applyState(snap){
   // 桌面已在上面 609 行清过一次；这里不再按旧局信息重画/重播（render/播报/结算调度一并跳过）。
   // 覆盖：自然场末点【准备】、局末点【下一局】、提前收场（局间结束场次）冻结点【准备】。
   if(G && G.ended && boardCleared){
+    // 新玩家进入「场末冻结」房间（本座 blanked）也会走这里：必须刷新昵称/头像，
+    // 否则停在 index.html 的占位文案（东家/西家/南家/北家）。
+    renderSeatNames();
     renderWaitingView();
     renderKickButtons();
     return;
@@ -900,6 +904,8 @@ function renderWaitingView(){
     if(at && /^庄/.test(at.textContent)) at.textContent = at.textContent.replace(/^庄/,'');
   }
   renderReadyIndicators(true); // 场初样式：准备圆点在出牌区
+  // 昵称/「⚠️掉线」会改变信息框宽度：重算两侧出牌区与准备提示的位置，避免提示压住信息框
+  syncHandLayout();
 }
 // 准备提示改由 renderReadyIndicators 显示在牌桌（出牌区）上：#13 座位徽标方案已弃用
 // 显示本场累计分数：改显示在每人 tag 右上侧（局数>1），不再放牌桌上方
@@ -936,24 +942,45 @@ function seatSig(v){
     cumTotals[i]
   ].join('|');
 }
-// 未开场/场末：房主视角给「掉线满 30s 的真人」显示「踢出房间」按钮（牌桌前方）
+// 未开场/场末：房主视角给掉线真人显示「踢出房间」按钮；未满 30 秒时显示倒计时并禁用
+function kickRemainSec(offlineAt){
+  return Math.max(0, Math.ceil((KICK_WAIT_MS - (Date.now() - (offlineAt||0))) / 1000));
+}
 function renderKickButtons(){
   document.querySelectorAll('.kickSeatBtn').forEach(n=>n.remove());
+  document.querySelectorAll('.seat.hasKick').forEach(n=>n.classList.remove('hasKick'));
   if(mySeat<0 || hostSeat!==mySeat) return;   // 仅房主视角
   if(G && !G.ended) return;                    // 对局进行中不显示
   const realOf = v => (mySeat + v) % 4;
   for(let v=0;v<4;v++){
     const i=realOf(v);
     if(seatTypes[i]!=='human' || !seatOffline[i]) continue;
-    if(Date.now() - (seatOfflineAt[i]||0) < KICK_WAIT_MS) continue;
     const el=document.querySelector('.seat[data-seat="'+v+'"]'); if(!el) continue;
+    const at=seatOfflineAt[i]||0;
+    const remain=kickRemainSec(at);
     const b=document.createElement('button');
     b.className='kickSeatBtn';
-    b.textContent='踢出房间';
-    b.onclick=()=>{ if(window.NET && window.NET.kickSeat) window.NET.kickSeat(i); };
+    b.dataset.seat=String(i);
+    b.dataset.offlineAt=String(at);
+    b.disabled = remain>0;
+    b.textContent = remain>0 ? `踢出（${remain}s）` : '踢出房间';
+    b.onclick=()=>{
+      if(kickRemainSec(Number(b.dataset.offlineAt||0))>0) return; // 未满 30 秒
+      if(window.NET && window.NET.kickSeat) window.NET.kickSeat(i);
+    };
+    el.classList.add('hasKick'); // 底行留出按钮位置（CSS .seat.hasKick）
     el.appendChild(b);
   }
 }
+// 每秒刷新踢人按钮的倒计时（不发请求，只更新文案/可点状态）
+function updateKickCountdowns(){
+  document.querySelectorAll('.kickSeatBtn').forEach(b=>{
+    const remain=kickRemainSec(Number(b.dataset.offlineAt||0));
+    if(remain>0){ b.disabled=true; b.textContent=`踢出（${remain}s）`; }
+    else { b.disabled=false; b.textContent='踢出房间'; }
+  });
+}
+setInterval(updateKickCountdowns, 1000);
 function renderSeats(){
   // 视图重排：自己的座位(real=mySeat)显示在下方(南位 view0)
   const realOf = v => (mySeat + v) % 4;
@@ -1745,6 +1772,8 @@ function syncHandLayoutCore(){
     const ro=new ResizeObserver(()=>syncHandLayout());
     if(row) ro.observe(row);
     if(hand) ro.observe(hand);
+    // 信息框宽度会随昵称/掉线标记/抓分变化：跟着重排出牌区与准备提示，避免压住信息框
+    document.querySelectorAll('.seatN,.seatW,.seatE,.handRow .seatS').forEach(el=>ro.observe(el));
   }
   window.addEventListener('resize', ()=>setTimeout(syncHandLayout,120));
   window.addEventListener('orientationchange', ()=>setTimeout(syncHandLayout,350));

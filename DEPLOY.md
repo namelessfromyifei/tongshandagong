@@ -66,7 +66,7 @@ sudo ./deploy.sh   # 会装 Node/PM2、拉代码、装依赖、起服务
 ### 方式 B：手动
 ```bash
 # 1. 装 Node 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - && sudo apt-get install -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash - && sudo apt-get install -y nodejs
 # 2. 拉代码
 sudo git clone git@github.com:zhanghan4141-oss/tongshandagong.git /home/admin/tongshandagong
 cd /home/admin/tongshandagong && sudo npm install --production
@@ -186,9 +186,17 @@ WX_OAUTH_BASE:   'https://www.zhangyuning.xyz',    // 与公众号「网页授�
 - **外网访问不了**：安全组/防火墙没放行 8080，或服务器用的不是公网 IP（NAT）。
 - **想换端口**：`PORT=3000 pm2 restart tongshandagong --update-env`。
 - **断线**：掉线后重连归位（房间号 + 昵称/微信），座位保留不踢；一场未结束时任何人不可被踢
-  （离线踢出仅在建房等待或一场整体结束后生效）。想提前收场：场进行中可发起
-  「提前结束本场」共识——满员真人房需 4 位在线真人全票；含 AI 座/真人不足 4 的房按
-  「在线真人全票」即生效（离线真人座与 AI 座不占票）。收场后（本场结束）才能退出房间。
+  （离线踢出仅在建房等待或一场整体结束后生效）。未开局/场末掉线满 30 秒房主可手动踢出（按钮带倒计时）；
+  房主掉线满 3 分钟（`HOST_OFFLINE_HANDOVER_MS`）自动把房主移交给在线真人，原座位保留可重连；
+  无人在线的等待/场末房间超时（`ROOM_NO_ONLINE_CLEAR_MS`，默认 30 分钟）自动清退所有玩家（普通房解散、常驻房清空座位）。想提前收场：场进行中可发起
+  「提前结束本场」共识——票数门槛 = 发起时在线真人人数（离线座与 AI 座不占票）：
+  1 人掉线需其余 3 人全票，2 人掉线需其余 2 人全票；满员真人房只剩 1 人时不能立即收场，
+  需离线座位全部超过 `OFFLINE_END_MS`（默认 10 分钟）未回归才允许。全房真人离线超时则自动收场
+  （已完成局累计保留，0 局不记历史）。收场后（本场结束）才能退出房间。
 - **日志**：`pm2 logs tongshandagong`。
+- **App 应用内更新**：服务器启动时读 `app-update/manifest.json`（`GET /api/app/update`），
+  `/app-update/latest.apk` 静态托管 APK。该目录已 gitignore、只存在于服务器（首次需手动放入；
+  `redeploy.sh` 是 `git pull`，不会清除它）。发新版本用 `node tools/release-apk.js --note "…"`，
+  构建后 `app-update/` 自动更新；先部署服务器，旧版 App 下次启动即弹窗提示下载。
 
 > 域名 + HTTPS 已上线，配置见「七、域名与 HTTPS」。证书为云厂商免费 DV（一年期），到期前在云控制台重签并替换 `/etc/nginx/ssl/` 下的 pem/key，再 `sudo systemctl reload nginx`。

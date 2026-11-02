@@ -69,13 +69,13 @@ function enterTable(){
   if(window.enterGameFullscreen) window.enterGameFullscreen();
 }
 
-function toast(msg){
+function toast(msg, ms){
   const app=document.getElementById('app');
   const inTable = !!(app && app.classList.contains('inTable'));
-  if(inTable){ showTableToast(String(msg)); return; } // 牌桌内：浮动 toast
+  if(inTable){ showTableToast(String(msg), ms); return; } // 牌桌内：浮动 toast
   const el=$('status');
   if(el) el.textContent=msg;
-  setTimeout(()=>{ if(el) el.textContent=''; }, 4000);
+  setTimeout(()=>{ if(el) el.textContent=''; }, ms || 4000);
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见
 // 对局配置弹窗只读开关：一场未结束时除「保存」外全部禁用（对局中设置不可改）
@@ -88,13 +88,13 @@ function syncSetLock(){
 }
 // 牌桌内浮动提示（供 net.js toast 与 ui-net flashMsg 共用）——#status 只能在大厅看见。
 // 位置由 CSS 锚定在出牌排左侧（随旋转/窄屏自适应），这里只负责显隐。
-function showTableToast(msg){
+function showTableToast(msg, ms){
   const t=document.getElementById('tableToast');
   if(!t) return;
   t.textContent=String(msg);
   t.classList.add('show');
   if(t._tt){ clearTimeout(t._tt); t._tt=null; }
-  t._tt=setTimeout(()=>{ t.classList.remove('show'); }, 3200);
+  t._tt=setTimeout(()=>{ t.classList.remove('show'); }, ms || 3200);
 }
 window.showTableToast = showTableToast;
 // HTML 转义：任何来自服务器/用户的名字、房间号在拼 innerHTML 前必须过这里（服务端已加 4 位白名单，双保险）
@@ -223,7 +223,11 @@ function connect(){
     toast('你的座位已被其他玩家接管，已退回大厅');
   });
 
-  socket.on('toast', (m)=>{ toast(m); });
+  // toast 支持字符串，或 {text, ms}（掉线/移交等提示显示更久）
+  socket.on('toast', (m)=>{
+    if(m && typeof m === 'object'){ toast(String(m.text || ''), Number(m.ms) || 0); return; }
+    toast(m);
+  });
 
   // 提前结束本场：发起方显示「等待表决」，其他三家显示同意/拒绝
   socket.on('endSeriesAsk', (d)=>{
@@ -236,10 +240,12 @@ function connect(){
     if(r) r.style.display = mine ? 'none' : '';
     if(c) c.style.display = mine ? '' : 'none';
     if(mine){
-      if(txt) txt.textContent='你已发起【提前结束本场】，等待其他三家在 30 秒内同意…';
+      if(txt) txt.textContent='你已发起【提前结束本场】，等待其他在线玩家在 30 秒内同意…';
     } else {
       const who=(d && d.name) || '有玩家';
-      if(txt) txt.textContent=`${who} 发起【提前结束本场】。需要其他三家在 30 秒内全部同意才生效；若本局进行中会直接废弃。`;
+      const need=(d && Number.isInteger(d.need)) ? d.need : 0;
+      const askTxt = need>1 ? `需要其他 ${need-1} 位在线玩家在 30 秒内全部同意才生效` : '需要其他在线玩家在 30 秒内同意才生效';
+      if(txt) txt.textContent=`${who} 发起【提前结束本场】。${askTxt}；若本局进行中会直接废弃。`;
     }
     m.hidden=false;
   });
@@ -392,8 +398,15 @@ function renderRoomList(list){
     const isMineHost = r.host && r.host===myName;
     const item=document.createElement('div');
     item.className='roomItem'+(canJoin||isMineHost?'':' roomFull');
-    const status = r.started?'对局中':`${r.humans}/4人`;
-    item.innerHTML = `<span class="roomCodeLbl">${esc(r.code)}</span> · ${status}`;
+    const offline = Number(r.offline || 0);
+    const meta = [
+      r.started ? '对局中' : '',
+      offline > 0 ? `<span class="roomOffline">${offline}人掉线</span>` : '',
+    ].filter(Boolean).join(' · ');
+    // 房间信息：房号(左) · 状态/掉线(中) · 人数(最右)
+    item.innerHTML = `<span class="roomCodeLbl">${esc(r.code)}</span>`
+      + `<span class="roomMeta">${meta}</span>`
+      + `<span class="roomHumans">${r.humans}/4人</span>`;
     // 进入：未开局缺人 → join；自己的房间 → rejoin 归位
     if(canJoin || isMineHost){
       item.title='点击进入';
@@ -618,6 +631,6 @@ function applySettings(s){
   if($('setAIAuto')) $('setAIAuto').checked=!!s.aiAuto; // 漏同步：换房主/重进后勾选应跟服务器一致
 }
 
-window.NET = { connect, act, nextRound, start, toggleAI, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
+window.NET = { connect, act, nextRound, start, toggleAI, apiUrl, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
 window.addEventListener('DOMContentLoaded', bindLobby);
 })();

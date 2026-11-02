@@ -104,7 +104,7 @@ function joiner(c){
     cl[1].toasts.length = 0;
     cl[1].c.emit('setSettings', { rounds:1 });
     await wait(350);
-    T('新房主 setSettings 生效', cl[1].toasts.some(t => /已更新/.test(t)) && cl.some(x => x.lastSnap && x.lastSnap.settings.rounds===1));
+    T('新房主 setSettings 生效', cl[1].toasts.some(t => /牌局设置：局数 1/.test(t)) && cl.some(x => x.lastSnap && x.lastSnap.settings.rounds===1));
 
     // —— 旧房主（已退房）能重新建房：修复“你已在房间中”死锁 ——
     const pn = joiner(cl[0].c);
