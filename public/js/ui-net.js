@@ -1152,9 +1152,8 @@ function renderSeats(){
     if(G.ended && v!==0 && !s.out && s.hand && s.hand.length){
       // 牌序与手牌一致：王在前，其余按 2→3 从大到小
       const left=[...s.hand].sort((a,b)=> handKey(a)-handKey(b) || (a.id<b.id?-1:1));
-      // 北家在正上方：横向空间最宽，全部排成一行，避免向下压到中间提示；
-      // 东西两侧窄，每行 7 张
-      const ROW = v===2 ? left.length : 7;
+      // 局末摊牌多行：北家横向宽每行 10 张，东西家窄每行 7 张
+      const ROW = v===2 ? 10 : 7;
       const rows = Math.ceil(left.length/ROW);
       for(let ri=0; ri<rows; ri++){
         const row=document.createElement('div');
@@ -1597,12 +1596,13 @@ function positionSeatS(){
     if(first){
       cardsTopInRow = topWithin(first, row);
     } else {
-      const pad=parseFloat(getComputedStyle(hand).paddingTop)||0;
-      cardsTopInRow = topWithin(hand, row) + pad;
+      // 空手牌（出完牌/局末/刚进房）：不基于空 hand 的位置计算（空 hand 在 .handArea 里居中、offsetTop≈28，
+      // 会算出偏小的 bottom 把信息框拽到 handRow 内部下方），直接固定悬在 handRow 顶部上方
+      cardsTopInRow = 0;
     }
-    // 尽量贴近手牌：选中牌会向上浮 6*zoom，留 2px 余量即可，不再固定留 6px
+    // 信息框底缘距手牌顶部留白：选中牌上浮 6*zoom，多留一点让信息框悬在手牌上方、不贴死
     const z=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-zoom'))||1;
-    const gap=Math.max(0, Math.round(6*z - 10));
+    const gap=Math.max(0, Math.round(6*z - 2));
     const bottom = Math.round(row.offsetHeight - cardsTopInRow + gap);
     info.style.bottom = bottom + 'px';
   }

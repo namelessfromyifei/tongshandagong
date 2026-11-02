@@ -294,11 +294,11 @@ input,textarea{-webkit-user-select:text;user-select:text;}
    尺寸固定、不受牌大小档位影响；横向只露出左上角点数和花色；
    多行时后一行压住前一行（DOM 靠后的行自然绘制在上层、完整可见），前一行只露左上角点数花色。 */
 .trickRow.remainDesk{margin-top:6px;zoom:1;}
-.trickRow.remainDesk .card{width:26px!important;height:36px!important;zoom:1!important;margin-left:-14px!important;border-radius:4px!important;}
+.trickRow.remainDesk .card{width:30px!important;height:42px!important;zoom:1!important;margin-left:-12px!important;border-radius:4px!important;}
 .trickRow.remainDesk .card:first-child{margin-left:0!important;}
-.trickRow.remainDesk .card .tl,.trickRow.remainDesk .card .br{font-size:10px!important;}
-.trickRow.remainDesk .card .ctr{font-size:13px!important;}
-.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-26px !important;} /* 后一行上压 26px：前一行(高36px)只露 10px 左上角点数花色；!important 压过 #t0 .trickRow+.trickRow 的 -6px（id 选择器特异性更高） */
+.trickRow.remainDesk .card .tl,.trickRow.remainDesk .card .br{font-size:12px!important;}
+.trickRow.remainDesk .card .ctr{font-size:15px!important;}
+.trickRow.remainDesk + .trickRow.remainDesk{margin-top:-28px !important;} /* 后一行上压 28px：前一行(高42px)露 14px，完整显示左上角点数花色；!important 压过 #t0 .trickRow+.trickRow 的 -6px（id 选择器特异性更高） */
 /* 插底警报：红色圆徽标（白！）+ 文字 */
 .warnDizhi{display:inline-flex;align-items:center;gap:4px;color:#ffb39a;font-weight:bold;}
 .warnDizhi .icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d33;color:#fff;font-weight:bold;font-size:14px;line-height:1;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 5px rgba(0,0,0,.7);}
@@ -652,6 +652,12 @@ body.landscapeCompat .trickRow .card:first-child{margin-left:0!important;}
 body.landscapeCompat .trickRow .card .tl{font-size:calc(8px * var(--card-zoom))!important;}
 body.landscapeCompat .trickRow .card .br{font-size:calc(8px * var(--card-zoom))!important;}
 body.landscapeCompat .trickRow .card .ctr{font-size:calc(12px * var(--card-zoom))!important;}
+/* 局末摊牌（remainDesk）固定小尺寸、不随牌大小档位缩放；兜底状态同样固定，
+   避免被上方 body.landscapeCompat .trickRow .card 的 calc 尺寸覆盖（否则兜底会放大成 44×64、字号也被放大） */
+body.landscapeCompat .trickRow.remainDesk .card{width:30px!important;height:42px!important;zoom:1!important;margin-left:-12px!important;border-radius:4px!important;}
+body.landscapeCompat .trickRow.remainDesk .card:first-child{margin-left:0!important;}
+body.landscapeCompat .trickRow.remainDesk .card .tl,body.landscapeCompat .trickRow.remainDesk .card .br{font-size:12px!important;}
+body.landscapeCompat .trickRow.remainDesk .card .ctr{font-size:15px!important;}
 body.landscapeCompat .trick.trickN{top:96px;}
 body.landscapeCompat .trick.trickS{bottom:122px;}
 body.landscapeCompat .trick.trickW{left:190px;}
