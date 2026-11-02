@@ -1287,17 +1287,15 @@ io.on('connection', (socket)=>{
       return s.name===name;
     });
     if(sameHuman){ socket.emit('toast','你已在该房间，可直接重连'); return; }
-    // 找空座位：优先顶替 offline 真人座（仅场末/未开局可达——对局进行中已被上面的守卫拦截；决策 Q3）
-    let seatIdx=r.seats.findIndex(s=>s.type==='human' && s.offline);
-    const takeOver = seatIdx>=0;
-    if(seatIdx<0) seatIdx=r.seats.findIndex(s=>s.type==='ai');
+    // 入座规则：新玩家只能进入「空位/AI」座；真人掉线的座位保留给本人重连（rejoin），
+    // 不允许被新玩家 join 顶替——离线房主座也因此安全，不会被后来的人顶掉。
+    let seatIdx=r.seats.findIndex(s=>s.type==='ai');
     if(seatIdx<0){ socket.emit('toast','房间已满'); return; }
-    clearOfflineKick(r, seatIdx); // 入座/顶替：取消该座的离线踢出计时器
-    const wasAi = r.seats[seatIdx].type!=='human'; // 顶替离线真人座(type=human)不算、不扰其残局；空位/AI 座被新玩家入座才清
+    clearOfflineKick(r, seatIdx); // 入座：取消该座可能残留的离线踢出计时器
     r.seats[seatIdx]={type:'human', socketId:socket.id, name, avatar:ident.avatar, openid:ident.openid, offline:false};
-    if(!takeOver) r.humanCount++; // 顶替：座位上真人仍在，人数不变
+    r.humanCount++;
     // 场末冻结房新玩家进入空位/AI 座：清该索引的上一局残局数据（牌桌按「刚进房间的空座」渲染）
-    if(wasAi && r.G && r.G.ended) blankGameSeatData(r.G, seatIdx);
+    if(r.G && r.G.ended) blankGameSeatData(r.G, seatIdx);
     room=r; mySeat=seatIdx;
     socket.data.room=r; socket.data.seat=seatIdx;
     socket.join(r.code);

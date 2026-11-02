@@ -3,7 +3,7 @@
  * ✓ AI 房（真人<4）局末也不许退出；【结束对局】可用——在线真人全票即收场（离线/AI 不占票）
  * ✓ 满员真人房有真人掉线 → 提前结束被拒；重连后可恢复共识收场
  * ✓ 退出仅场末/未开局可用（场末 AI 房先收场再退）
- * ✓ 未开局 offline 真人座可被新玩家 join 顶替（座位沿用、人数不变、清 offline）
+ * ✓ 未开局新玩家 join 只进「空位/AI」座——不掉线真人座（离线座保留给本人重连）
  * ✓ 非房主 start 被拒；房主 start 走全员就绪门槛
  * 运行：node tests/exit-check.js
  * ========================================================= */
@@ -103,10 +103,14 @@ function connect(port){
     await joinRoom(2, roomA, '丙');
     // 改设置会让已准备玩家退回未准备：先改设置，再准备，最后 start
     clients[0].c.emit('setSettings', { aiFill: true, rounds: 3 });
-    await wait(300);
+    await until(() => clients[0].lastSnap && clients[0].lastSnap.settings && clients[0].lastSnap.settings.rounds === 3, 5000);
     clients[1].c.emit('toggleReady', {});
     clients[2].c.emit('toggleReady', {});
-    await wait(350);
+    // 等到就绪已生效再发 start（固定延时在负载高时会提前判定、且 start 不会重试）
+    await until(() => {
+      const s = clients[0].lastSnap; if(!s || !s.ready) return false;
+      return s.ready[clients[1].seat] === true && s.ready[clients[2].seat] === true;
+    }, 5000);
     clients[0].c.emit('setSettings', { start: true });
     const r1Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 15000);
     T('AI 房开局成功（3 真人 + AI 补位）', r1Started);
@@ -184,9 +188,13 @@ function connect(port){
 
     // 先改设置（改设置会让已准备玩家退回未准备），再准备，最后 start
     clients[0].c.emit('setSettings', { rounds: 3 });
-    await wait(300);
+    await until(() => clients[0].lastSnap && clients[0].lastSnap.settings && clients[0].lastSnap.settings.rounds === 3, 5000);
     for(let i=1;i<4;i++) clients[i].c.emit('toggleReady', {});
-    await wait(350);
+    // 等到 3 位玩家就绪已生效再发 start（固定延时在负载高时会提前判定、且 start 不会重试）
+    await until(() => {
+      const s = clients[0].lastSnap; if(!s || !s.ready) return false;
+      return [1,2,3].every(i => s.ready[clients[i].seat] === true);
+    }, 5000);
     clients[0].c.emit('setSettings', { start: true });
     const r2Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 15000);
     T('满员房开局成功', r2Started);
@@ -246,7 +254,7 @@ function connect(port){
     T('场末全员退出后空房保留（30 分钟宽容，不立即删除）', !!lrB.some(r => r.code === roomB));
     r3.close();
 
-    // ---------- 场景三：未开局 offline 真人座被新玩家顶替 ----------
+    // ---------- 场景三：未开局新玩家 join 只进「空位/AI」座，不顶替离线真人座 ----------
     let roomC = '';
     await new Promise((res, rej) => {
       clients[0].c.on('joined', d => { clients[0].seat = d.seat; roomC = d.code; res(); });
@@ -264,15 +272,23 @@ function connect(port){
     const nc = await connect(PORT);
     const ncJoined = await new Promise(res => {
       nc.on('joined', d => res(d));
-      nc.emit('join', { code: roomC, name: '顶替' });
+      nc.emit('join', { code: roomC, name: '空位来客' });
       setTimeout(() => res(null), 8000);
     });
-    T('新玩家顶替到 offline 座（同座位号）', !!ncJoined && ncJoined.seat === offlineSeat);
+    T('新玩家进入空位/AI 座（而不是顶替 offline 座）', !!ncJoined && ncJoined.seat >= 0 && ncJoined.seat !== offlineSeat,
+      ncJoined && { seat: ncJoined.seat, offlineSeat });
+    const njSeat = ncJoined && ncJoined.seat;
     const takeOk = await until(() => clients[0].lastSnap
-      && clients[0].lastSnap.seats[offlineSeat].name === '顶替'
-      && clients[0].lastSnap.seats[offlineSeat].offline === false
-      && clients[0].lastSnap.seats[offlineSeat].humanCount === 3, 8000); // humanCount 嵌在 seat 内
-    T('顶替后：座位改名、offline 清除、humanCount 不变(3)', takeOk);
+      && njSeat >= 0 && clients[0].lastSnap.seats[njSeat] && clients[0].lastSnap.seats[njSeat].name === '空位来客'
+      && clients[0].lastSnap.seats[njSeat].offline === false
+      && clients[0].lastSnap.seats[njSeat].humanCount === 4, 8000); // humanCount 嵌在 seat 内
+    T('空位入座后：座位改名、offline 清除、人数+1(4)', takeOk);
+    const offlineKeep = await until(() => clients[0].lastSnap
+      && clients[0].lastSnap.seats[offlineSeat]
+      && clients[0].lastSnap.seats[offlineSeat].name === '丙'
+      && clients[0].lastSnap.seats[offlineSeat].type === 'human'
+      && clients[0].lastSnap.seats[offlineSeat].offline === true, 8000);
+    T('离线真人座保留：仍名「丙」、offline 未清', offlineKeep);
     nc.close();
 
   }catch(e){
