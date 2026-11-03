@@ -439,7 +439,7 @@ function createRoom(code){
       halfFan: 1,       // 半番=几分（1~50，默认 1）
     },
     series: {           // 一轮（多局）累计
-      active: false, roundCount: 0, totals: [0,0,0,0],
+      active: false, roundCount: 0, totals: [0,0,0,0], rounds: [], // rounds=本场每局明细（时间/局号/各玩家本局分）
     },
     roundSeq: 0,        // 房间内累计对局数（跨场唯一，供前端判断换局）
   };
@@ -692,7 +692,7 @@ function evictAllPlayers(room){
     room.ready=[false,false,false,false];
     room.hostSeat=-1;
     room.G=null; room.seriesOver=false; room.earlyEnded=false;
-    room.series={active:false, roundCount:0, totals:[0,0,0,0], lastRound:null};
+    room.series={active:false, roundCount:0, totals:[0,0,0,0], lastRound:null, rounds:[]};
     resetRoomSettings(room);
     broadcast(room);
     return;
@@ -1016,7 +1016,7 @@ function startRound(room){
   clearIdleKick(room);
   room.seriesOver=false;      // 新的一场开始：解除“本场已结束”的冻结状态
   room.earlyEnded=false;      // 解除上一场「提前结束」标记（新的一场按正常场末文案）
-  room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null; // 新的一场：累计/轮数归零
+  room.series.active=false; room.series.roundCount=0; room.series.totals=[0,0,0,0]; room.series.lastRound=null; room.series.rounds=[]; // 新的一场：累计/轮数归零
   // 开局即清 ready：消除 setSettings(wantStart) 遗留在房主座位上的就绪标记。
   // 否则首局全程 snap.ready[房主]=true，局末 ended 帧会把"上一局的就绪残留"
   // 误判为"已点准备"→ 没点任何按钮就提前清掉牌桌（局末/场末直接清空）。
@@ -1068,6 +1068,8 @@ function finishRoom(room){
   room.series.active = true;
   room.series.roundCount++;
   for(let i=0;i<4;i++) room.series.totals[i]+=s.perFen[i];
+  room.series.rounds = room.series.rounds || [];
+  room.series.rounds.push({ t: Date.now(), roundNo: room.G.roundNo||room.series.roundCount, scores: [0,1,2,3].map(i=>s.perFen[i]||0) });
   room.series.lastRound = s;
   // 达到设置局数 → 输出本场结算并重置（下场比赛需重新准备）
   if(room.series.roundCount >= room.settings.rounds){

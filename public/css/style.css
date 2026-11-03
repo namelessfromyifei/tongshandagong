@@ -341,6 +341,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 #mTable{font-size:14px;}
 /* 当前玩家所在行：浅金底标识（方便一眼定位自己），叠加在弹窗深绿底上不刺眼 */
 #mTable tr.myRow td{background:rgba(232,193,90,.2);}
+/* 计分板·本场分数明细表（#mSeriesTable）：与历史分数表同款边框，字体 14px；列=时间/局数/4玩家本局分 */
+#mSeriesTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;table-layout:fixed;}
+#mSeriesTable th,#mSeriesTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;word-break:break-word;}
+#mSeriesTable th{background:rgba(255,255,255,.06);color:#fff;}
 /* 南家信息框右侧：插底/准备提示跟随信息框 */
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
 .handRow .seatS .southHint:empty{display:none;}

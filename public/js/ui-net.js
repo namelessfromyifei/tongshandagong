@@ -1511,6 +1511,22 @@ function finishLocal(settle){
     } else {
       tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt}</td></tr>`;
     }
+    // 本场分数明细：已结束 >=1 局时，在当前局信息下方追加各局分数表（时间/局数/4玩家本局分）
+    const stb=$('mSeriesTable');
+    if(stb){
+      if(series && series.rounds && series.rounds.length >= 1){
+        stb.innerHTML=`<tr><th colspan="6">本场分数明细</th></tr>`+
+          `<tr><th>时间</th><th>局数</th>${seatNames.map(n=>`<th>${esc(n)}</th>`).join('')}</tr>`+
+          series.rounds.map(r=>{
+            const tm=new Date(r.t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+            return `<tr><td>${tm}</td><td>第${r.roundNo}局</td>${r.scores.map(sc=>`<td>${sc>0?'+':''}${sc}</td>`).join('')}</tr>`;
+          }).join('');
+        stb.style.display='';
+      } else {
+        stb.innerHTML='';
+        stb.style.display='none';
+      }
+    }
     // 不在这里弹出：由 applyState 统一延迟 3 秒显示
   }catch(e){}
 }
