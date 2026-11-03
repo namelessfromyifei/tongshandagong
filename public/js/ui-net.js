@@ -597,6 +597,7 @@ function applyState(snap){
     lastRoundKey=null;
     lastPassSeq=0;
     prevKingPlayed=[false,false,false,false];
+    lastNoPlayHintKey='';
     lastSeatSig=['','','','']; // 换房间：清座位行差量签名，防新房间沿用上房间的旧渲染判断
     voiceInit=true;
     prevSeatState=[{passed:false,choice:null,dizhi:false,out:false},{passed:false,choice:null,dizhi:false,out:false},
@@ -700,9 +701,11 @@ function applyState(snap){
     renderKickButtons();
     return;
   }
-  // 发牌后显示排序/牌大小
-  if($('btnSort')) $('btnSort').style.display='inline-block';
-  if($('btnSize')) $('btnSize').style.display='inline-block';
+  // 有自己手牌才显示排序/牌大小（出完牌/局末空手牌时隐藏）
+  const myS = G.seats[mySeat];
+  const hasHand = !!(myS && myS.hand && myS.hand.length && !myS.out);
+  if($('btnSort')) $('btnSort').style.display = hasHand ? 'inline-block' : 'none';
+  if($('btnSize')) $('btnSize').style.display = hasHand ? 'inline-block' : 'none';
   // AI出牌按钮：房主在“对局配置”里允许后才出现
   if($('btnAI')){
     if((!settings.aiAuto || seriesOver) && aiAutoOn) aiAutoSet(false);
@@ -775,7 +778,18 @@ function applyState(snap){
     $('btnHint').style.display = meOut ? 'none' : 'inline-block';
     $('btnPass').style.display = meOut ? 'none' : 'inline-block';
     $('btnPass').textContent='不要';
-    if(G.turn===mySeat && !meOut) enablePlayer();
+    if(G.turn===mySeat && !meOut){
+      enablePlayer();
+      // 轮到出牌且需跟牌：若无牌能压上家，提示一次（上家牌 key 防重复，与「提示」按钮同一文案）
+      if(G.lastPlay && window.TSAI){
+        const key = G.playNo!=null ? G.playNo : (G.lastSeat+':'+(G.lastCards||[]).map(c=>c.id).join(','));
+        const cands = TSAI.genCandidates(G.seats[mySeat].hand, G.lastPlay, G.cfg);
+        if(cands.length===0 && key!==lastNoPlayHintKey){
+          lastNoPlayHintKey = key;
+          flashMsg('没有能压的牌');
+        }
+      }
+    }
   }
   voiceGate(); // 语音播报未结束时保持按钮禁用
   syncHandLayout(); // 按钮显隐/换容器后重新定位（明独/不明独居中）
@@ -922,6 +936,7 @@ function seatTag(i){
 // 保守策略：宁可多刷，不可漏刷——漏刷=陈旧渲染（可见缺陷）；多刷只是回到无差量的原成本。
 let lastSeatSig = ['', '', '', ''];
 let prevTurn = -3; // 上一帧轮次座位：对局转移瞬间「当前/上一轮次」两座都要强制重装
+let lastNoPlayHintKey = ''; // 轮到自己且无牌能压时已提示过的「上家牌 key」：同一手牌只提示一次
 function seatSig(v){
   const i = (mySeat + v) % 4;
   const s = G.seats[i];

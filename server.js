@@ -851,6 +851,15 @@ function notifyPlayerOffline(room, seatIdx){
     toastRoom(room, `${s.name} 掉线，等待重连${secs>0?`（房主 ${secs} 秒后可移出）`:'（房主可移出）'}`, OFFLINE_TOAST_MS);
   }
 }
+// 进入/重连归位后：若房主仍掉线（未移交/未悬空），提示进入者房主掉线移交倒计时
+function notifyHostOffline(socket, room){
+  const hs = room.hostSeat;
+  if(hs < 0) return; // 房主已悬空（ensureValidHost 已补位成在线真人，此分支不会走到）
+  const host = room.seats[hs];
+  if(!host || host.type!=='human' || !host.offline) return;
+  const mins = Math.max(1, Math.round(HOST_OFFLINE_HANDOVER_MS/60000));
+  socket.emit('toast', `房主 ${host.name} 掉线，${mins} 分钟内未重连将移交房主`);
+}
 // 场结束（自然场末/提前收场）后：若房主仍离线，重新起移交计时
 function armHostHandoverIfNeeded(room){
   if(!room || room.hostSeat<0) return;
@@ -1177,6 +1186,7 @@ function takeOverSeat(room, seatIdx, ident, newSocket){
     }
   }
   ensureValidHost(room); // 每次接管后校验房主座卫生（被顶的恰是房主时自动移交/悬空；对局进行中由函数内部跳过）
+  notifyHostOffline(newSocket, room); // 重连归位后：房主仍掉线则提示移交倒计时
 }
 
 /* ---------- Socket.IO ---------- */
@@ -1301,6 +1311,7 @@ io.on('connection', (socket)=>{
     socket.join(r.code);
     socket.emit('joined', {code:r.code, seat:seatIdx, name, avatar:ident.avatar});
     ensureValidHost(room); // 房主悬空/落在 AI 座时：真人入座立即补位成房主
+    notifyHostOffline(socket, room); // 新玩家进入后：房主仍掉线则提示移交倒计时
     broadcast(r);
     scheduleIdleKick(r); // 有人加入＝房间有活动：重置闲置解散计时
     refreshOfflineWatch(r); // 有人在线 → 撤销全房离线自动收场计时
