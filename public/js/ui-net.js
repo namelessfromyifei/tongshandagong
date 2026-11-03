@@ -1996,14 +1996,24 @@ $('btnHe').onclick=playerHe;
   };
   handEl.addEventListener('pointerup',endDrag);
   handEl.addEventListener('pointercancel',endDrag);
-  // 点击桌面任意空白处（非手牌/按钮/输入框）→ 收回已选牌
+  // 点击桌面任意空白处（非手牌/按钮/输入框）：单击延迟收回选牌；350ms 内双击→等同点「出牌」
+  let deskDblAt=0, deskClearTimer=null;
   const tableEl=document.querySelector('.table');
   if(tableEl) tableEl.addEventListener('click',(e)=>{
     const t=e.target;
     if(!t||!t.closest) return;
     if(t.closest('.hcard')||t.closest('button')||t.closest('input')) return;
-    if(clickSuppress) return; // 拖动选牌刚落合的合成 click：不触发「点桌面收回选牌」
-    if(selected.size){ selected.clear(); render(); }
+    if(clickSuppress) return; // 拖动选牌刚落合的合成 click：不触发
+    const now=Date.now();
+    const dbl = (now-deskDblAt>=0) && (now-deskDblAt<350);
+    deskDblAt=now;
+    if(dbl){
+      if(deskClearTimer){ clearTimeout(deskClearTimer); deskClearTimer=null; }
+      if(selected.size) playerPlay();
+    } else {
+      if(deskClearTimer) clearTimeout(deskClearTimer);
+      deskClearTimer=setTimeout(()=>{ if(selected.size){ selected.clear(); render(); } }, 350);
+    }
   });
 })();
 })();
