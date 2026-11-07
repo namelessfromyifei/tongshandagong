@@ -243,7 +243,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .handRow .seatS .nm{font-size:16px;white-space:nowrap;}
 .handRow .seatS .pts{margin:0;font-size:15px;white-space:nowrap;}
 .actions{margin-bottom:6px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-/* 工具按钮（生崽/退出全屏/AI出牌）：竖排在右上控制区，不随牌大小变化 */
+/* 工具按钮（催促/退出全屏/AI出牌）：竖排在右上控制区，不随牌大小变化 */
 .toolBtns{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-wrap:nowrap;flex:0 0 auto;}
 /* 窄屏回退：空间不足时按钮保持原宽度，手牌区域横向滚动 */
 .handRow.handRowCompact{grid-template-columns:auto minmax(0,1fr) auto;}
@@ -743,8 +743,8 @@ body.landscapeCompat .setGrid label{font-size:12px;}
   .tableTopRight .btn{font-size:10px;padding:2px 6px;}
 }
 body.landscapeCompat .tableTopRight .btn{font-size:12px;padding:4px 9px;}
-/* 生崽/AI出牌/全屏：右上方工具按钮，比房间控制按钮小一档，避免挤压。
-   min-width 统一按“4 个字 + 左右内边距”给，保证 生崽 和 退出全屏 一样宽。 */
+/* 催促/AI出牌/全屏：右上方工具按钮，比房间控制按钮小一档，避免挤压。
+   min-width 统一按“4 个字 + 左右内边距”给，保证 催促 和 退出全屏 一样宽。 */
 .tableTopRight .toolBtns .btn{font-size:12px;padding:4px 9px;min-width:calc(4em + 18px);text-align:center;}
 @media (max-width:560px){
   .tableTopRight .toolBtns .btn{font-size:11px;padding:3px 7px;min-width:calc(4em + 14px);}

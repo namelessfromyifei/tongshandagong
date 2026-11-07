@@ -180,6 +180,9 @@ function connect(){
     stageRender(snap); // ③：同帧连来的多帧只渲染最新一帧（rAF 合帧）
   });
 
+  // 催促（催快点）：房内其他人点了 → 交给 UI（语音开则播报，语音关则 toast）
+  socket.on('quick', (d)=>{ try{ if(UI && UI.onQuick) UI.onQuick(d); }catch(e){} });
+
   socket.on('log', (line)=>{ UI.addLog(line); });
 
   // 被提升为房主（原房主退出）：hostSeat 与座位解耦，座位不变，仅提示
@@ -637,6 +640,6 @@ function applySettings(s){
   if($('setAIAuto')) $('setAIAuto').checked=!!s.aiAuto; // 漏同步：换房主/重进后勾选应跟服务器一致
 }
 
-window.NET = { connect, act, nextRound, start, toggleAI, apiUrl, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
+window.NET = { connect, act, nextRound, start, toggleAI, apiUrl, quick(){ if(socket) socket.emit('quick'); }, toggleReady(){ if(socket) socket.emit('toggleReady', {}); }, kickSeat(seat){ if(socket) socket.emit('kickSeat',{seat}); }, get roomCode(){return roomCode;} };
 window.addEventListener('DOMContentLoaded', bindLobby);
 })();

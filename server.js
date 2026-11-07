@@ -1110,6 +1110,7 @@ const RATE_LIMITS = {
   toggleAI:     [5000, 4],
   kickSeat:     [10000, 20],
   toggleReady:  [3000, 4],
+  quick:        [5000, 6],  // 催促（催快点）广播
   nextRound:    [3000, 4],
   start:        [10000, 5],
   listRooms:    [5000, 8],
@@ -1487,6 +1488,14 @@ io.on('connection', (socket)=>{
   });
 
   // 玩家准备/取消准备（对局配置由房主在弹窗调整；全员准备后自动开局）
+  // 催促（催快点）：广播给房内其他玩家（点击者本地已自行播放，不回发给自己）
+  on('quick', ()=>{ if(!permit(socket,'quick')) return;
+    if(!room || mySeat<0) return;
+    const st=room.seats[mySeat];
+    if(!st || st.type!=='human' || st.socketId!==socket.id) return;
+    socket.to(room.code).emit('quick', {name: st.name, seat: mySeat});
+  });
+
   on('toggleReady', ()=>{ if(!permit(socket,'toggleReady')) return;
     // 未开局 / 本场已结束 / 本局已结束（局末等下一局）都可切换准备；对局进行中不允许
     if(!room || (room.G && !room.G.ended && !room.seriesOver)) return;

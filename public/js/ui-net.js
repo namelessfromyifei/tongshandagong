@@ -193,7 +193,6 @@ function enableConfirm(){
 /* ---------- 动作（发服务器） ---------- */
 function playerPlay(){
   if(!G||G.ended||G.turn!==mySeat) return;
-  if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   const cards=[...G.seats[mySeat].hand].filter((c,i)=>selected.has(i));
   if(cards.length===0){ flashMsg('请先选牌'); return; }
   // 本地校验所选牌是否符合出牌规则；非法则中央提示，不发送
@@ -204,16 +203,14 @@ function playerPlay(){
   pendingPlay=true;
   getNET().act({type:'play', seat:mySeat, cards});
 }
-function playerPass(force){
+function playerPass(){
   if(!G) return;
-  if(!force && voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   if(G.confirming){ getNET().act({type:'confirm', seat:mySeat, choice:'pass'}); return; }
   if(!G.lastPlay||G.turn!==mySeat) return;
   getNET().act({type:'pass', seat:mySeat});
 }
 function playerConfirmMingdu(){
   if(!G||!G.confirming) return;
-  if(voiceBusy){ flashMsg('语音播放中，请稍候…'); return; }
   getNET().act({type:'confirm', seat:mySeat, choice:'mingdu'});
 }
 function playerHard(){ playerConfirmMingdu(); }
@@ -229,8 +226,7 @@ function playerHint(){
   if(hintList.length===0){
     flashMsg('没有能压的牌');
     // 已无牌可压：直接点击"不要"（无出牌权时提示也保持当前）——仅当能过牌时自动不要
-    // force=true：过牌是被动动作，语音播放中也不阻塞（避免误报"语音播放中，请稍候"）
-    if(G.lastPlay && G.turn===mySeat) playerPass(true);
+    if(G.lastPlay && G.turn===mySeat) playerPass();
     return;
   }
   // 提示优先级：同类型牌优先（同类中最小恰能压的在前），没有同类才用炸里最小的
@@ -326,19 +322,8 @@ function cycleVoiceTone(){
   refreshVoices();
   speak(`第${voiceIdx+1}个音色`);
 }
-// 播报中禁用本地出牌按钮；播报结束（或语音不可用）后恢复
-function voiceGate(){
-  if(!G) return;
-  if(voiceBusy){
-    if(!G.ended && G.turn===mySeat){
-      $('btnPlay').disabled=true;
-      $('btnPass').disabled=true;
-      if(G.confirming) $('btnHard').disabled=true;
-    }
-  } else if(!G.ended && G.turn===mySeat){
-    if(G.confirming) enableConfirm(); else enablePlayer();
-  }
-}
+// 语音播报不再拦截本地出牌：播报与操作互不影响（新动作会打断旧语音）
+function voiceGate(){}
 function releaseVoice(){
   voiceSeq++;
   voiceBusy=false;
@@ -440,7 +425,12 @@ function speak(text, tokens){
   if(TTS_FALLBACK) speakTTS(text);
   else releaseVoice();
 }
-// 手动「生崽」（按钮原名为“快点”）：强制播放语音包里的 快点.m4a（不受语音开关/播报门控限制）
+// 收到别人的「催促」：语音开 → 播「快点」；语音关 → toast 提示（免得不知道在催）
+function onQuick(d){
+  if(voiceOn){ playQuick(); return; }
+  flashMsg(`${(d && d.name) || '有玩家'} 在催快点`);
+}
+// 手动「催促」（按钮原名为“快点”）：强制播放语音包里的 快点.m4a（不受语音开关/播报门控限制）
 function playQuick(){
   const text='快点', tokens=['快点'];
   if(voicePack && voicePack.files && tokens.every(t=>voicePack.files[t])){
@@ -798,7 +788,7 @@ function applyState(snap){
       }
     }
   }
-  voiceGate(); // 语音播报未结束时保持按钮禁用
+  voiceGate(); // 语音播报不再影响按钮状态（保留调用以便将来扩展）
   syncHandLayout(); // 按钮显隐/换容器后重新定位（明独/不明独居中）
 }
 
@@ -1582,6 +1572,7 @@ setInterval(()=>{ const c=$('lblClock'); if(c) c.textContent=new Date().toLocale
 
 /* ---------- 网络回调用（net.js 调用） ---------- */
 window.GameUI = {
+  onQuick,
   applyState,
   resetTable,
   setSelf(seat, names, types, aiOn, offArr, readyArr, avatars){
@@ -1840,7 +1831,7 @@ $('btnHint').onclick=playerHint;
 $('btnSort').onclick=toggleSort;
 $('btnSize').onclick=cycleCardSize;
 $('btnVoice').onclick=toggleVoice;
-if($('btnQuick')) $('btnQuick').onclick=playQuick;
+if($('btnQuick')) $('btnQuick').onclick=()=>{ playQuick(); const n=getNET(); if(n && n.quick) n.quick(); };
 if($('btnVoiceTone')) $('btnVoiceTone').onclick=cycleVoiceTone;
 $('btnHard').onclick=playerHard;
 
