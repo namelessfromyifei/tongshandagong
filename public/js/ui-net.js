@@ -46,7 +46,18 @@ let aiAutoKey = '';        // 已经代打过的回合标识，防止同一回�
 let aiAutoTimer = null;
 let aiFill = true;
 let selected = new Set();
-let hintCursor=0, hintList=[];
+let hintCursor=-1, hintList=[]; // -1 = 还没提示过；第一次点提示取排序第 1 个（最小可压牌）
+let hintStateKey=''; // 提示轮换依赖的关键状态签名（回合/局/上家牌/我的手牌等）
+// 下一次点「提示」从头开始（取最优候选）
+function resetHintCycle(){ hintCursor=-1; }
+// 只有关键状态变化才重置提示轮换；无关广播不打断连续点提示
+function hintStateSig(){
+  if(!G || mySeat<0) return 'none';
+  const me=G.seats[mySeat]||{};
+  const lp=G.lastPlay ? String(G.lastPlay.type||'')+':'+((G.lastPlay.cards||[]).map(c=>c.id).join(',')) : '';
+  const hand=(me.hand||[]).map(c=>c.id).join(',');
+  return [G.seq||G.roundNo||0, G.ended?1:0, G.confirming?1:0, G.turn, lp, hand].join('|');
+}
 let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=牌型）
 let lastRoundNo=-1; // 用于判断是否换了新局（换局才清空预选）
 let lastRoundWasLast=false; // 当前结算的这局是否为一场的最后一局
@@ -192,6 +203,7 @@ function enableConfirm(){
 
 /* ---------- 动作（发服务器） ---------- */
 function playerPlay(){
+  resetHintCycle(); // 点了出牌就算操作（失败也重置）
   if(!G||G.ended||G.turn!==mySeat) return;
   const cards=[...G.seats[mySeat].hand].filter((c,i)=>selected.has(i));
   if(cards.length===0){ flashMsg('请先选牌'); return; }
@@ -204,17 +216,20 @@ function playerPlay(){
   getNET().act({type:'play', seat:mySeat, cards});
 }
 function playerPass(){
+  resetHintCycle();
   if(!G) return;
   if(G.confirming){ getNET().act({type:'confirm', seat:mySeat, choice:'pass'}); return; }
   if(!G.lastPlay||G.turn!==mySeat) return;
   getNET().act({type:'pass', seat:mySeat});
 }
 function playerConfirmMingdu(){
+  resetHintCycle();
   if(!G||!G.confirming) return;
   getNET().act({type:'confirm', seat:mySeat, choice:'mingdu'});
 }
 function playerHard(){ playerConfirmMingdu(); }
 function playerHe(){
+  resetHintCycle();
   if(!G||!G.confirming) return;
   getNET().act({type:'restart', seat:mySeat});
 }
@@ -672,7 +687,9 @@ function applyState(snap){
     lv.style.display = inPlay ? 'none' : '';
     esB.style.display = inPlay ? 'inline-block' : 'none';
   }
-  hintCursor=0; hintList=[];
+  hintList=[];
+  const _hSig=hintStateSig();
+  if(_hSig!==hintStateKey){ hintStateKey=_hSig; hintCursor=-1; } // 关键状态变了才重置提示轮换
   if(!G){
     // 未开局：更新房间信息 + 座位名，显示等待
     if($('lblRound')) $('lblRound').textContent='等待开场';
@@ -1968,6 +1985,7 @@ $('btnHe').onclick=playerHe;
   const cardAt=(x,y)=>{ const el=document.elementFromPoint(x,y); return (el&&el.closest)?el.closest('.hcard'):null; };
   // 切换一张牌的选中状态（滑动经过时，选中 ↔ 取消）
   const toggleSel=(idx, el)=>{
+    resetHintCycle(); // 手动选牌＝其他操作：下次提示从头开始
     if(selected.has(idx)){ selected.delete(idx); el.classList.remove('sel'); }
     else { selected.add(idx); el.classList.add('sel'); }
     lastHandSig = handViewSig(); // 就地改选后同步签名，防差量跳过后续清选重建
@@ -2020,6 +2038,7 @@ $('btnHe').onclick=playerHe;
     if(!t||!t.closest) return;
     if(t.closest('.hcard')||t.closest('button')||t.closest('input')) return;
     if(clickSuppress) return; // 拖动选牌刚落合的合成 click：不触发
+    resetHintCycle(); // 点桌面也算其他操作
     const now=Date.now();
     const mine=G && G.seats && G.seats[mySeat];
     // 第二击（350ms 内）且上一击确实收回过牌 → 恢复那批牌并出牌
