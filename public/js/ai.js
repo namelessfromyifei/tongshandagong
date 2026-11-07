@@ -173,12 +173,32 @@
     if(play.type==='kingBomb'||play.type==='fiftyK'||play.type==='rollcage') return false;
     return jokers - 4 < wildsUsed; // 王不充裕（不足"王炸+富余"）时动用就算浪费
   }
-  // 普通跟牌挑选：王耗少的优先，其次出最小能压的
-  function pickBest(list, wildsFirst){
+  // 结构破坏程度：出这手牌后，手牌里有多少「已成组的点数」被拆坏。
+  // 整组用光不算破坏；还剩牌就算拆：对子+2、三条+3、炸弹+6（王是癞子，不参与点数分组）。
+  function breakPenalty(cards, hand){
+    const cnt={}, used={};
+    for(const c of hand){ if(!c.j) cnt[c.r]=(cnt[c.r]||0)+1; }
+    for(const c of cards){ if(!c.j) used[c.r]=(used[c.r]||0)+1; }
+    let p=0;
+    for(const r in used){
+      const before=cnt[r]||0, after=before-used[r];
+      if(after<=0 || before<2) continue;
+      if(before>=4) p+=6;
+      else if(before===3) p+=3;
+      else p+=2;
+    }
+    return p;
+  }
+  // 普通候选挑选：王耗少优先；keepStruct 时优先不拆对/三条/炸弹；最后比强度
+  function pickBest(list, hand, keepStruct){
     if(!list.length) return null;
     list.sort((a,b)=>{
       const wa=wildsOf(a), wb=wildsOf(b);
       if(wa!==wb) return wa-wb;
+      if(keepStruct && hand){
+        const pa=breakPenalty(a.cards, hand), pb=breakPenalty(b.cards, hand);
+        if(pa!==pb) return pa-pb;
+      }
       return playStrength(a.play)-playStrength(b.play);
     });
     return list[0];
@@ -214,7 +234,7 @@
     //    这里简化：队友快跑完时优先出非王的最小普通牌（甩低牌也顺手）
     if(!pOut && partner>=0 && G.seats[partner].hand.length<=3 && hand.length>4){
       const low=cands.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
-      const picked=pickBest(low);
+      const picked=pickBest(low, hand, true);
       if(picked) return {cards:picked.cards, play:picked.play};
     }
 
@@ -241,7 +261,7 @@
 
     // 4) 普通单/对/三条：最小的真实小牌（不用王）
     const norm=cands.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
-    const n0=pickBest(norm);
+    const n0=pickBest(norm, hand, true);
     if(n0) return {cards:n0.cards, play:n0.play};
 
     // 5) 只剩炸：小炸先动（无番/五十K），王炸/滚笼留着
@@ -252,7 +272,7 @@
     }
 
     // 6) 兜底：最小强度的出法（罕见）
-    const it=cands.slice().sort((a,b)=>playStrength(a.play)-playStrength(b.play))[0];
+    const it=pickBest(cands, hand, true);
     return {cards:it.cards, play:it.play};
   }
 
@@ -294,9 +314,10 @@
       if(s0) return {cards:s0.cards, play:s0.play};
     }
 
-    // E) 普通跟：最小能压的普通牌，优先不用王
-    const norm=beats.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers));
-    const n0=pickBest(norm);
+    // E) 普通跟：最小能压的普通牌，优先不用王；不拆炸弹（拆炸宁可过）
+    const norm=beats.filter(it=>!TS.isBomb(it.play)&&!wildWaste(it.play,wildsOf(it),jokers)
+      && breakPenalty(it.cards,hand)<6);
+    const n0=pickBest(norm, hand, true);
     if(n0) return {cards:n0.cards, play:n0.play};
 
     // F) 对方上炸：必须回炸，用最小能压的炸（优先真实炸）
@@ -352,7 +373,7 @@
     return results;
   }
 
-  const TSAI={ genCandidates, playStrength, aiChoose, runSim };
+  const TSAI={ genCandidates, playStrength, breakPenalty, aiChoose, runSim };
   if(typeof module!=='undefined'&&module.exports) module.exports=TSAI;
   if(global) global.TSAI=TSAI;
 })(typeof window!=='undefined'?window:globalThis);

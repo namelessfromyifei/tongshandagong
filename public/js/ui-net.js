@@ -244,11 +244,15 @@ function playerHint(){
     if(G.lastPlay && G.turn===mySeat) playerPass();
     return;
   }
-  // 提示优先级：同类型牌优先（同类中最小恰能压的在前），没有同类才用炸里最小的
-  // kindOf = 牌型大类：普通牌按 type；炸按 tier（五十K/无番炸/番炸类），确保"同类"判断准确
+  // 提示优先级：先不拆对/三条/炸弹 → 同类型牌优先 → 同类中最小恰能压的在前
   const kindOf = p => TS.isBomb(p) ? ('b'+TS.bombTier(p)) : p.type;
   const lb=G.lastPlay;
+  const hand=G.seats[mySeat].hand;
+  const pen=it => (TSAI && TSAI.breakPenalty) ? TSAI.breakPenalty(it.cards, hand) : 0;
   hintList.sort((a,b)=>{
+    // 宁可提示整手炸弹，也不提示拆炸凑单张；对子/三条同理
+    const pA=pen(a), pB=pen(b);
+    if(pA!==pB) return pA-pB;
     const pa=a.play, pb=b.play;
     const sameA = lb ? kindOf(pa)===kindOf(lb) : true;
     const sameB = lb ? kindOf(pb)===kindOf(lb) : true;
