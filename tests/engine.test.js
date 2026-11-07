@@ -286,6 +286,23 @@ function setOut(G,seats){ for(const i of seats){ G.seats[i].out=true; } }
   T('硬牌滚笼归属 W=4+2=6', Math.abs(s.W-6)<1e-9);
   T('硬牌者胜+Δ=6：收到 6+3*6=24番', Math.abs(s.perSeat[0]-24)<1e-9);
 }
+{
+  // 明独者0败（1号先跑→三家胜）：1号（赢家）打的滚笼已跑完 → 跑了归本队（赢家）→ W
+  const G=mkGame(16); G.mode='hard'; G.hardSeat=0; setOut(G,[1]);
+  G.seats[1].rollcages.push({fan:8});
+  const s=settleRound(G);
+  T('硬牌败·赢家跑的滚笼归 W', Math.abs(s.W-8)<1e-9 && Math.abs(s.L)<1e-9, {W:s.W,L:s.L});
+  T('硬牌败+Δ=8：硬牌者输 30 番、三家各收 10 番',
+    Math.abs(s.perSeat[0]+30)<1e-9 && Math.abs(s.perSeat[1]-10)<1e-9
+    && Math.abs(s.perSeat[2]-10)<1e-9 && Math.abs(s.perSeat[3]-10)<1e-9, s.perSeat);
+}
+{
+  // 明独者0败（1号先跑）：2号（赢家队）打的滚笼没跑 → 没跑归对方队（明独者=输队）→ L
+  const G=mkGame(17); G.mode='hard'; G.hardSeat=0; setOut(G,[1]);
+  G.seats[2].rollcages.push({fan:4});
+  const s=settleRound(G);
+  T('硬牌败·未跑者的滚笼归对方队(输队) L', Math.abs(s.W)<1e-9 && Math.abs(s.L-4)<1e-9, {W:s.W,L:s.L});
+}
 
 /* ===== 接风 / 顺风（跑完者无人接牌） ===== */function mkPassScene(revealed){
   const G=mkGame(777);

@@ -520,16 +520,15 @@ function handHasBomb(hand){
     const winSet=new Set(winnerSeats);
     const effCaught=attributedCaught(G); // 归属后的抓分（尾游的分归对面队）
 
-    // 滚笼归属：归赢队 W / 归输队 L
+    // 滚笼归属：先把滚笼归到「主人所在队」——跑了→本队，没跑→对方队；
+    // 再看该队是不是本局赢家（winSet 恰好是一整队）：是→W，否→L。
+    // 硬牌局同样适用：赢家可能是明独者，也可能是其余三家，不能按「是否明独者」写死。
     let W=0, L=0;
     for(let i=0;i<4;i++){
       const s=G.seats[i];
       for(const r of s.rollcages){
-        // 跑了→归自己队（硬牌者独队）；没跑→归对方队
         const own = s.out;
-        const toWin = G.mode==='hard'
-          ? (own ? (i===G.hardSeat) : (i!==G.hardSeat))
-          : (own ? winSet.has(i) : !winSet.has(i));
+        const toWin = own ? winSet.has(i) : !winSet.has(i);
         if(toWin) W+=r.fan; else L+=r.fan;
       }
     }

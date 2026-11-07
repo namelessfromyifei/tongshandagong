@@ -58,7 +58,7 @@ function hintStateSig(){
   const hand=(me.hand||[]).map(c=>c.id).join(',');
   return [G.seq||G.roundNo||0, G.ended?1:0, G.confirming?1:0, G.turn, lp, hand].join('|');
 }
-let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=牌型）
+let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=炸前置·不含五十K，3=牌型）
 let lastRoundNo=-1; // 用于判断是否换了新局（换局才清空预选）
 let lastRoundWasLast=false; // 当前结算的这局是否为一场的最后一局
 // 结算弹窗延迟展示：局末先构建好计分板，3 秒后再弹出
@@ -83,73 +83,117 @@ function snapSeatOffline(i){ return !!seatOffline[i]; }
 /* ---------- 排序（与单机版一致） ---------- */
 const R5=2, R10=7, RK=10;
 function handKey(c){ return c.j ? -1 : (TS.RANKS.length-1 - c.r); }
+// 五十K 分组：优先「同花」（同花色的 5/10/K 各一张），同花组排在前面；
+// 返回 cardId -> 小组序号（越小越靠前）。无法成组的 5/10/K 不标记。
+function fiftyKGroups(hand){
+  const isKey=c=>!c.j && (c.r===R5||c.r===R10||c.r===RK);
+  const bySuit=new Map(); // 花色 -> {5:[],10:[],K:[]}
+  for(const c of hand){
+    if(!isKey(c)) continue;
+    let m=bySuit.get(c.s); if(!m){ m={[R5]:[],[R10]:[],[RK]:[]}; bySuit.set(c.s,m); }
+    m[c.r].push(c);
+  }
+  const gid=new Map(); let g=0;
+  // 先配同花组
+  for(const m of bySuit.values()){
+    while(m[R5].length && m[R10].length && m[RK].length){
+      gid.set(m[R5].shift().id,g); gid.set(m[R10].shift().id,g); gid.set(m[RK].shift().id,g); g++;
+    }
+  }
+  // 剩余的再配杂五十K
+  const rem={[R5]:[],[R10]:[],[RK]:[]};
+  for(const c of hand) if(isKey(c) && !gid.has(c.id)) rem[c.r].push(c);
+  while(rem[R5].length && rem[R10].length && rem[RK].length){
+    gid.set(rem[R5].shift().id,g); gid.set(rem[R10].shift().id,g); gid.set(rem[RK].shift().id,g); g++;
+  }
+  return gid;
+}
 function buildKindMap(hand){
   const cnt=new Array(TS.RANKS.length).fill(0);
   for(const c of hand){ if(!c.j) cnt[c.r]++; }
-  const groups = Math.min(cnt[R5], cnt[R10], cnt[RK]);
+  const fiftyGid=fiftyKGroups(hand);
+  // 被五十K占用的各点数张数（剩余张数才是炸的依据）
   const used={[R5]:0,[R10]:0,[RK]:0};
+  for(const c of hand) if(fiftyGid.has(c.id)) used[c.r]++;
   const kind=new Map();
   const bombSize=new Map(); // 归入炸弹时的实际张数（扣除已作五十K的）
   for(const c of hand){
     if(c.j){ kind.set(c.id, 2); continue; }
-    if((c.r===R5||c.r===R10||c.r===RK) && used[c.r]<groups){ used[c.r]++; kind.set(c.id, 0); continue; }
+    if(fiftyGid.has(c.id)){ kind.set(c.id, 0); continue; }
     // 炸判定：用剩余张数（总张数 − 已被五十K 占用），而非总计数
     const remain=cnt[c.r]-(used[c.r]||0);
     if(remain>=4){ kind.set(c.id, 1); bombSize.set(c.id, remain); continue; }
     kind.set(c.id, 3);
   }
-  return {cnt, kind, bombSize};
+  return {cnt, kind, bombSize, fiftyGid};
 }
-// 按牌型大类给每张牌分组（供"牌型"排序 sortMode=2）：0炸 1王 2五十K 3三个 4对子 5单个
+// 按牌型大类给每张牌分组（供"牌型"排序 sortMode=3）：0炸 1王 2五十K 3三个 4对子 5单个
 function buildGroupMap(hand){
   const cnt=new Array(TS.RANKS.length).fill(0);
   for(const c of hand){ if(!c.j) cnt[c.r]++; }
-  const groups=Math.min(cnt[R5],cnt[R10],cnt[RK]); // 最多能配几组五十K
-  // 前 groups 张 5/10/K 打上"五十K"标记（三类同步各取其一）
-  const isFifty=new Set();
-  const gUsed={[R5]:0,[R10]:0,[RK]:0};
-  for(const c of hand){
-    if(!c.j && (c.r===R5||c.r===R10||c.r===RK) && gUsed[c.r]<groups){
-      isFifty.add(c.id); gUsed[c.r]++;
-    }
-  }
+  const fiftyGid=fiftyKGroups(hand);
+  const used={[R5]:0,[R10]:0,[RK]:0};
+  for(const c of hand) if(fiftyGid.has(c.id)) used[c.r]++;
   const g=new Map();
   for(const c of hand){
     if(c.j){ g.set(c.id,1); continue; }                    // 王：紧跟炸，位于三张牌型最左侧
-    if(isFifty.has(c.id)){ g.set(c.id,2); continue; }      // 五十K 组
-    const remain=cnt[c.r]-(gUsed[c.r]||0);                 // 此点其余分组剩余张数
+    if(fiftyGid.has(c.id)){ g.set(c.id,2); continue; }     // 五十K 组（同花在前）
+    const remain=cnt[c.r]-(used[c.r]||0);                  // 此点其余分组剩余张数
     if(remain>=4){ g.set(c.id,0); continue; }              // 炸
     g.set(c.id, remain>=3?3:(remain>=2?4:5));              // 三个/对子/单个
   }
-  return g;
+  return {g, fiftyGid};
 }
 function sortHandCards(){
   const hand = G ? G.seats[mySeat].hand : [];
-  const {kind, bombSize}=buildKindMap(hand);
+  const {kind, bombSize, fiftyGid}=buildKindMap(hand);
   const idx=hand.map((c,i)=>i);
   if(sortMode===0){
     idx.sort((a,b)=>{ const ka=handKey(hand[a]), kb=handKey(hand[b]); return ka-kb || (hand[a].id<hand[b].id?-1:1); });
     return idx;
   }
-  if(sortMode===2){
+  if(sortMode===3){
     // 按牌型大类归拢：炸 → 王 → 五十K → 三个 → 对子 → 单个；同类内从大到小
-    const groupMap=buildGroupMap(hand);
+    const {g, fiftyGid:fg}=buildGroupMap(hand);
+    const fgv=id=>{ const v=fg.get(id); return v==null?1e9:v; };
     idx.sort((a,b)=>{
       const ca=hand[a], cb=hand[b];
-      const ga=groupMap.get(ca.id), gb=groupMap.get(cb.id);
+      const ga=g.get(ca.id), gb=g.get(cb.id);
       if(ga!==gb) return ga-gb;
+      if(ga===2){ const fa=fgv(ca.id), fb=fgv(cb.id); if(fa!==fb) return fa-fb; } // 同花五十K在前
       if(ga===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
       return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
     });
     return idx;
   }
+  if(sortMode===2){
+    // 「炸弹前置（不含五十K）」：真炸 → 同花五十K → 杂五十K → 王 → 三个 → 对子 → 单个
+    const {g, fiftyGid:fg}=buildGroupMap(hand);
+    const pri={0:0, 2:1, 1:2, 3:3, 4:4, 5:5}; // 炸弹 → 五十K → 王 → 三个/对子/单个
+    const fgv=id=>{ const v=fg.get(id); return v==null?1e9:v; };
+    idx.sort((a,b)=>{
+      const ca=hand[a], cb=hand[b];
+      const ga=g.get(ca.id), gb=g.get(cb.id);
+      const pa=pri[ga], pb=pri[gb];
+      if(pa!==pb) return pa-pb;
+      if(ga===2){ const fa=fgv(ca.id), fb=fgv(cb.id); if(fa!==fb) return fa-fb; } // 同花五十K在前
+      if(ga===1) return ca.id<cb.id?-1:1; // 王
+      return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+    });
+    return idx;
+  }
+  // sortMode===1：五十K → 炸 → 王 → 其余；五十K 内同花在前
   idx.sort((a,b)=>{
     const ca=hand[a], cb=hand[b];
     const ka=kind.get(ca.id), kb=kind.get(cb.id);
     if(ka!==kb) return ka-kb;
+    if(ka===0){
+      const fa=(fiftyGid.get(ca.id)??1e9), fb=(fiftyGid.get(cb.id)??1e9);
+      if(fa!==fb) return fa-fb; // 同花五十K在前
+      return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+    }
     if(ka===2) return ca.id<cb.id?-1:1;
-    if(ka===0||ka===1){
-      if(ka===0) return handKey(ca)-handKey(cb);
+    if(ka===1){
       const sa=bombSize.get(ca.id), sb=bombSize.get(cb.id);
       if(sa!==sb) return sb-sa;
       return handKey(ca)-handKey(cb);
@@ -238,6 +282,11 @@ function playerHint(){
   hintList=TSAI ? [] : [];
   // 用本地引擎生成候选（仅供提示，不执行）
   if(window.TSAI) hintList=TSAI.genCandidates(G.seats[mySeat].hand, G.lastPlay||null, G.cfg);
+  // 非炸提示不用王当赖子：存在「不用王」的候选时，剔除用王凑成的非炸候选（炸弹类保留，软炸本来就要王）
+  if(hintList.length){
+    const noWild=hintList.filter(it=>it.cards.every(c=>!c.j) || (TS.isBomb && TS.isBomb(it.play)));
+    if(noWild.length) hintList=noWild;
+  }
   if(hintList.length===0){
     flashMsg('没有能压的牌');
     // 已无牌可压：直接点击"不要"（无出牌权时提示也保持当前）——仅当能过牌时自动不要
@@ -267,11 +316,13 @@ function playerHint(){
   render();
   flashMsg(describeShort(cand.play));
 }
-function toggleSort(){ sortMode=(sortMode+1)%3; render(); }
+const SORT_NAMES=['点数','炸前置','炸前置·不含五十K','牌型'];
+function toggleSort(){ sortMode=(sortMode+1)%4; render(); flashMsg('排序：'+SORT_NAMES[sortMode]); }
 
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
 // 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
 const CARD_SCALES=[1.24,1.4,1.6,1.8];
+const CARD_SIZE_NAMES=['标准','大','特大','巨无霸'];
 let cardSizeIdx=2; // 默认第三档「特大」
 function applyCardSize(){
   document.documentElement.style.setProperty('--card-zoom', String(CARD_SCALES[cardSizeIdx]));
@@ -291,6 +342,7 @@ function cycleCardSize(){
   cardSizeIdx=(cardSizeIdx+1)%CARD_SCALES.length;
   try{ localStorage.setItem('tsCardSize', String(cardSizeIdx)); }catch(e){}
   applyCardSize();
+  flashMsg('牌大小：'+CARD_SIZE_NAMES[cardSizeIdx]);
 }
 
 /* ---------- 语音提示（每一手出牌朗读） ---------- */
