@@ -167,17 +167,22 @@ function sortHandCards(){
     return idx;
   }
   if(sortMode===2){
-    // 「炸弹前置（不含五十K）」：真炸 → 同花五十K → 杂五十K → 王 → 三个 → 对子 → 单个
-    const {g, fiftyGid:fg}=buildGroupMap(hand);
-    const pri={0:0, 2:1, 1:2, 3:3, 4:4, 5:5}; // 炸弹 → 五十K → 王 → 三个/对子/单个
-    const fgv=id=>{ const v=fg.get(id); return v==null?1e9:v; };
+    // 「炸前置（不含五十K）」：与炸前置同规则，只是五十K 不单独成组——
+    // 真炸（按点数张数判定，不扣除五十K）→ 王 → 其余按点数；5/10/K 混在其余牌里
+    const cnt=new Array(TS.RANKS.length).fill(0);
+    for(const c of hand){ if(!c.j) cnt[c.r]++; }
+    const kind2=new Map();
+    for(const c of hand){
+      if(c.j){ kind2.set(c.id,1); continue; }        // 王
+      if(cnt[c.r]>=4){ kind2.set(c.id,0); continue; } // 炸
+      kind2.set(c.id,2);                              // 其余（含 5/10/K）
+    }
     idx.sort((a,b)=>{
       const ca=hand[a], cb=hand[b];
-      const ga=g.get(ca.id), gb=g.get(cb.id);
-      const pa=pri[ga], pb=pri[gb];
-      if(pa!==pb) return pa-pb;
-      if(ga===2){ const fa=fgv(ca.id), fb=fgv(cb.id); if(fa!==fb) return fa-fb; } // 同花五十K在前
-      if(ga===1) return ca.id<cb.id?-1:1; // 王
+      const ka=kind2.get(ca.id), kb=kind2.get(cb.id);
+      if(ka!==kb) return ka-kb;
+      if(ka===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
+      if(ka===0 && cnt[ca.r]!==cnt[cb.r]) return cnt[cb.r]-cnt[ca.r]; // 炸：张数多的在前
       return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
     });
     return idx;
