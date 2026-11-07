@@ -58,7 +58,7 @@ function hintStateSig(){
   const hand=(me.hand||[]).map(c=>c.id).join(',');
   return [G.seq||G.roundNo||0, G.ended?1:0, G.confirming?1:0, G.turn, lp, hand].join('|');
 }
-let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=炸前置·不含五十K，3=牌型，4=牌型·不含五十K）
+let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=炸前置·五十K全前置，3=炸前置·不含五十K，4=牌型，5=牌型·五十K全前置，6=牌型·不含五十K）
 let lastRoundNo=-1; // 用于判断是否换了新局（换局才清空预选）
 let lastRoundWasLast=false; // 当前结算的这局是否为一场的最后一局
 // 结算弹窗延迟展示：局末先构建好计分板，3 秒后再弹出
@@ -108,6 +108,22 @@ function fiftyKGroups(hand){
   }
   return gid;
 }
+// 同花五十K：同一花色的 5/10/K 各一张；返回 cardId -> 组序号（同花组按花色顺序）
+function sameSuitFiftyIds(hand){
+  const bySuit=new Map();
+  for(const c of hand){
+    if(c.j || !(c.r===R5||c.r===R10||c.r===RK)) continue;
+    let m=bySuit.get(c.s); if(!m){ m={[R5]:[],[R10]:[],[RK]:[]}; bySuit.set(c.s,m); }
+    m[c.r].push(c);
+  }
+  const gid=new Map(); let g=0;
+  for(const m of bySuit.values()){
+    while(m[R5].length && m[R10].length && m[RK].length){
+      gid.set(m[R5].shift().id,g); gid.set(m[R10].shift().id,g); gid.set(m[RK].shift().id,g); g++;
+    }
+  }
+  return gid;
+}
 function buildKindMap(hand){
   const cnt=new Array(TS.RANKS.length).fill(0);
   for(const c of hand){ if(!c.j) cnt[c.r]++; }
@@ -152,7 +168,7 @@ function sortHandCards(){
     idx.sort((a,b)=>{ const ka=handKey(hand[a]), kb=handKey(hand[b]); return ka-kb || (hand[a].id<hand[b].id?-1:1); });
     return idx;
   }
-  if(sortMode===3){
+  if(sortMode===4){
     // 按牌型大类归拢：炸 → 五十K → 王 → 三个 → 对子 → 单个；同类内从大到小
     const {g, fiftyGid:fg}=buildGroupMap(hand);
     const fgv=id=>{ const v=fg.get(id); return v==null?1e9:v; };
@@ -168,7 +184,7 @@ function sortHandCards(){
     });
     return idx;
   }
-  if(sortMode===4){
+  if(sortMode===6){
     // 牌型（不含五十K）：炸 → 王 → 三个 → 对子 → 单个；5/10/K 按普通牌型分组，不识别五十K
     const cnt=new Array(TS.RANKS.length).fill(0);
     for(const c of hand){ if(!c.j) cnt[c.r]++; }
@@ -189,7 +205,7 @@ function sortHandCards(){
     });
     return idx;
   }
-  if(sortMode===2){
+  if(sortMode===3){
     // 「炸前置（不含五十K）」：本模式完全不识别五十K——真炸（按实际张数）→ 王 → 其余按点数（5/10/K 混在其余中）
     const cnt=new Array(TS.RANKS.length).fill(0);
     for(const c of hand){ if(!c.j) cnt[c.r]++; }
@@ -205,6 +221,64 @@ function sortHandCards(){
       if(ka!==kb) return ka-kb;
       if(ka===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
       if(ka===0 && cnt[ca.r]!==cnt[cb.r]) return cnt[cb.r]-cnt[ca.r]; // 炸：张数多的在前
+      return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+    });
+    return idx;
+  }
+  if(sortMode===2){
+    // 炸前置·五十K全前置：真炸 → 同花五十K → 其余全部 5/10/K（按点数）→ 王 → 其余按点数
+    const cnt=new Array(TS.RANKS.length).fill(0);
+    for(const c of hand){ if(!c.j) cnt[c.r]++; }
+    const ss=sameSuitFiftyIds(hand);
+    const isFront=c=>!c.j && (c.r===R5||c.r===R10||c.r===RK);
+    const grp=c=>{
+      if(!c.j && cnt[c.r]>=4) return 0; // 真炸
+      if(isFront(c)) return 1;          // 全部 5/10/K
+      if(c.j) return 2;                 // 王
+      return 3;                         // 其余
+    };
+    idx.sort((a,b)=>{
+      const ca=hand[a], cb=hand[b];
+      const ga=grp(ca), gb=grp(cb);
+      if(ga!==gb) return ga-gb;
+      if(ga===0 && cnt[ca.r]!==cnt[cb.r]) return cnt[cb.r]-cnt[ca.r]; // 炸：张数多的在前
+      if(ga===1){
+        const fa=ss.get(ca.id), fb=ss.get(cb.id);
+        const inA=fa!=null, inB=fb!=null;
+        if(inA!==inB) return inA?-1:1;   // 同花五十K 优先
+        if(inA && fa!==fb) return fa-fb; // 同花组按组序
+        return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1); // 其余 5/10/K 按点数
+      }
+      if(ga===2) return ca.id<cb.id?-1:1; // 王
+      return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+    });
+    return idx;
+  }
+  if(sortMode===5){
+    // 牌型·五十K全前置：真炸 → 同花五十K → 其余全部 5/10/K（按点数）→ 王 → 三个 → 对子 → 单个
+    const cnt=new Array(TS.RANKS.length).fill(0);
+    for(const c of hand){ if(!c.j) cnt[c.r]++; }
+    const ss=sameSuitFiftyIds(hand);
+    const isFront=c=>!c.j && (c.r===R5||c.r===R10||c.r===RK);
+    const grp=c=>{
+      if(!c.j && cnt[c.r]>=4) return 0; // 真炸
+      if(isFront(c)) return 1;          // 全部 5/10/K
+      if(c.j) return 2;                 // 王
+      return cnt[c.r]>=3?3:(cnt[c.r]>=2?4:5); // 三个/对子/单个
+    };
+    idx.sort((a,b)=>{
+      const ca=hand[a], cb=hand[b];
+      const ga=grp(ca), gb=grp(cb);
+      if(ga!==gb) return ga-gb;
+      if(ga===0 && cnt[ca.r]!==cnt[cb.r]) return cnt[cb.r]-cnt[ca.r];
+      if(ga===1){
+        const fa=ss.get(ca.id), fb=ss.get(cb.id);
+        const inA=fa!=null, inB=fb!=null;
+        if(inA!==inB) return inA?-1:1;
+        if(inA && fa!==fb) return fa-fb;
+        return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+      }
+      if(ga===2) return ca.id<cb.id?-1:1;
       return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
     });
     return idx;
@@ -345,8 +419,8 @@ function playerHint(){
   render();
   flashMsg(describeShort(cand.play));
 }
-const SORT_NAMES=['点数','炸前置','炸前置·不含五十K','牌型','牌型·不含五十K'];
-function toggleSort(){ sortMode=(sortMode+1)%5; render(); flashMsg('排序：'+SORT_NAMES[sortMode]); }
+const SORT_NAMES=['点数','炸前置','炸前置·五十K全前置','炸前置·不含五十K','牌型','牌型·五十K全前置','牌型·不含五十K'];
+function toggleSort(){ sortMode=(sortMode+1)%7; render(); flashMsg('排序：'+SORT_NAMES[sortMode]); }
 
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
 // 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
