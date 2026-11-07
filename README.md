@@ -340,6 +340,7 @@ node tools/release-apk.js --note "更新说明，支持多行"
 | `node tests/offline-end-check.js` | 场中掉线兜底（1/2/3 人掉线表决门槛 + 全房离线下自动收场）e2e | 否（自动起服务） |
 | `node tests/host-handover-check.js` | 房主掉线移交 / 掉线提示 / 新房主踢人 e2e | 否（自动起服务） |
 | `node tests/no-online-clear-check.js` | 房间长期无在线真人 → 清退所有玩家 e2e | 否（自动起服务） |
+| `node tests/ready-offline-check.js` | 开局前有人掉线 → 不清开局、重连后恢复 e2e | 否（自动起服务） |
 | `node tests/host-check.js` | 房主机制（hostSeat/删房）e2e | 否（自动起服务） |
 | `node tests/exit-check.js` | 局末退出口径 / join 只进空位（不顶掉线座）/ start 收权 e2e | 否（自动起服务） |
 | `node tests/net-sim.js` | 1 真人 + 3 AI 自动打完整局（联调脚本，需先起 8080 服务） | 是 |

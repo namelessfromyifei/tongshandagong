@@ -1001,7 +1001,8 @@ function checkAllReady(room){
     const s=room.seats[i];
     const effective = (s.type==='human') || (room.aiFill && s.type==='ai');
     if(effective){
-      const ready = (s.type==='ai') || !!room.ready[i];
+      // 掉线真人一律视为「未准备」：避免全员 ready 但有人掉线时直接开局（开局后其回合会卡死）
+      const ready = (s.type==='ai') || (!!room.ready[i] && !s.offline);
       if(!ready){ broadcast(room); return false; }
     }
   }
@@ -1273,7 +1274,12 @@ io.on('connection', (socket)=>{
     }
     // 点【开始对局】：房主自己也准备，已就绪的真人 + AI 补位即可立即开局
     const wantStart = (data.start===true);
-    if(wantStart) room.ready[room.hostSeat]=true;  // 房主自己标记准备（hostSeat 与座位 0 解耦）
+    if(wantStart){
+      // 有人掉线时不允许开局（其回合无人操作会卡死），提示房主等待重连/踢出
+      const off=room.seats.find(s=>s.type==='human' && s.offline);
+      if(off){ broadcast(room); socket.emit('toast', `${off.name} 已掉线，等待重连或踢出后才能开始`); return; }
+      room.ready[room.hostSeat]=true;  // 房主自己标记准备（hostSeat 与座位 0 解耦）
+    }
     broadcast(room);
     if(wantStart){
       const started=checkAllReady(room);
@@ -1517,6 +1523,8 @@ io.on('connection', (socket)=>{
       socket.emit('toast', `AI补位未开，还差 ${4-room.humanCount} 位真人才能开始；或先开启AI补位`);
       return;
     }
+    const off=room.seats.find(s=>s.type==='human' && s.offline);
+    if(off){ socket.emit('toast', `${off.name} 已掉线，等待重连或踢出后才能开始`); return; }
     const started=checkAllReady(room); // 与 setSettings wantStart 同口径：全员就绪才开
     socket.emit('toast', started? '开始对局！' : '已准备，等待其他玩家就绪后开局');
   });
@@ -1763,6 +1771,7 @@ io.on('connection', (socket)=>{
     if(!seat || seat.socketId !== socket.id) return;
     seat.offline=true;
     seat.offlineAt=Date.now();
+    room.ready[mySeat]=false; // 掉线＝未准备：避免「全员已准备」状态被保留导致空开局
     cancelTakeoverAsk(room, mySeat, '对方已掉线，顶替请求作废');
     logLine(room, `${seat.name} 掉线，等待重连`);
     notifyPlayerOffline(room, mySeat); // toast 提示所有在线玩家
