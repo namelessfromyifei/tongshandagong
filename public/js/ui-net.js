@@ -12,6 +12,12 @@ const $ = id => document.getElementById(id);
 function esc(s){
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+// 昵称按字符截断（约 6 个字）：用于拼在文字里的昵称（如「对家已明：X」「X 明独 1打3」），
+// 这样只截昵称本身，不会把后面的「明独 1打3」等说明文字一起截掉。
+function shortNick(s){
+  const arr = Array.from(String(s==null?'':s));
+  return arr.length > 6 ? arr.slice(0,6).join('') + '…' : String(s==null?'':s);
+}
 // 手牌数量统一口径：服务端脱敏后，对手手牌为 []（只带 handCount）；本家/观战队友牌仍是完整数组
 function handCountOf(s){
   if(s && s.handCount != null) return s.handCount;
@@ -1230,8 +1236,8 @@ function renderSeats(){
   const msg=$('msg');
   if(!G.ended){
     msg.textContent = G.mode!=='hard'
-      ? (G.revealed ? `对家已明：${seatNames[G.partner]}` : `对家未明（叫牌 ${TS.cardName(G.called)}）`)
-      : `${seatNames[G.hardSeat]} 明独 1打3`;
+      ? (G.revealed ? `对家已明：${shortNick(seatNames[G.partner])}` : `对家未明（叫牌 ${TS.cardName(G.called)}）`)
+      : `${shortNick(seatNames[G.hardSeat])} 明独 1打3`;
   } else msg.textContent = seriesOver ? '本场结束' : '本局结束';
   renderCorner();
 }
@@ -1485,8 +1491,15 @@ function finishLocal(settle){
     $('mTitle').innerHTML = `${lastRoundWasLast?'本场结束':'本局结束'} · ${namesHtml}${roundHtml}`;
     // 「下一局」已从计分板移除：局末推进改由牌桌下方【下一局】(btnNext)，场末由【准备】开下一场
     tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面(笼)</th><th>滚笼(笼)</th><th>奖金(笼)</th><th>本局(分)</th><th>本场(分)</th></tr>`;
-    for(let v=0;v<4;v++){
-      const i=(mySeat+v)%4, fv=s.perFen[i];
+    // 行顺序按「顺序」列排：一游第一行、二游第二行……未跑完的排在最后（彼此保持原视角顺序）
+    const rowOrder=[0,1,2,3].map(v=>(mySeat+v)%4);
+    rowOrder.sort((a,b)=>{
+      const oa=G.seats[a].out?G.seats[a].outOrder:99;
+      const ob=G.seats[b].out?G.seats[b].outOrder:99;
+      return oa-ob;
+    });
+    for(const i of rowOrder){
+      const fv=s.perFen[i];
       const bs=baseCageOf(s,i);              // 牌面笼数（番，带符号，半笼=0.5）
       const cageC = (s.perSeatNoBonus?.[i]??s.perSeat[i])-bs; // 滚笼（不含奖金的差额）
       const bonusC = bonusNetOf(s,i); // 奖金净额（王奖/硬炸奖），单位=笼
@@ -1511,20 +1524,21 @@ function finishLocal(settle){
     } else {
       tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt}</td></tr>`;
     }
-    // 本场分数明细：已结束 >=1 局时，在当前局信息下方追加各局分数表（时间/局数/4玩家本局分）
-    const stb=$('mSeriesTable');
+    // 本场分数明细：已结束 >=1 局时，在当前局信息下方显示标题 + 各局分数表（时间/局数/4玩家本局分）
+    const stt=$('mSeriesTitle'), stb=$('mSeriesTable');
     if(stb){
       if(series && series.rounds && series.rounds.length >= 1){
-        stb.innerHTML=`<tr><th colspan="6">本场分数明细</th></tr>`+
-          `<tr><th>时间</th><th>局数</th>${seatNames.map(n=>`<th>${esc(n)}</th>`).join('')}</tr>`+
+        stb.innerHTML=`<tr><th>时间</th><th>局数</th>${seatNames.map(n=>`<th><span class="thName">${esc(n)}</span></th>`).join('')}</tr>`+
           series.rounds.map(r=>{
             const tm=new Date(r.t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
             return `<tr><td>${tm}</td><td>第${r.roundNo}局</td>${r.scores.map(sc=>`<td>${sc>0?'+':''}${sc}</td>`).join('')}</tr>`;
           }).join('');
         stb.style.display='';
+        if(stt) stt.style.display='block'; // 注意：CSS 默认 display:none，这里必须显式设 block（设 '' 会回落到 none）
       } else {
         stb.innerHTML='';
         stb.style.display='none';
+        if(stt) stt.style.display='none';
       }
     }
     // 不在这里弹出：由 applyState 统一延迟 3 秒显示

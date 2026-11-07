@@ -541,15 +541,21 @@ function bindLobby(){
     const tb=$('historyTable'); if(!tb) return;
     if(!history || !history.length){ tb.innerHTML='<tr><td>暂无历史分数记录</td></tr>'; return; }
     let html='<tr><th>时间</th><th>局数</th><th>玩家1</th><th>玩家2</th><th>玩家3</th><th>玩家4</th></tr>';
+    // 「今天」的行加背景高亮（颜色与计分板当前玩家行一致：#mTable tr.myRow td）
+    const now=new Date();
+    const y=now.getFullYear(), mo=now.getMonth(), d=now.getDate();
+    const pad2=n=>String(n).padStart(2,'0');
     for(const e of history){
-      const tm=new Date(e.t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-      // 每位玩家一列（昵称在上、分数在下）：昵称/分数长度变化不影响行对齐
+      const dt=new Date(e.t);
+      const isToday = dt.getFullYear()===y && dt.getMonth()===mo && dt.getDate()===d;
+      const tm=`${dt.getFullYear()}.${pad2(dt.getMonth()+1)}.${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`; // 时间格式：xxxx.xx.xx xx:xx
+      // 每位玩家一列：昵称在列内居中（过长省略号）、分数贴右，单行显示
       const cells=[0,1,2,3].map(i=>{
         const n=(e.players&&e.players[i])||'—';
         const sc=(e.scores&&e.scores[i])!=null?e.scores[i]:0;
-        return `<td><div class="hName">${esc(n)}</div><div><span class="hScore">${sc>0?'+':''}${sc}</span>分</div></td>`;
+        return `<td><div class="hCell"><span class="hName">${esc(n)}</span><span class="hScoreBox"><span class="hScore">${sc>0?'+':''}${sc}</span>分</span></div></td>`;
       }).join('');
-      html+=`<tr><td>${tm}</td><td>${e.rounds!=null ? e.rounds : 1}</td>${cells}</tr>`;
+      html+=`<tr${isToday?' class="todayRow"':''}><td>${tm}</td><td>${e.rounds!=null ? e.rounds : 1}</td>${cells}</tr>`;
     }
     tb.innerHTML=html;
   };

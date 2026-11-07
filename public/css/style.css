@@ -126,7 +126,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seat.teamA,.handRow .seatS.teamA{background:var(--teamA-bg);border-color:var(--teamA-bd);}
 .seat.plain .avatar{background:#8a8a8a;color:#eee;box-shadow:none;}
 /* 昵称：单行省略 */
-.nm{font-weight:bold;font-size:16px;min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nm{font-weight:bold;font-size:16px;min-width:0;max-width:7em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* 昵称超过约 6 个字截断（7em≈6字+…） */
 /* tag：标记位（庄/游/队标），金色 */
 .tag{font-size:15px;color:var(--gold);display:inline-flex;align-items:center;gap:5px;}
 /* 叫牌小卡（庄家座信息框内） */
@@ -325,15 +325,23 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 历史分数弹窗 #historyWrap/#historyTable：最近 10 场成绩表（时间/局数/玩家昵称/场末分）
  *   文字默认白；昵称白、分数用 --gold。
  *   防「记录多了无限放大」：表体在内层流动（≤60vh，纯 vh 不用 min()——旧安卓 WebView 不解析会整条丢弃导致无限变高），
- *   表格 table-layout:fixed、宽度恒等于容器——长昵称在列内换行，不把表格/弹窗撑宽。 */
+ *   表格 table-layout:fixed、宽度恒等于容器——长昵称在列内省略号截断，不把表格/弹窗撑宽。 */
 #historyWrap{max-height:60vh;overflow:auto;overscroll-behavior:contain;}
 #historyTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;table-layout:fixed;}
 #historyTable th,#historyTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;word-break:break-word;}
 #historyTable th:first-child{width:22%;}   /* 时间列收窄 */
 #historyTable th:nth-child(2){width:10%;}  /* 局数列收窄，其余宽度均分给 4 位玩家列 */
-#historyTable th{background:rgba(255,255,255,.06);color:#fff;}
-#historyTable .hName{color:#fff;}   /* 历史行·玩家昵称 */
+#historyTable th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;text-align:center;border-bottom:1px solid rgba(232,193,90,.45);} /* 表头居中 */
+#historyTable td{text-align:center;} /* 时间/局数等默认居中 */
+/* 历史行·玩家格：昵称+分数作为一个整体在格内居中（彼此间隔 6px）；昵称过长省略号截断 */
+#historyTable .hCell{display:flex;justify-content:center;align-items:baseline;gap:6px;}
+#historyTable .hName{min-width:0;max-width:7em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;}
+#historyTable .hScoreBox{flex:0 0 auto;white-space:nowrap;color:#fff;} /* 「分」字保持白，与原有配色一致 */
 #historyTable .hScore{color:var(--gold);}    /* 历史行·场末分 */
+/* 当天（今天）的历史记录：行背景高亮，颜色与计分板当前玩家行一致 */
+#historyTable tr.todayRow td{background:rgba(232,193,90,.2);}
+/* 历史分数弹窗标题居中 */
+#historyModal .modalBox h2{text-align:center;}
 #mTable .fenGold{color:var(--gold);}         /* 计分板·本局分数列 */
 /* 计分板标题高亮（#mTitle）：获胜玩家名 + 「第x局/共x局」数字统一金色（--num） */
 .mtGold{color:var(--num);}
@@ -341,10 +349,13 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 #mTable{font-size:14px;}
 /* 当前玩家所在行：浅金底标识（方便一眼定位自己），叠加在弹窗深绿底上不刺眼 */
 #mTable tr.myRow td{background:rgba(232,193,90,.2);}
+/* 本场分数明细的标题（不是表头）：白字加粗、居中、无底色 */
+#mSeriesTitle{display:none;text-align:center;color:#fff;font-weight:bold;font-size:15px;margin:10px 0 4px;}
 /* 计分板·本场分数明细表（#mSeriesTable）：与历史分数表同款边框，字体 14px；列=时间/局数/4玩家本局分 */
 #mSeriesTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;table-layout:fixed;}
 #mSeriesTable th,#mSeriesTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;word-break:break-word;}
-#mSeriesTable th{background:rgba(255,255,255,.06);color:#fff;}
+#mSeriesTable th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#mSeriesTable .thName{display:inline-block;max-width:7em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
 /* 南家信息框右侧：插底/准备提示跟随信息框 */
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
 .handRow .seatS .southHint:empty{display:none;}
@@ -365,7 +376,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .modalBox h2{color:var(--title);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
 .modalBox th,.modalBox td{border:1px solid rgba(255,255,255,.18);padding:6px 8px;text-align:left;}
-.modalBox th{background:rgba(255,255,255,.08);}
+.modalBox th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);}
 .modalBox .note{font-size:12px;color:#a8c8b8;margin-top:4px;}
 .mBtn{text-align:center;margin-top:12px;}
 
@@ -605,6 +616,8 @@ body.landscapeCompat .tableTitle .tMsg{font-size:12px;}
 }
 /* 我是谁：现在在 .tableTitle 竖排里，跟着标题走，不再绝对定位 */
 .tableWho{position:static;font-size:11px;background:rgba(0,0,0,.4);z-index:4;}
+/* 左上角「房主：昵称」chip：过长截断（座位信息框本身已有 180px 截断） */
+#mySeatInfo{max-width:calc(10em + 26px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* 「房主：」+ 昵称约 6 字后截断（随字号缩放） */
 @media (max-width:560px){ .tableWho{left:105px;top:40px;font-size:10px;} }
 @media (orientation:landscape) and (max-width:920px){ .tableWho{left:96px;top:34px;font-size:9px;} }
 
