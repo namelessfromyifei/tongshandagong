@@ -1341,7 +1341,7 @@ function renderHand(){
     el.className=cls;
     el.dataset.i=idx;
     el.innerHTML=cardHTML(c);
-    // 双击同一张单牌且能压过上家 → 直接出牌作为快捷方式
+    // 双击同一张单牌且能压过上家 → 直接出牌作为快捷方式（仅单张，不处理多选）
     el.onclick=()=>{
       if(G.ended) return;
       if(clickSuppress){ clickSuppress=false; return; } // 拖动手势后的 click 不再切换
@@ -1356,7 +1356,7 @@ function renderHand(){
         if(p && p.type==='single' && (!G.lastPlay || TS.canBeat(G.lastPlay,p))){
           selected.clear();
           mySeatState.hand.forEach((x,i)=>{ if(x.id===c.id) selected.add(i); });
-          playerPlay();
+          render(); playerPlay(); // 先落选中画面再出牌，失败也能看到选中的牌
           hintDblIdx=-1; hintDblAt=0; // 防止第三击再次触发
           return;
         }
@@ -1996,8 +1996,11 @@ $('btnHe').onclick=playerHe;
   };
   handEl.addEventListener('pointerup',endDrag);
   handEl.addEventListener('pointercancel',endDrag);
-  // 点击桌面任意空白处（非手牌/按钮/输入框）：单击延迟收回选牌；350ms 内双击→等同点「出牌」
-  let deskDblAt=0, deskClearTimer=null;
+  // 点击桌面任意空白处（非手牌/按钮/输入框）：
+  //   单击 → 立即收回已选牌（并把收回的牌按 card.id 暂存）；
+  //   350ms 内再点一次 → 等同点「出牌」：用暂存的牌恢复选中后直接出牌。
+  // 暂存用牌的 id 而不是下标：两次点击之间若手牌变化，也不会打错牌。
+  let deskDblAt=0, deskStash=[];
   const tableEl=document.querySelector('.table');
   if(tableEl) tableEl.addEventListener('click',(e)=>{
     const t=e.target;
@@ -2005,14 +2008,25 @@ $('btnHe').onclick=playerHe;
     if(t.closest('.hcard')||t.closest('button')||t.closest('input')) return;
     if(clickSuppress) return; // 拖动选牌刚落合的合成 click：不触发
     const now=Date.now();
-    const dbl = (now-deskDblAt>=0) && (now-deskDblAt<350);
+    const mine=G && G.seats && G.seats[mySeat];
+    // 第二击（350ms 内）且上一击确实收回过牌 → 恢复那批牌并出牌
+    if(deskDblAt && (now-deskDblAt)<350 && deskStash.length){
+      const ids=new Set(deskStash);
+      deskStash=[]; deskDblAt=0; // 防止第三击再次触发
+      if(mine && mine.hand){
+        selected.clear();
+        mine.hand.forEach((c,i)=>{ if(ids.has(c.id)) selected.add(i); });
+        if(selected.size){ render(); playerPlay(); } // 先落选中的画面再出牌，出牌失败也能看到选中的牌
+      }
+      return;
+    }
+    // 第一击：立即收回选牌，并暂存被收回的牌
     deskDblAt=now;
-    if(dbl){
-      if(deskClearTimer){ clearTimeout(deskClearTimer); deskClearTimer=null; }
-      if(selected.size) playerPlay();
-    } else {
-      if(deskClearTimer) clearTimeout(deskClearTimer);
-      deskClearTimer=setTimeout(()=>{ if(selected.size){ selected.clear(); render(); } }, 350);
+    deskStash=[];
+    if(selected.size){
+      if(mine && mine.hand) deskStash=[...mine.hand].filter((c,i)=>selected.has(i)).map(c=>c.id);
+      selected.clear();
+      render();
     }
   });
 })();
