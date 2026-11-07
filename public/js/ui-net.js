@@ -14,9 +14,10 @@ function esc(s){
 }
 // 昵称按字符截断（约 6 个字）：用于拼在文字里的昵称（如「对家已明：X」「X 明独 1打3」），
 // 这样只截昵称本身，不会把后面的「明独 1打3」等说明文字一起截掉。
-function shortNick(s){
+function shortNick(s, n){
+  n = n || 6;
   const arr = Array.from(String(s==null?'':s));
-  return arr.length > 6 ? arr.slice(0,6).join('') + '…' : String(s==null?'':s);
+  return arr.length > n ? arr.slice(0,n).join('') + '…' : String(s==null?'':s);
 }
 // 手牌数量统一口径：服务端脱敏后，对手手牌为 []（只带 handCount）；本家/观战队友牌仍是完整数组
 function handCountOf(s){
@@ -849,7 +850,7 @@ function renderSeatNames(){
     if(nm){
       if(isHuman){
         // 真人座位：信息框只显示昵称/掉线；准备状态显示在各自牌桌上
-        nm.textContent = (seatNames[i]||(''));
+        nm.textContent = shortNick(seatNames[i]||'', 4);
         if(snapSeatOffline(i)) nm.textContent += ' ⚠️掉线';
       } else {
         // AI 空位：玩家进入前不显示 A/B/C/D 家
@@ -1012,7 +1013,7 @@ function renderSeats(){
     // 新玩家入座场末空位：G 侧已 blanked —— 只画名字/头像的「刚进房间空座」，跳过对局信息
     if(s && s.blanked){
       const nmEl=$('nm'+v);
-      if(nmEl) nmEl.textContent = (seatNames[i]||'空位').trim();
+      if(nmEl) nmEl.textContent = shortNick((seatNames[i]||'空位').trim(), 4);
       paintAvatar($('av'+v), seatAvatars[i]||'', (seatNames[i]||'').trim().charAt(0));
       const tEl=$('tag'+v); if(tEl) tEl.innerHTML='';
       const pE=$('p'+v); if(pE) pE.textContent='';
@@ -1046,7 +1047,7 @@ function renderSeats(){
     if(rebuild) lastSeatSig[v] = sig;
     if(!rebuild) continue;
     const nm=$('nm'+v);
-    nm.textContent = (seatNames[i]||s.name);
+    nm.textContent = shortNick(seatNames[i]||s.name, 4);
     if(seatTypes[i]==='ai' && !s.out && (seatNames[i]||s.name)!=='空位') nm.textContent += ' 🤖';
     // 掉线：在名字框显示"掉线"
     if(seatTypes[i]==='human' && snapSeatOffline(i)) nm.textContent += ' ⚠️掉线';
@@ -1481,7 +1482,7 @@ function finishLocal(settle){
     lastRoundWasLast = !!G.lastSeries;
     // 标题右侧直接带局数：（第2局/共3局）；提前收场 → （第2局/本场已提前结束）。
     // 标题改 innerHTML：获胜玩家名与局数数字上金色 .mtGold（名字先 esc 转义，防 XSS）
-    const mtName=i=>`<span class="mtGold">${esc(seatNames[i])}</span>`;
+    const mtName=i=>`<span class="mtGold">${esc(shortNick(seatNames[i],6))}</span>`;
     const namesHtml = G.mode==='hard'
       ? `明独者 ${mtName(G.hardSeat)} ${s.winnerSeats.includes(G.hardSeat)?'胜':'败'}`
       : `${s.winnerSeats.map(mtName).join('、')}赢`;
@@ -1491,12 +1492,19 @@ function finishLocal(settle){
     $('mTitle').innerHTML = `${lastRoundWasLast?'本场结束':'本局结束'} · ${namesHtml}${roundHtml}`;
     // 「下一局」已从计分板移除：局末推进改由牌桌下方【下一局】(btnNext)，场末由【准备】开下一场
     tb.innerHTML=`<tr><th>名字</th><th>顺序</th><th>身份</th><th>抓分</th><th>牌面(笼)</th><th>滚笼(笼)</th><th>奖金(笼)</th><th>本局(分)</th><th>本场(分)</th></tr>`;
-    // 行顺序按「顺序」列排：一游第一行、二游第二行……未跑完的排在最后（彼此保持原视角顺序）
+    // 行顺序按「顺序」列排：一游第一行、二游第二行……未跑完的排在最后；
+    // 都没跑（无法确定几游）时，本局赢家在前、输家在后（如明独输了 → 明独者排最后）
     const rowOrder=[0,1,2,3].map(v=>(mySeat+v)%4);
+    const winSet = new Set((s && s.winnerSeats) || []);
     rowOrder.sort((a,b)=>{
       const oa=G.seats[a].out?G.seats[a].outOrder:99;
       const ob=G.seats[b].out?G.seats[b].outOrder:99;
-      return oa-ob;
+      if(oa!==ob) return oa-ob;
+      if(oa===99){
+        const wa=winSet.has(a)?0:1, wb=winSet.has(b)?0:1;
+        if(wa!==wb) return wa-wb;
+      }
+      return 0; // 其余保持原视角顺序（sort 稳定）
     });
     for(const i of rowOrder){
       const fv=s.perFen[i];
@@ -1511,8 +1519,8 @@ function finishLocal(settle){
       const caughtVal = (s.effCaught && s.effCaught[i]!=null) ? s.effCaught[i] : gs.caught;
       // 当前玩家（自己）所在行加 myRow 底色，便于一眼定位自己
       const rowCls = i===mySeat ? ' class="myRow"' : '';
-      tb.innerHTML+=`<tr${rowCls}><td>${esc(seatNames[i])}</td>`+
-        `<td>${place}</td><td>${teamDotHtml(s,i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
+      tb.innerHTML+=`<tr${rowCls}><td>${esc(shortNick(seatNames[i],6))}</td>`+
+        `<td class="c">${place}</td><td class="c">${teamDotHtml(s,i)}</td><td>${caughtVal}</td><td>${bs>0?'+':''}${bs}</td>`+
         `<td>${cageC>0?'+':''}${cageC}</td>`+
         `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
         `<td class="fenGold">${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
@@ -1520,7 +1528,7 @@ function finishLocal(settle){
     // 说明 + 轮累计
     const noteTxt = `牌面(笼) + 滚笼(笼) + 奖金(笼) = 番数；番数 × 2 × 半番 = 本局分（半番默认1 → ×2）`;
     if(series && series.active && settings.rounds>1){
-      tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${esc(seatNames[i])} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
+      tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${esc(shortNick(seatNames[i],6))} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
     } else {
       tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt}</td></tr>`;
     }
@@ -1531,7 +1539,7 @@ function finishLocal(settle){
         stb.innerHTML=`<tr><th>时间</th><th>局数</th>${seatNames.map(n=>`<th><span class="thName">${esc(n)}</span></th>`).join('')}</tr>`+
           series.rounds.map(r=>{
             const tm=new Date(r.t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-            return `<tr><td>${tm}</td><td>第${r.roundNo}局</td>${r.scores.map(sc=>`<td>${sc>0?'+':''}${sc}</td>`).join('')}</tr>`;
+            return `<tr><td class="c">${tm}</td><td class="c">第${r.roundNo}局</td>${r.scores.map(sc=>`<td>${sc>0?'+':''}${sc}</td>`).join('')}</tr>`;
           }).join('');
         stb.style.display='';
         if(stt) stt.style.display='block'; // 注意：CSS 默认 display:none，这里必须显式设 block（设 '' 会回落到 none）

@@ -126,7 +126,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .seat.teamA,.handRow .seatS.teamA{background:var(--teamA-bg);border-color:var(--teamA-bd);}
 .seat.plain .avatar{background:#8a8a8a;color:#eee;box-shadow:none;}
 /* 昵称：单行省略 */
-.nm{font-weight:bold;font-size:16px;min-width:0;max-width:7em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* 昵称超过约 6 个字截断（7em≈6字+…） */
+.nm{font-weight:bold;font-size:16px;min-width:0;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* 昵称按 4 字截断（JS 处理）；9em 留出「⚠️掉线/🤖」标记空间 */
 /* tag：标记位（庄/游/队标），金色 */
 .tag{font-size:15px;color:var(--gold);display:inline-flex;align-items:center;gap:5px;}
 /* 叫牌小卡（庄家座信息框内） */
@@ -347,6 +347,11 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .mtGold{color:var(--num);}
 /* 计分板成绩表（#mTable）：字体比默认弹窗表格(13px)放大一档 */
 #mTable{font-size:14px;}
+/* 计分板：非分数列（名字/顺序/身份）内容居中；分数以外的数值列保持原对齐 */
+#mTable td.c{text-align:center;}
+/* 表头与内容对齐保持一致：名字等左对齐列的表头也左对齐，顺序/身份居中 */
+#mTable th{text-align:left;}
+#mTable th:nth-child(2),#mTable th:nth-child(3){text-align:center;}
 /* 当前玩家所在行：浅金底标识（方便一眼定位自己），叠加在弹窗深绿底上不刺眼 */
 #mTable tr.myRow td{background:rgba(232,193,90,.2);}
 /* 本场分数明细的标题（不是表头）：白字加粗、居中、无底色 */
@@ -354,7 +359,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 /* 计分板·本场分数明细表（#mSeriesTable）：与历史分数表同款边框，字体 14px；列=时间/局数/4玩家本局分 */
 #mSeriesTable{width:100%;border-collapse:collapse;font-size:14px;color:#fff;table-layout:fixed;}
 #mSeriesTable th,#mSeriesTable td{border:1px solid #5a4a33;padding:4px 8px;text-align:left;word-break:break-word;}
-#mSeriesTable th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* 本场分数明细：时间/局数居中，玩家分数列保持原对齐 */
+#mSeriesTable td.c{text-align:center;}
+#mSeriesTable th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;}
+#mSeriesTable th:nth-child(1),#mSeriesTable th:nth-child(2){text-align:center;} /* 时间/局数（内容居中） */
 #mSeriesTable .thName{display:inline-block;max-width:7em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
 /* 南家信息框右侧：插底/准备提示跟随信息框 */
 .handRow .seatS .southHint{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;display:flex;gap:8px;}
@@ -376,7 +384,7 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .modalBox h2{color:var(--title);margin-bottom:10px;}
 .modalBox table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
 .modalBox th,.modalBox td{border:1px solid rgba(255,255,255,.18);padding:6px 8px;text-align:left;}
-.modalBox th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);}
+.modalBox th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);text-align:center;}
 .modalBox .note{font-size:12px;color:#a8c8b8;margin-top:4px;}
 .mBtn{text-align:center;margin-top:12px;}
 
