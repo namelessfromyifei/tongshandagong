@@ -58,7 +58,7 @@ function hintStateSig(){
   const hand=(me.hand||[]).map(c=>c.id).join(',');
   return [G.seq||G.roundNo||0, G.ended?1:0, G.confirming?1:0, G.turn, lp, hand].join('|');
 }
-let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=炸前置·不含五十K，3=牌型）
+let sortMode=1; // 默认「炸前置」（0=点数，1=炸前置，2=炸前置·不含五十K，3=牌型，4=牌型·不含五十K）
 let lastRoundNo=-1; // 用于判断是否换了新局（换局才清空预选）
 let lastRoundWasLast=false; // 当前结算的这局是否为一场的最后一局
 // 结算弹窗延迟展示：局末先构建好计分板，3 秒后再弹出
@@ -164,6 +164,27 @@ function sortHandCards(){
       if(pa!==pb) return pa-pb;
       if(ga===2){ const fa=fgv(ca.id), fb=fgv(cb.id); if(fa!==fb) return fa-fb; } // 同花五十K在前
       if(ga===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
+      return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
+    });
+    return idx;
+  }
+  if(sortMode===4){
+    // 牌型（不含五十K）：炸 → 王 → 三个 → 对子 → 单个；5/10/K 按普通牌型分组，不识别五十K
+    const cnt=new Array(TS.RANKS.length).fill(0);
+    for(const c of hand){ if(!c.j) cnt[c.r]++; }
+    const g4=new Map();
+    for(const c of hand){
+      if(c.j){ g4.set(c.id,1); continue; }         // 王
+      if(cnt[c.r]>=4){ g4.set(c.id,0); continue; } // 炸
+      const n=cnt[c.r];
+      g4.set(c.id, n>=3?2:(n>=2?3:4));             // 三个 / 对子 / 单个
+    }
+    idx.sort((a,b)=>{
+      const ca=hand[a], cb=hand[b];
+      const ga=g4.get(ca.id), gb=g4.get(cb.id);
+      if(ga!==gb) return ga-gb;
+      if(ga===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
+      if(ga===0 && cnt[ca.r]!==cnt[cb.r]) return cnt[cb.r]-cnt[ca.r]; // 炸：张数多的在前
       return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
     });
     return idx;
@@ -324,8 +345,8 @@ function playerHint(){
   render();
   flashMsg(describeShort(cand.play));
 }
-const SORT_NAMES=['点数','炸前置','炸前置·不含五十K','牌型'];
-function toggleSort(){ sortMode=(sortMode+1)%4; render(); flashMsg('排序：'+SORT_NAMES[sortMode]); }
+const SORT_NAMES=['点数','炸前置','炸前置·不含五十K','牌型','牌型·不含五十K'];
+function toggleSort(){ sortMode=(sortMode+1)%5; render(); flashMsg('排序：'+SORT_NAMES[sortMode]); }
 
 /* ---------- 牌大小调节（本机偏好，手牌 + 桌面出牌统一缩放） ---------- */
 // 整体上调两档：原「特大/巨无霸」成为新的「标准/大」
