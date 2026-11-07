@@ -153,13 +153,15 @@ function sortHandCards(){
     return idx;
   }
   if(sortMode===3){
-    // 按牌型大类归拢：炸 → 王 → 五十K → 三个 → 对子 → 单个；同类内从大到小
+    // 按牌型大类归拢：炸 → 五十K → 王 → 三个 → 对子 → 单个；同类内从大到小
     const {g, fiftyGid:fg}=buildGroupMap(hand);
     const fgv=id=>{ const v=fg.get(id); return v==null?1e9:v; };
+    const pri={0:0, 2:1, 1:2, 3:3, 4:4, 5:5}; // 炸 → 五十K → 王 → 三个/对子/单个
     idx.sort((a,b)=>{
       const ca=hand[a], cb=hand[b];
       const ga=g.get(ca.id), gb=g.get(cb.id);
-      if(ga!==gb) return ga-gb;
+      const pa=pri[ga], pb=pri[gb];
+      if(pa!==pb) return pa-pb;
       if(ga===2){ const fa=fgv(ca.id), fb=fgv(cb.id); if(fa!==fb) return fa-fb; } // 同花五十K在前
       if(ga===1) return ca.id<cb.id?-1:1; // 王之间稳定排序
       return handKey(ca)-handKey(cb) || (ca.id<cb.id?-1:1);
@@ -167,15 +169,14 @@ function sortHandCards(){
     return idx;
   }
   if(sortMode===2){
-    // 「炸前置（不含五十K）」：与炸前置同规则，只是五十K 不单独成组——
-    // 真炸（按点数张数判定，不扣除五十K）→ 王 → 其余按点数；5/10/K 混在其余牌里
+    // 「炸前置（不含五十K）」：本模式完全不识别五十K——真炸（按实际张数）→ 王 → 其余按点数（5/10/K 混在其余中）
     const cnt=new Array(TS.RANKS.length).fill(0);
     for(const c of hand){ if(!c.j) cnt[c.r]++; }
     const kind2=new Map();
     for(const c of hand){
-      if(c.j){ kind2.set(c.id,1); continue; }        // 王
+      if(c.j){ kind2.set(c.id,1); continue; }         // 王
       if(cnt[c.r]>=4){ kind2.set(c.id,0); continue; } // 炸
-      kind2.set(c.id,2);                              // 其余（含 5/10/K）
+      kind2.set(c.id,2);                               // 其余（含 5/10/K）
     }
     idx.sort((a,b)=>{
       const ca=hand[a], cb=hand[b];
@@ -187,11 +188,13 @@ function sortHandCards(){
     });
     return idx;
   }
-  // sortMode===1：五十K → 炸 → 王 → 其余；五十K 内同花在前
+  // sortMode===1：炸 → 五十K → 王 → 其余；五十K 内同花在前
+  const pri1={1:0, 0:1, 2:2, 3:3}; // 炸最左，五十K次之（不再放最左）
   idx.sort((a,b)=>{
     const ca=hand[a], cb=hand[b];
     const ka=kind.get(ca.id), kb=kind.get(cb.id);
-    if(ka!==kb) return ka-kb;
+    const pa=pri1[ka], pb=pri1[kb];
+    if(pa!==pb) return pa-pb;
     if(ka===0){
       const fa=(fiftyGid.get(ca.id)??1e9), fb=(fiftyGid.get(cb.id)??1e9);
       if(fa!==fb) return fa-fb; // 同花五十K在前
