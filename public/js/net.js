@@ -54,6 +54,7 @@ const apiUrl = p => SERVER_ORIGIN + p;
 
 /* ---------- 房间界面 ---------- */
 function enterLobby(){
+  if(window.EXIT_DIALOG) window.EXIT_DIALOG.close();
   const app=document.getElementById('app');
   if(app){ app.classList.remove('inTable'); app.classList.add('inLobby'); }
   if($('btnRoomToggle')) $('btnRoomToggle').textContent='返回大厅';
@@ -273,6 +274,25 @@ function start(){
 function toggleAI(){
   if(socket) socket.emit('toggleAI', {});
 }
+// 退出房间统一入口：系统返回键 / 【退出房间】按钮都先走自定义弹窗
+function askLeaveRoom(){
+  const dlg=window.EXIT_DIALOG;
+  const app=document.getElementById('app');
+  const inTable=!!(app && app.classList.contains('inTable'));
+  if(!inTable || !dlg){ leaveRoom(); return; } // 大厅/无弹窗组件：直接按原逻辑
+  // 局末等待开下一局：服务端同样禁止直接退出，只能先【提前结束】收场
+  if(curG && curG.ended && !curSeriesOver){
+    dlg.show({ blocked:true, title:'退出房间', text:'对局中不允许退出房间', note:'请点【提前结束】收场后再退出' });
+    return;
+  }
+  const midRound=!!(curG && !curG.ended);
+  dlg.show({
+    title:'退出房间',
+    text: midRound ? '对局中退出将视为掉线，可用昵称重连。确定退出房间吗？' : '确定退出房间吗？',
+    onConfirm: leaveRoom,
+  });
+}
+window.ASK_LEAVE = askLeaveRoom;
 // 退出房间回大厅
 function leaveRoom(){
   // 局末（非末局）：不可退出房间，只能【结束场次】提前收场（含手机返回键触发的退出，一律拦下）
@@ -564,7 +584,7 @@ function bindLobby(){
     socket.emit('toggleReady', {});
   };
   $('btnSetBack').onclick=()=>{ if(socket) socket.emit('setSettings', collectSettings()); const m=$('setModal'); if(m) m.hidden=true; };
-  $('btnLeave').onclick=()=>{ leaveRoom(); };
+  $('btnLeave').onclick=()=>{ askLeaveRoom(); };
   // 历史分数：展示本房间最近 10 场（服务端记录）
   const renderHistory=()=>{
     const tb=$('historyTable'); if(!tb) return;

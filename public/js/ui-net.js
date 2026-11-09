@@ -2069,6 +2069,37 @@ $('btnHard').onclick=playerHard;
   }, true);
   apply();
 })();
+/* ---------- 退出房间确认弹窗（系统返回键 / 【退出房间】按钮共用） ---------- */
+(function initExitDialog(){
+  const ov=$('exitAskModal'); if(!ov) return;
+  const title=$('exitAskTitle'), text=$('exitAskText'), note=$('exitAskNote');
+  const rowAsk=$('exitAskBtns'), rowKnow=$('exitAskKnow');
+  let onConfirm=null, opened=false;
+  function close(){
+    opened=false; onConfirm=null; ov.hidden=true;
+  }
+  function show(opts){
+    opts=opts||{};
+    opened=true;
+    title.textContent=opts.title||'退出房间';
+    text.textContent=opts.text||'确定退出房间吗？';
+    note.textContent=opts.note||'';
+    note.hidden=!opts.note;
+    if(opts.blocked){
+      onConfirm=null;
+      rowAsk.hidden=true; rowKnow.hidden=false;
+    } else {
+      onConfirm=(typeof opts.onConfirm==='function')?opts.onConfirm:null;
+      rowAsk.hidden=false; rowKnow.hidden=true;
+    }
+    ov.hidden=false;
+  }
+  $('btnExitCancel').onclick=()=>close();
+  $('btnExitOk').onclick=()=>{ const cb=onConfirm; close(); if(cb) cb(); };
+  $('btnExitKnow').onclick=()=>close();
+  ov.addEventListener('click',(e)=>{ if(e.target===ov) close(); }); // 点遮罩＝取消
+  window.EXIT_DIALOG={ show, close, isOpen:()=>opened };
+})();
 initCardSize();
 initVoice();
 

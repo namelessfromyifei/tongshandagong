@@ -22,6 +22,20 @@ try{
   }
 }catch(e){}
 
+/* 下拉通知栏/快捷设置收起后，部分机型会重新露出状态栏并在牌桌顶部留下残影。
+ * 重新获得焦点/回到前台时再隐藏一次状态栏（页面重绘由 MainActivity.onWindowFocusChanged 里的
+ * webView.invalidate() 负责）。 */
+function keepImmersive(){
+  try{ if(P.StatusBar) P.StatusBar.hide(); }catch(e){}
+}
+try{
+  window.addEventListener('focus', keepImmersive);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) keepImmersive(); });
+  if(P.App && P.App.addListener){
+    P.App.addListener('appStateChange', function(st){ if(st && st.isActive) keepImmersive(); });
+  }
+}catch(e){}
+
 try{
   if(P.SplashScreen) P.SplashScreen.hide();
 }catch(e){}
@@ -33,6 +47,9 @@ try{
       var app = document.getElementById('app');
       var inTable = app && app.classList.contains('inTable');
       if(inTable){
+        // 弹窗已打开：返回键只关闭弹窗，不退出房间
+        if(window.EXIT_DIALOG && window.EXIT_DIALOG.isOpen()){ window.EXIT_DIALOG.close(); return; }
+        if(window.ASK_LEAVE){ window.ASK_LEAVE(); return; }
         if(window.confirm('确定退出房间吗？')) {
           var btn = document.getElementById('btnLeave');
           if(btn) btn.click();

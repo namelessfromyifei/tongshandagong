@@ -387,6 +387,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .modalBox th{background:rgba(255,255,255,.16);color:#ffe9a8;font-weight:bold;border-bottom:1px solid rgba(232,193,90,.45);text-align:center;}
 .modalBox .note{font-size:12px;color:#a8c8b8;margin-top:4px;}
 .mBtn{text-align:center;margin-top:12px;}
+/* 退出房间确认弹窗：小尺寸、居中；对局中不可退出时只有「知道了」 */
+.exitAskBox{max-width:320px;width:auto;min-width:250px;text-align:center;}
+.exitAskText{color:#cfe6da;line-height:1.6;margin:2px 0 0;white-space:pre-line;}
+.exitAskNote{color:#a8c8b8;font-size:13px;line-height:1.6;margin-top:6px;}
 
 [hidden]{display:none!important;}
 /* ===== 大厅 ===== */
