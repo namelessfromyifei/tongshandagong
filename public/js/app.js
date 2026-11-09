@@ -112,6 +112,9 @@ function showUpdatePrompt(d){
     return b;
   }
   row.appendChild(btn('稍后再说', false, function(){ ov.remove(); }));
+  if(d.fallbackUrl && d.fallbackUrl !== d.apkUrl){
+    row.appendChild(btn('备用下载', false, function(){ downloadApk(d.fallbackUrl); }));
+  }
   row.appendChild(btn('立即下载', true, function(){ downloadApk(d.apkUrl); }));
   box.appendChild(row);
   ov.appendChild(box);

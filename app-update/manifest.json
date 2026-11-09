@@ -1,0 +1,8 @@
+{
+  "version": "1.0.3",
+  "note": "网页端支持下载 App；更新优先走服务器下载",
+  "apkUrl": "/app-update/latest.apk",
+  "fallbackUrl": "",
+  "apkSize": 5345294,
+  "publishedAt": "2026-11-09T10:10:08.606Z"
+}

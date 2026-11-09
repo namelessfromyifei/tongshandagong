@@ -28,6 +28,8 @@ shots/
 data/
 *.db
 
-# App 应用内更新：只提交 manifest.json；APK 由 GitHub Release 托管，latest.apk 不入库
+# App 应用内更新：只提交 manifest.json；APK 经 release/latest.apk 入仓后由服务器部署时同步
 app-update/*
 !app-update/manifest.json
+# 默认发布方式：APK 入仓（上面 *.apk 的例外），服务器 pull 后同步到 app-update/
+!release/latest.apk

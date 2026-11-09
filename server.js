@@ -104,19 +104,39 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-/* ---------- App 应用内更新（方案1）：检查 app-update/manifest.json + 下载 latest.apk ----------
- * 发布流程：tools/release-apk.js（bump 版本 → 构建 → 拷 APK 到 app-update/latest.apk → 写 manifest.json）。
- * app-update/ 已 gitignore，只存在于服务器上。
+/* ---------- App 应用内更新：读 app-update/manifest.json ----------
+ * 发布流程：tools/release-apk.js（bump 版本 → 构建 → 写入 release/latest.apk 入仓 / 可选 scp、GitHub Release → 写 manifest.json）。
+ * 默认入仓方式下，redeploy.sh 在 git pull 后把 release/latest.apk 同步到 app-update/latest.apk。
+ * manifest 里 apkUrl 多为 /app-update/latest.apk（服务器同域，主用），fallbackUrl 为 GitHub Release 地址（兜底）。
+ * 若 apkUrl 指向本地但文件缺失/大小与 manifest 不一致，自动退回 fallbackUrl。
  * App 每次启动拉 /api/app/update，发现版本更新则弹窗提示下载。 */
 app.get('/api/app/update', (req, res) => {
   try{
     const m = JSON.parse(fs.readFileSync(path.join(__dirname, 'app-update', 'manifest.json'), 'utf8'));
     if(!m || !m.version) return res.json({ update: false });
-    let url = (m.apkUrl && String(m.apkUrl).trim()) || '/app-update/latest.apk';
-    if(!/^https?:\/\//i.test(url)){
-      url = req.protocol + '://' + req.get('host') + (url.startsWith('/') ? url : '/' + url);
+    function absUrl(u){
+      u = (u && String(u).trim()) || '';
+      if(!u) return '';
+      if(/^https?:\/\//i.test(u)) return u;
+      return req.protocol + '://' + req.get('host') + (u.startsWith('/') ? u : '/' + u);
     }
-    return res.json({ update: true, version: String(m.version), apkUrl: url, note: m.note || '' });
+    let primary = absUrl(m.apkUrl) || absUrl('/app-update/latest.apk');
+    let fallback = absUrl(m.fallbackUrl);
+    // 主地址是服务器本地文件：校验文件存在且大小与发布时一致，否则退回兜底地址
+    const wantLocal = !m.apkUrl || String(m.apkUrl).trim().startsWith('/app-update/');
+    if(wantLocal){
+      let localOk = false;
+      try{
+        const st = fs.statSync(path.join(__dirname, 'app-update', 'latest.apk'));
+        localOk = !m.apkSize || Number(m.apkSize) === st.size;
+      }catch(e){}
+      if(!localOk){
+        primary = fallback;
+        fallback = '';
+      }
+    }
+    if(!primary) return res.json({ update: false });
+    return res.json({ update: true, version: String(m.version), apkUrl: primary, fallbackUrl: fallback, note: m.note || '' });
   }catch(e){
     return res.json({ update: false });
   }
@@ -167,7 +187,7 @@ app.post('/webhook/deploy', express.raw({ type: ['application/json', 'applicatio
 app.get('/webhook', (req, res) => res.json({ ok:true, webhook:'ready', secret: !!WEBHOOK_SECRET }));
 
 app.use(express.static(path.join(__dirname, 'public')));
-/* App 应用内更新：latest.apk 下载目录（app-update/，gitignore，仅服务器存在） */
+/* App 应用内更新：latest.apk 下载目录（app-update/，gitignore，由发布脚本 scp 上传） */
 app.use('/app-update', express.static(path.join(__dirname, 'app-update'), { maxAge: 60*60*1000 }));
 
 /* ---------- 微信授权：Cookie / 会话 ---------- */

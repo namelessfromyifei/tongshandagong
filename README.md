@@ -308,19 +308,26 @@ node tools/build-apk.js --server http://8.148.29.231
 
 App 每次启动向 `GET /api/app/update` 检查版本，若服务器上有更新版本则弹窗「发现新版本 vX.Y.Z」，可点「立即下载」打开系统浏览器下载 APK（下载完成后从通知栏安装，需允许「未知来源安装」）。服务端无更新时静默跳过。
 
-**发布一条新版本**（需要 GitHub token）：
+**发布一条新版本**（默认：APK 入仓，服务器 pull 后自动同步）：
 
 ```sh
-GH_TOKEN=<有 repo 权限的 token> node tools/release-apk.js --note "更新说明，支持多行"
+node tools/release-apk.js --note "更新说明，支持多行"
 # 可选：--version 1.2.0 指定版本号（默认 patch +1）
 ```
 
-该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 创建/更新 GitHub Release（tag `vX.Y.Z`，资产 `tongshandagong-X.Y.Z.apk`）→ 写入 `app-update/manifest.json`（`apkUrl` 指向 Release 下载地址）。
+该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 写入 `release/latest.apk` → 写入 `app-update/manifest.json`。之后提交 `build.gradle`、`release/latest.apk`、`manifest.json` 并 push；服务器 `redeploy.sh` 的 `git pull` 会检测 APK 是否有变化，有则复制到 `app-update/latest.apk`。
 
-**仓库 / 服务器侧**：
-- `app-update/manifest.json` **纳入版本库**（几十字节），APK 本身不入库（`app-update/*` + `!manifest.json`）
-- 服务器 `git pull` 后 `/api/app/update` 即读到新版本；APK 由 GitHub Release 托管下载，无需再手动上传安装包
-- 首次发布需设置 `GH_TOKEN`（classic token 勾 `repo`，或 fine-grained token 勾该仓库 Contents 写权限）
+**其它分发方式**（可选）：
+- `--release`：上传 GitHub Release（需 `GH_TOKEN`），manifest 的 `fallbackUrl` 指向 Release
+- `--scp`：直接 scp 到服务器（需 `APP_DEPLOY_SSH=user@host`，可选 `APP_DEPLOY_PORT` / `APP_DEPLOY_KEY`）
+- 两者可同时使用（服务器为主、Release 兜底）
+
+**下载地址策略**：
+- 服务器/仓库有 APK：`apkUrl = /app-update/latest.apk`（同域），有 Release 时 `fallbackUrl` 兜底
+- 仅 Release：`apkUrl = Release 地址`
+- `/api/app/update` 会校验服务器上 `latest.apk` 是否存在且大小与 manifest 的 `apkSize` 一致；缺失/不匹配时退回 `fallbackUrl`（没有兜底则视为无更新）
+
+> 当前默认的入仓方式会让每次发布的 APK（约 5MB）进入 git 历史，仓库会逐渐变大；后续可切回 `--release` 并清理 `release/latest.apk` 的历史。
 
 ---
 

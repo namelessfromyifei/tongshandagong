@@ -195,8 +195,10 @@ WX_OAUTH_BASE:   'https://www.zhangyuning.xyz',    // 与公众号「网页授�
   （已完成局累计保留，0 局不记历史）。收场后（本场结束）才能退出房间。
 - **日志**：`pm2 logs tongshandagong`。
 - **App 应用内更新**：服务器启动时读 `app-update/manifest.json`（`GET /api/app/update`）返回版本与下载地址。
-  `manifest.json` 已纳入版本库（APK 不入库），`redeploy.sh` 的 `git pull` 会自动更新它。
-  发新版本用 `GH_TOKEN=… node tools/release-apk.js --note "…"`：构建 APK、创建 GitHub Release 并更新 manifest；
-  push 并部署后，旧版 App 下次启动即弹窗提示下载（APK 由 GitHub Release 托管，无需手动上传）。
+  默认发布方式为 **APK 入仓**：`node tools/release-apk.js --note "…"` 生成 `release/latest.apk` 与 manifest，
+  提交 push 后 `redeploy.sh` 的 `git pull` 会检测变化并复制到 `app-update/latest.apk`（静态下载，国内主用）。
+  后续可改用 `--release`（GitHub Release）或 `--scp`（直传服务器）。
+  `/api/app/update` 会校验服务器上文件是否存在且大小一致，缺失时可退回 manifest 的 `fallbackUrl`。
+  部署后，旧版 App 下次启动即弹窗提示下载。
 
 > 域名 + HTTPS 已上线，配置见「七、域名与 HTTPS」。证书为云厂商免费 DV（一年期），到期前在云控制台重签并替换 `/etc/nginx/ssl/` 下的 pem/key，再 `sudo systemctl reload nginx`。
