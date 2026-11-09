@@ -292,6 +292,18 @@ function askLeaveRoom(){
   });
 }
 window.ASK_LEAVE = askLeaveRoom;
+// 提前结束本场：先弹确认，再发请求（复用退出弹窗）
+function askEndSeries(){
+  const dlg=window.EXIT_DIALOG;
+  if(!dlg){ if(socket) socket.emit('endSeries'); return; }
+  dlg.show({
+    title:'提前结束本场',
+    text:'确定发起提前结束吗？',
+    note:'发起后需在线玩家同意才生效；若本局进行中，本局作废不计分，已完成局的分数保留。',
+    onConfirm:()=>{ if(socket) socket.emit('endSeries'); },
+  });
+}
+window.ASK_END_SERIES = askEndSeries;
 // 退出房间回大厅
 function leaveRoom(){
   // 对局进行中（含局末等待下一局）：不可退出房间，只能【提前结束】收场（含手机返回键触发的退出，一律拦下）
@@ -610,7 +622,7 @@ function bindLobby(){
   const bh=$('btnHistory'); if(bh) bh.onclick=()=>{ renderHistory(); const m=$('historyModal'); if(m) m.hidden=false; };
   const bc=$('btnHistoryClose'); if(bc) bc.onclick=()=>{ const m=$('historyModal'); if(m) m.hidden=true; };
   // 提前结束本场（全真人房共识）
-  const es=$('btnEndSeries'); if(es) es.onclick=()=>{ if(socket) socket.emit('endSeries'); };
+  const es=$('btnEndSeries'); if(es) es.onclick=()=>{ askEndSeries(); };
   const ea=$('btnEndAgree'); if(ea) ea.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:true}); };
   const er=$('btnEndReject'); if(er) er.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; if(socket) socket.emit('endSeriesVote',{vote:false}); };
   const ec=$('btnEndClose'); if(ec) ec.onclick=()=>{ const m=$('endAskModal'); if(m) m.hidden=true; };

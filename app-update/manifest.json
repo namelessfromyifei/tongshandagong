@@ -1,8 +1,8 @@
 {
-  "version": "1.0.6",
-  "note": "对局中禁止退出房间；退出弹窗按钮间距自适应",
-  "apkUrl": "/app-update/tongshandagong-1.0.6.apk",
+  "version": "1.0.7",
+  "note": "提前结束本场改为弹窗确认后发起",
+  "apkUrl": "/app-update/tongshandagong-1.0.7.apk",
   "fallbackUrl": "",
-  "apkSize": 5854259,
-  "publishedAt": "2026-11-09T15:04:31.946Z"
+  "apkSize": 5854426,
+  "publishedAt": "2026-11-09T15:20:07.827Z"
 }
