@@ -283,7 +283,7 @@ node tools/build-apk.js --server http://8.148.29.231
 # 或 npm run apk -- --server http://8.148.29.231
 ```
 
-脚本会临时把地址写进 `public/js/env.js`、按 http/https 调整 Capacitor 配置，构建完自动还原仓库文件；产物在 `dist/tongshandagong-<host>-debug.apk`。
+脚本会临时把地址写进 `public/js/env.js`、按 http/https 调整 Capacitor 配置，构建完自动还原仓库文件；产物在 `dist/tongshandagong-<版本>-<host>-debug.apk`（文件名带版本号）。
 
 用 IP 走 http 时，服务端需要额外放行一个端口（见 `deploy/nginx-www.zhangyuning.xyz.conf` 里的「IP 直连」server 块），否则 80 端口只会 301 跳到证书不匹配的 https。
 

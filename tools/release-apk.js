@@ -234,12 +234,12 @@ async function publishRelease(){
   if(repoOk){
     console.log('  1. 提交 build.gradle、release/latest.apk、app-update/manifest.json，push');
     console.log('  2. 服务器 redeploy 的 git pull 会检测到 APK 变化并同步到 app-update/' + localApkName);
-    console.log('  3. 本机体验：装 dist/tongshandagong-production-debug.apk');
+    console.log('  3. 本机体验：装 dist/tongshandagong-' + versionName + '-production-debug.apk');
   } else {
     console.log('  1. 提交 build.gradle 版本号与 app-update/manifest.json，push 后部署服务器');
     console.log('  2. ' + (serverOk
       ? '服务器上 ' + localApkName + ' 已由本次上传就位；/api/app/update 读取仓库里的 manifest'
       : '服务器未上传，客户端走 Release 地址；/api/app/update 读取仓库里的 manifest'));
-    console.log('  3. 本机体验：装 dist/tongshandagong-production-debug.apk');
+    console.log('  3. 本机体验：装 dist/tongshandagong-' + versionName + '-production-debug.apk');
   }
 })();

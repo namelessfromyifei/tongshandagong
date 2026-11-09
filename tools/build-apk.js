@@ -126,7 +126,13 @@ try{
 
   fs.mkdirSync(distDir, { recursive: true });
   const host = target ? new URL(target).host.replace(/[^a-zA-Z0-9.-]/g, '_') : 'production';
-  const out = path.join(distDir, 'tongshandagong-' + host + '-debug.apk');
+  // 产物文件名带版本号（从 build.gradle 读 versionName），便于区分测试包
+  let version = '';
+  try{
+    const m = fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8').match(/versionName\s+"([^"]+)"/);
+    if(m) version = m[1].replace(/[^a-zA-Z0-9._-]/g, '_');
+  }catch(e){}
+  const out = path.join(distDir, 'tongshandagong-' + (version ? version + '-' : '') + host + '-debug.apk');
   fs.copyFileSync(apkSrc, out);
   console.log('\n[build-apk] 完成：' + out);
   if(target) console.log('[build-apk] 该包连接 ' + target);

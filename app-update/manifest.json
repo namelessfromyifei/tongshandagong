@@ -1,8 +1,8 @@
 {
-  "version": "1.0.5",
-  "note": "退出房间弹窗、通知栏残留修复、选牌与计分板修正",
-  "apkUrl": "/app-update/tongshandagong-1.0.5.apk",
+  "version": "1.0.6",
+  "note": "对局中禁止退出房间；退出弹窗按钮间距自适应",
+  "apkUrl": "/app-update/tongshandagong-1.0.6.apk",
   "fallbackUrl": "",
-  "apkSize": 5854245,
-  "publishedAt": "2026-11-09T14:46:46.392Z"
+  "apkSize": 5854259,
+  "publishedAt": "2026-11-09T15:04:31.946Z"
 }

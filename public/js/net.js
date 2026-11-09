@@ -280,24 +280,23 @@ function askLeaveRoom(){
   const app=document.getElementById('app');
   const inTable=!!(app && app.classList.contains('inTable'));
   if(!inTable || !dlg){ leaveRoom(); return; } // 大厅/无弹窗组件：直接按原逻辑
-  // 局末等待开下一局：服务端同样禁止直接退出，只能先【提前结束】收场
-  if(curG && curG.ended && !curSeriesOver){
+  // 对局进行中（含局末等待下一局）：一律不允许退出，只能先【提前结束】收场
+  if(curG && !curSeriesOver){
     dlg.show({ blocked:true, title:'退出房间', text:'对局中不允许退出房间', note:'请点【提前结束】收场后再退出' });
     return;
   }
-  const midRound=!!(curG && !curG.ended);
   dlg.show({
     title:'退出房间',
-    text: midRound ? '对局中退出将视为掉线，可用昵称重连。确定退出房间吗？' : '确定退出房间吗？',
+    text:'确定退出房间吗？',
     onConfirm: leaveRoom,
   });
 }
 window.ASK_LEAVE = askLeaveRoom;
 // 退出房间回大厅
 function leaveRoom(){
-  // 局末（非末局）：不可退出房间，只能【结束场次】提前收场（含手机返回键触发的退出，一律拦下）
-  if(curG && curG.ended && !curSeriesOver){
-    toast('本局尚未结束，请点【提前结束】');
+  // 对局进行中（含局末等待下一局）：不可退出房间，只能【提前结束】收场（含手机返回键触发的退出，一律拦下）
+  if(curG && !curSeriesOver){
+    toast('对局中不允许退出房间，请点【提前结束】收场后再退出');
     return;
   }
   roomCode=''; // 退出标记：杜绝”点了退出后网络闪断又被自动 rejoin 回桌”

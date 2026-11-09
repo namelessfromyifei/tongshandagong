@@ -391,6 +391,9 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 .exitAskBox{max-width:320px;width:auto;min-width:250px;text-align:center;}
 .exitAskText{color:#cfe6da;line-height:1.6;margin:2px 0 0;white-space:pre-line;}
 .exitAskNote{color:#a8c8b8;font-size:13px;line-height:1.6;margin-top:6px;}
+/* 按钮间距随弹窗宽度自适应，避免两个按钮贴在一起（ID 选择器压过移动端通用 .mBtn 规则） */
+#exitAskModal .mBtn{display:flex;justify-content:center;align-items:center;gap:clamp(16px,8%,28px);margin-top:16px;}
+#exitAskModal .mBtn .btn{flex:0 0 auto;white-space:nowrap;}
 
 [hidden]{display:none!important;}
 /* ===== 大厅 ===== */
