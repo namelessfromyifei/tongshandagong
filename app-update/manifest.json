@@ -1,8 +1,8 @@
 {
-  "version": "1.0.7",
-  "note": "提前结束本场改为弹窗确认后发起",
-  "apkUrl": "/app-update/tongshandagong-1.0.7.apk",
+  "version": "1.0.8",
+  "note": "App 内下载并安装更新（进度显示、自动拉起安装器、失败回退浏览器）",
+  "apkUrl": "/app-update/tongshandagong-1.0.8.apk",
   "fallbackUrl": "",
-  "apkSize": 5854426,
-  "publishedAt": "2026-11-09T15:20:07.827Z"
+  "apkSize": 5985103,
+  "publishedAt": "2026-11-09T15:36:49.067Z"
 }

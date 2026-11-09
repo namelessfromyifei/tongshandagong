@@ -292,11 +292,11 @@ node tools/build-apk.js --server http://8.148.29.231
 | 项 | 要求 | 说明 |
 |---|---|---|
 | Node | 24+ | 构建/测试/Capacitor CLI（`node:sqlite` 需要 Node 24） |
-| JDK | 21+ | Capacitor 7 的源码级别是 Java 21；在 `android/gradle.properties` 的 `org.gradle.java.home` 指定 |
+| JDK | 21+ | Capacitor 7 的源码级别是 Java 21；本机只有更高版本时，Gradle 会通过 foojay 自动下载 JDK 21（首次构建需联网，缓存在 `~/.gradle/jdks`） |
 | Android SDK | Platform 35 + Build-Tools 35 | 用 Android Studio 的 SDK Manager 安装 |
 | Gradle | 8.11.1 | 已在 `android/gradle/wrapper` 固定，并从腾讯云镜像下载 |
 
-> `android/gradle.properties` 里的 JDK 路径、`android/local.properties` 里的 SDK 路径都是本机配置，换机器时要改；`local.properties` 已在 `.gitignore` 中忽略。
+> `android/local.properties` 里的 SDK 路径是本机配置，换机器时要改；`local.properties` 已在 `.gitignore` 中忽略。
 
 ### 发布
 
@@ -306,7 +306,7 @@ node tools/build-apk.js --server http://8.148.29.231
 
 ### App 应用内更新（方案1：提示 + 下载）
 
-App 每次启动向 `GET /api/app/update` 检查版本，若服务器上有更新版本则弹窗「发现新版本 vX.Y.Z」，可点「立即下载」打开系统浏览器下载 APK（下载完成后从通知栏安装，需允许「未知来源安装」）。服务端无更新时静默跳过。
+App 每次启动向 `GET /api/app/update` 检查版本，若服务器上有更新版本则弹窗「发现新版本 vX.Y.Z」。点「立即下载」后在 **App 内下载**（弹窗显示进度），完成后自动拉起系统安装器；首次安装需允许「安装未知应用」，之后仍需在系统安装页点「安装」（Android 不允许普通应用静默安装）。下载或拉起安装器失败时自动回退为浏览器下载。服务端无更新时静默跳过。
 
 **发布一条新版本**（默认：APK 入仓，服务器 pull 后自动同步）：
 

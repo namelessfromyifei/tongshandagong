@@ -17,6 +17,7 @@
     "bench:ai": "node tests/ai-bench.js"
   },
   "dependencies": {
+    "@capacitor/filesystem": "^7.1.9",
     "compression": "^1.8.2",
     "express": "^4.21.2",
     "socket.io": "^4.8.1"

@@ -128,6 +128,23 @@ function showUpdatePrompt(d){
     nt.textContent = d.note;
     box.appendChild(nt);
   }
+  // 下载进度区（App 内下载时显示）
+  var prog = document.createElement('div');
+  prog.id = 'updProgress';
+  prog.style.cssText = 'display:none;margin:0 0 10px;color:#cfe6da;font-size:13px;';
+  var progText = document.createElement('div');
+  progText.id = 'updProgressText';
+  var barWrap = document.createElement('div');
+  barWrap.id = 'updProgressBar';
+  barWrap.style.cssText = 'height:6px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden;margin-top:6px;display:none;';
+  var barFill = document.createElement('div');
+  barFill.id = 'updProgressFill';
+  barFill.style.cssText = 'height:100%;width:0;background:#e8c15a;transition:width .2s;';
+  barWrap.appendChild(barFill);
+  prog.appendChild(progText);
+  prog.appendChild(barWrap);
+  box.appendChild(prog);
+
   var row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:6px;';
   function btn(label, primary, cb){
@@ -138,15 +155,104 @@ function showUpdatePrompt(d){
     b.onclick = cb;
     return b;
   }
-  row.appendChild(btn('稍后再说', false, function(){ ov.remove(); }));
+  var ui = { ov:ov, prog:prog, progText:progText, barWrap:barWrap, barFill:barFill };
+  var btnLater = btn('稍后再说', false, function(){ ov.remove(); });
+  var btnBackup = null;
   if(d.fallbackUrl && d.fallbackUrl !== d.apkUrl){
-    row.appendChild(btn('备用下载', false, function(){ downloadApk(d.fallbackUrl); }));
+    btnBackup = btn('备用下载', false, function(){ downloadApk(d.fallbackUrl); });
   }
-  row.appendChild(btn('立即下载', true, function(){ downloadApk(d.apkUrl); }));
+  var btnDownload = btn('立即下载', true, function(){ startInAppUpdate(d, ui); });
+  ui.btnLater = btnLater; ui.btnBackup = btnBackup; ui.btnDownload = btnDownload;
+  row.appendChild(btnLater);
+  if(btnBackup) row.appendChild(btnBackup);
+  row.appendChild(btnDownload);
   box.appendChild(row);
   ov.appendChild(box);
   document.body.appendChild(ov);
 }
+
+function setUpdateProgress(ui, pct, text){
+  if(!ui) return;
+  ui.prog.style.display = 'block';
+  ui.progText.textContent = text || '';
+  if(pct == null){
+    ui.barWrap.style.display = 'none';
+  } else {
+    ui.barWrap.style.display = 'block';
+    ui.barFill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
+}
+
+// App 内下载 APK → 拉起系统安装器；任意一步失败都回退到浏览器下载
+function startInAppUpdate(d, ui){
+  var P2 = plugins();
+  var FS = P2.Filesystem, AI = P2.ApkInstaller;
+  if(!FS || typeof FS.downloadFile !== 'function' || !AI || typeof AI.install !== 'function'){
+    fallbackDownload(d.apkUrl, ui, '当前版本不支持 App 内安装，改为浏览器下载');
+    return;
+  }
+  var safeVer = String(d.version || 'latest').replace(/[^0-9A-Za-z._-]/g, '_');
+  var path = 'tongshandagong-' + safeVer + '.apk';
+  ui.btnDownload.disabled = true;
+  if(ui.btnBackup) ui.btnBackup.style.display = 'none';
+  if(ui.btnLater) ui.btnLater.style.display = 'none';
+  setUpdateProgress(ui, 0, '下载中… 0%');
+  var listener = null;
+  try{
+    var h = FS.addListener('progress', function(p){
+      var pct = (p && p.contentLength > 0) ? Math.round(p.bytes / p.contentLength * 100) : null;
+      setUpdateProgress(ui, pct, pct == null ? '下载中…' : '下载中… ' + Math.min(100, pct) + '%');
+    });
+    if(h && typeof h.remove === 'function'){ listener = h; }
+    else if(h && typeof h.then === 'function'){ h.then(function(hh){ listener = hh; }); }
+  }catch(e){}
+  var stopListen = function(){ try{ if(listener && listener.remove) listener.remove(); }catch(e){} };
+  FS.downloadFile({ url: d.apkUrl, path: path, directory: 'CACHE', progress: true })
+    .then(function(res){
+      stopListen();
+      setUpdateProgress(ui, 100, '下载完成，正在打开安装页…');
+      installDownloadedApk(res && res.path, d, ui);
+    })
+    .catch(function(){
+      stopListen();
+      fallbackDownload(d.apkUrl, ui, '下载失败，已改为浏览器下载');
+    });
+}
+
+function installDownloadedApk(path, d, ui){
+  var AI = plugins().ApkInstaller;
+  if(!path || !AI || typeof AI.install !== 'function'){
+    fallbackDownload(d.apkUrl, ui);
+    return;
+  }
+  AI.install({ path: path }).then(function(){
+    setUpdateProgress(ui, 100, '已打开安装页，请按提示完成安装');
+    if(ui.btnLater){ ui.btnLater.style.display = 'inline-block'; ui.btnLater.textContent = '关闭'; }
+  }).catch(function(err){
+    var code = String((err && (err.code || err.message)) || '');
+    if(code.indexOf('NEED_PERMISSION') >= 0){
+      setUpdateProgress(ui, 100, '请允许「安装未知应用」后返回，再点下方按钮');
+      if(ui.btnDownload){
+        ui.btnDownload.disabled = false;
+        ui.btnDownload.textContent = '重新安装';
+        ui.btnDownload.onclick = function(){ installDownloadedApk(path, d, ui); };
+      }
+      if(ui.btnLater) ui.btnLater.style.display = 'inline-block';
+      return;
+    }
+    fallbackDownload(d.apkUrl, ui, '安装页打开失败，已改为浏览器下载');
+  });
+}
+
+function fallbackDownload(url, ui, msg){
+  if(ui && msg) setUpdateProgress(ui, null, msg);
+  downloadApk(url);
+  // 交给浏览器后关闭自定义弹窗
+  setTimeout(function(){
+    try{ if(ui && ui.ov && ui.ov.parentNode) ui.ov.parentNode.removeChild(ui.ov); }catch(e){}
+  }, 1500);
+}
+
 function downloadApk(url){
   var abs = String(url || '');
   if(!abs) return;

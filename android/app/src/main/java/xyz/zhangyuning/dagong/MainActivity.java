@@ -1,5 +1,6 @@
 package xyz.zhangyuning.dagong;
 
+import android.os.Bundle;
 import android.webkit.WebView;
 
 import androidx.core.view.WindowCompat;
@@ -9,6 +10,12 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(ApkInstallerPlugin.class); // 须在 super.onCreate 前注册
+        super.onCreate(savedInstanceState);
+    }
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
