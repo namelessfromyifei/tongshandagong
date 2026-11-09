@@ -464,10 +464,23 @@ function renderRejoinPick(){
     box.appendChild(d);
   });
 }
-// 大厅右上角「下载 App」：网页端显示（原生 App 内隐藏）；下载地址取 /api/app/update
+// 大厅右上角：网页端显示「下载 App」（有发布包时）；原生 App 内显示「检查更新」
 function initDownloadApp(){
   const b=$('btnDownloadApp'); if(!b) return;
-  if(IS_APP){ b.hidden=true; return; }
+  if(IS_APP){
+    b.textContent='检查更新';
+    b.onclick=()=>{
+      if(!window.APP_UPDATE || typeof window.APP_UPDATE.check!=='function'){ toast('当前版本不支持检查更新'); return; }
+      window.APP_UPDATE.check((status, inst)=>{
+        if(status==='update') return; // 已弹出更新弹窗
+        if(status==='latest') toast('已是最新版本' + (inst ? ' v' + inst : ''));
+        else if(status==='unknown') toast('无法获取当前版本号');
+        else toast('检查更新失败，请检查网络');
+      });
+    };
+    b.hidden=false;
+    return;
+  }
   fetch(apiUrl('/api/app/update'), { cache:'no-store' })
     .then(r=>r.json())
     .then(d=>{

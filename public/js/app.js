@@ -65,21 +65,31 @@ function cmpVersion(a, b){
   }
   return 0;
 }
-function checkAppUpdate(){
+// 检查更新：cb(status, installedVersion, data)
+// status: update=有新版并已弹窗 / latest=已是最新 / unknown=拿不到当前版本 / fail=请求失败
+function checkAppUpdate(cb){
+  var done = function(){ if(typeof cb === 'function') cb.apply(null, arguments); };
   try{
-    if(!window.NET || typeof window.NET.apiUrl !== 'function') return;
+    if(!window.NET || typeof window.NET.apiUrl !== 'function'){ done('fail'); return; }
     fetch(window.NET.apiUrl('/api/app/update'), { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
-        if(!d || !d.update || !d.version) return; // 服务器没配 manifest / 已是最新
+        if(!d || !d.update || !d.version){ // 服务器没配 manifest：视为已是最新
+          getInstalledVersion().then(function(inst){ done('latest', inst, d); });
+          return;
+        }
         getInstalledVersion().then(function(inst){
-          if(!inst || cmpVersion(d.version, inst) <= 0) return;
+          if(!inst){ done('unknown', null, d); return; }
+          if(cmpVersion(d.version, inst) <= 0){ done('latest', inst, d); return; }
           showUpdatePrompt(d);
+          done('update', inst, d);
         });
       })
-      .catch(function(){});
-  }catch(e){}
+      .catch(function(){ done('fail'); });
+  }catch(e){ done('fail'); }
 }
+// 供大厅「检查更新」按钮手动调用
+window.APP_UPDATE = { check: checkAppUpdate };
 var _updateShown = false;
 function showUpdatePrompt(d){
   if(_updateShown) return;
