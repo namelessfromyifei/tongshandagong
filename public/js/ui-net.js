@@ -2186,6 +2186,9 @@ $('btnHe').onclick=playerHe;
   };
   handEl.addEventListener('pointerup',endDrag);
   handEl.addEventListener('pointercancel',endDrag);
+  // 新的按下手势（例如拖动选牌后立刻点桌面）说明上一次拖动的合成 click 已结束：
+  // 立即解除抑制，避免把用户紧接着的真实点击也吞掉
+  document.addEventListener('pointerdown',()=>{ clickSuppress=false; }, true);
   // 点击桌面任意空白处（非手牌/按钮/输入框）：
   //   单击 → 立即收回已选牌（并把收回的牌按 card.id 暂存）；
   //   350ms 内再点一次 → 等同点「出牌」：用暂存的牌恢复选中后直接出牌。
@@ -2196,7 +2199,7 @@ $('btnHe').onclick=playerHe;
     const t=e.target;
     if(!t||!t.closest) return;
     if(t.closest('.hcard')||t.closest('button')||t.closest('input')) return;
-    if(clickSuppress) return; // 拖动选牌刚落合的合成 click：不触发
+    if(clickSuppress){ clickSuppress=false; return; } // 拖动选牌刚落合的合成 click：只吞这一次
     resetHintCycle(); // 点桌面也算其他操作
     const now=Date.now();
     const mine=G && G.seats && G.seats[mySeat];
