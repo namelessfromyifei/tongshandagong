@@ -464,6 +464,19 @@ function renderRejoinPick(){
     box.appendChild(d);
   });
 }
+// 大厅右上角「下载 App」：网页端显示（原生 App 内隐藏）；下载地址取 /api/app/update
+function initDownloadApp(){
+  const b=$('btnDownloadApp'); if(!b) return;
+  if(IS_APP){ b.hidden=true; return; }
+  fetch(apiUrl('/api/app/update'), { cache:'no-store' })
+    .then(r=>r.json())
+    .then(d=>{
+      if(!d || !d.update || !d.apkUrl) return; // 服务器未发布更新包：保持隐藏
+      b.onclick=()=>{ try{ window.open(d.apkUrl, '_blank', 'noopener'); }catch(e){ location.href=d.apkUrl; } };
+      b.hidden=false;
+    })
+    .catch(()=>{});
+}
 function bindLobby(){
   initAuth();
   $('btnSetName').onclick=()=>{
@@ -606,6 +619,8 @@ function bindLobby(){
   }catch(e){}
   // 大厅每 3 秒刷新房间列表
   setInterval(()=>{ if(socket && socket.connected) socket.emit('listRooms'); }, 3000);
+  // 网页端右上角「下载 App」按钮（原生 App 内自动隐藏）
+  initDownloadApp();
 }
 
 // 收集设置表单值

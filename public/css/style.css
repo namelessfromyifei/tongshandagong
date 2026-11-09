@@ -391,7 +391,10 @@ input,textarea{-webkit-user-select:text;user-select:text;}
 [hidden]{display:none!important;}
 /* ===== 大厅 ===== */
 #lobby{display:flex;min-height:100vh;align-items:center;justify-content:center;}
-.lobbyBox{background:#173e2e;border:1px solid var(--gold);border-radius:16px;padding:26px 30px;max-width:460px;width:92%;}
+.lobbyBox{position:relative;background:#173e2e;border:1px solid var(--gold);border-radius:16px;padding:26px 30px;max-width:460px;width:92%;}
+/* 大厅右上角：下载 App 安装包（仅在网页端出现） */
+.lobbyDownload{position:absolute;right:12px;top:12px;font-size:12px;padding:4px 10px;}
+@media (max-width:560px){ .lobbyDownload{right:8px;top:8px;font-size:11px;padding:3px 8px;} }
 .lobbyBox h1{color:var(--gold);font-size:22px;letter-spacing:2px;margin-bottom:6px;}
 .lobbySub{font-size:13px;color:#b9d6c8;margin-bottom:18px;}
 .lobbyRow{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;font-size:14px;}
