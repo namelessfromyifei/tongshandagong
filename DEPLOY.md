@@ -200,5 +200,8 @@ WX_OAUTH_BASE:   'https://www.zhangyuning.xyz',    // 与公众号「网页授�
   后续可改用 `--release`（GitHub Release）或 `--scp`（直传服务器）。
   `/api/app/update` 会校验服务器上文件是否存在且大小一致，缺失时可退回 manifest 的 `fallbackUrl`。
   部署后，旧版 App 下次启动即弹窗提示下载。
+  **从旧版本升级注意**：`manifest.json` 以前只存在于服务器、未纳入仓库；首次拉取包含它的提交时，
+  未跟踪文件会阻止 `git pull`。新版 `redeploy.sh` 会自动备份旧文件再拉；已用旧脚本卡住的服务器，
+  手动执行一次 `mv app-update/manifest.json app-update/manifest.json.bak && ./redeploy.sh`。
 
 > 域名 + HTTPS 已上线，配置见「七、域名与 HTTPS」。证书为云厂商免费 DV（一年期），到期前在云控制台重签并替换 `/etc/nginx/ssl/` 下的 pem/key，再 `sudo systemctl reload nginx`。

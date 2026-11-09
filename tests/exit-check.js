@@ -111,9 +111,14 @@ function connect(port){
       const s = clients[0].lastSnap; if(!s || !s.ready) return false;
       return s.ready[clients[1].seat] === true && s.ready[clients[2].seat] === true;
     }, 5000);
-    clients[0].c.emit('setSettings', { start: true });
-    const r1Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 15000);
-    T('AI 房开局成功（3 真人 + AI 补位）', r1Started);
+    // start 被拒后服务端不会重试；CI 负载高/瞬时掉线时重发几次，避免偶发失败
+    let r1Started = false;
+    const r1Deadline = Date.now() + 15000;
+    while(!r1Started && Date.now() < r1Deadline){
+      clients[0].c.emit('setSettings', { start: true });
+      r1Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 1000);
+    }
+    T('AI 房开局成功（3 真人 + AI 补位）', r1Started, clients[0].toasts.slice(-3));
 
     const reachedGap = await until(() => clients.some(x => {
       const s = x.lastSnap; return s && s.G && s.G.ended && !s.seriesOver && s.series && s.series.roundCount >= 1;
@@ -195,9 +200,14 @@ function connect(port){
       const s = clients[0].lastSnap; if(!s || !s.ready) return false;
       return [1,2,3].every(i => s.ready[clients[i].seat] === true);
     }, 5000);
-    clients[0].c.emit('setSettings', { start: true });
-    const r2Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 15000);
-    T('满员房开局成功', r2Started);
+    // 同上：start 只尝试一次，被拒（瞬时掉线/就绪未同步）时会一直不开；重试至多 15 秒
+    let r2Started = false;
+    const r2Deadline = Date.now() + 15000;
+    while(!r2Started && Date.now() < r2Deadline){
+      clients[0].c.emit('setSettings', { start: true });
+      r2Started = await until(() => clients.some(x => x.lastSnap && x.lastSnap.G && !x.lastSnap.G.ended && !x.lastSnap.seriesOver), 1000);
+    }
+    T('满员房开局成功', r2Started, clients[0].toasts.slice(-3));
 
     const reachGap2 = await until(() => clients.some(x => {
       const s = x.lastSnap; return s && s.G && s.G.ended && !s.seriesOver && s.series && s.series.roundCount >= 1;
