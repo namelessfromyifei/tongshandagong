@@ -190,6 +190,39 @@ app.use(express.static(path.join(__dirname, 'public')));
 /* App 应用内更新：latest.apk 下载目录（app-update/，gitignore，由发布脚本 scp 上传） */
 app.use('/app-update', express.static(path.join(__dirname, 'app-update'), { maxAge: 60*60*1000 }));
 
+/* 启动时兜底同步：默认发布方式下 APK 入库在 release/latest.apk，部署脚本会复制到 app-update/；
+ * 若本次部署跑的仍是旧版 redeploy.sh（还没同步），这里按 manifest 校验后补上，保证 push 部署即可生效。
+ * 只在 manifest 指定本地地址且仓库 APK 大小与 manifest 一致时才复制，不影响 --release / --scp 分发。 */
+function syncRepoApk(){
+  try{
+    const mPath = path.join(__dirname, 'app-update', 'manifest.json');
+    if(!fs.existsSync(mPath)) return;
+    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    if(!m || !m.apkUrl || !String(m.apkUrl).trim().startsWith('/app-update/')) return;
+    const src = path.join(__dirname, 'release', 'latest.apk');
+    if(!fs.existsSync(src)) return;
+    const srcStat = fs.statSync(src);
+    if(m.apkSize && Number(m.apkSize) !== srcStat.size) return; // 仓库 APK 与 manifest 不匹配，跳过
+    const dst = path.join(__dirname, 'app-update', 'latest.apk');
+    let same = false;
+    try{
+      const dstStat = fs.statSync(dst);
+      if(dstStat.size === srcStat.size){
+        const crypto = require('crypto');
+        const h = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+        same = h(src) === h(dst);
+      }
+    }catch(e){ same = false; }
+    if(same) return;
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    console.log('[app-update] 已同步 release/latest.apk → app-update/latest.apk');
+  }catch(e){
+    console.warn('[app-update] 同步仓库 APK 失败：' + (e && e.message ? e.message : e));
+  }
+}
+syncRepoApk();
+
 /* ---------- 微信授权：Cookie / 会话 ---------- */
 function parseCookies(header){
   const out = {};
