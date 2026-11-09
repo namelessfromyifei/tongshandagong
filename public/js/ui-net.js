@@ -637,7 +637,7 @@ function fanBombSpeech(p){
   }
   if(p.type==='bomb'){
     // 单点番炸没有「N笼」词条（7张软=1、7硬/8软=2 …）：不许混报成滚笼，直接报「炸弹」
-    return {text:`${p.fan}番炸`, tokens:['炸弹']};
+    return {text:`${p.fan}笼炸`, tokens:['炸弹']};
   }
   if(p.fan===1) return {text:'软滚', tokens:['软滚']};
   if(p.fan===2) return {text:'硬滚', tokens:['硬滚']};
@@ -1691,10 +1691,10 @@ function finishLocal(settle){
         `<td>${bonusC>0?'+':''}${bonusC}${kb}${bb}</td>`+
         `<td class="fenGold">${fv>0?'+':''}${fv}</td><td>${cumTotals[i]}</td></tr>`;
     }
-    // 说明 + 轮累计
-    const noteTxt = `牌面(笼) + 滚笼(笼) + 奖金(笼) = 番数；番数 × 2 × 半番 = 本局分（半番默认1 → ×2）`;
+    // 说明 + 轮内局数
+    const noteTxt = `牌面(笼) + 滚笼(笼) + 奖金(笼) = 笼数；笼数 × 2 × 半笼 = 本局分（半笼默认1 → ×2）`;
     if(series && series.active && settings.rounds>1){
-      tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局 · 累计：${cumTotals.map((t,i)=>`${esc(shortNick(seatNames[i],6))} ${t>0?'+':''}${t}分`).join('  ')}</td></tr>`;
+      tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt} · 轮内第 ${series.roundCount}/${settings.rounds} 局</td></tr>`;
     } else {
       tb.innerHTML+=`<tr><td colspan="9" class="note">${noteTxt}</td></tr>`;
     }

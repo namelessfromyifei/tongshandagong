@@ -569,7 +569,7 @@ function settingChanges(old, room){
   if(old.rounds !== s.rounds) ch.push(`局数 ${s.rounds}`);
   if(old.kings !== s.kings) ch.push(`王总数 ${s.kings}`);
   if(old.jokerValue !== s.jokerValue) ch.push(`王单出算 ${s.jokerValue}`);
-  if(old.halfFan !== s.halfFan) ch.push(`半番 ${s.halfFan}`);
+  if(old.halfFan !== s.halfFan) ch.push(`半笼 ${s.halfFan}`);
   if(old.fanCap !== s.fanCap) ch.push(`笼数封顶 ${s.fanCap===0?'不封顶':s.fanCap}`);
   if(old.tailBonus !== s.tailBonus) ch.push(`未跑可拿王奖金 ${on(s.tailBonus)}`);
   if(old.showRemain !== s.showRemain) ch.push(`显示剩余张数 ${on(s.showRemain)}`);
