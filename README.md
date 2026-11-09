@@ -308,19 +308,19 @@ node tools/build-apk.js --server http://8.148.29.231
 
 App 每次启动向 `GET /api/app/update` 检查版本，若服务器上有更新版本则弹窗「发现新版本 vX.Y.Z」，可点「立即下载」打开系统浏览器下载 APK（下载完成后从通知栏安装，需允许「未知来源安装」）。服务端无更新时静默跳过。
 
-**发布一条新版本**（一条命令）：
+**发布一条新版本**（需要 GitHub token）：
 
 ```sh
-node tools/release-apk.js --note "更新说明，支持多行"
+GH_TOKEN=<有 repo 权限的 token> node tools/release-apk.js --note "更新说明，支持多行"
 # 可选：--version 1.2.0 指定版本号（默认 patch +1）
 ```
 
-该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 更新 `app-update/latest.apk` + `app-update/manifest.json`。
+该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 创建/更新 GitHub Release（tag `vX.Y.Z`，资产 `tongshandagong-X.Y.Z.apk`）→ 写入 `app-update/manifest.json`（`apkUrl` 指向 Release 下载地址）。
 
-**服务器侧**（无需额外配置）：
-- 服务端读取 `app-update/manifest.json` 返回版本/下载链接，`/app-update/latest.apk` 静态托管
-- `app-update/` 已 gitignore、**只存在于服务器**；首次部署需手动放进该目录（后续 `redeploy.sh` 的 `git pull` 不会清除它）
-- App 弹窗前请先部署服务器，否则仍是旧版本信息
+**仓库 / 服务器侧**：
+- `app-update/manifest.json` **纳入版本库**（几十字节），APK 本身不入库（`app-update/*` + `!manifest.json`）
+- 服务器 `git pull` 后 `/api/app/update` 即读到新版本；APK 由 GitHub Release 托管下载，无需再手动上传安装包
+- 首次发布需设置 `GH_TOKEN`（classic token 勾 `repo`，或 fine-grained token 勾该仓库 Contents 写权限）
 
 ---
 

@@ -28,5 +28,6 @@ shots/
 data/
 *.db
 
-# App 应用内更新的安装包目录（只存在于服务器，不入库）
-app-update/
+# App 应用内更新：只提交 manifest.json；APK 由 GitHub Release 托管，latest.apk 不入库
+app-update/*
+!app-update/manifest.json

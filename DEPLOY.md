@@ -194,9 +194,9 @@ WX_OAUTH_BASE:   'https://www.zhangyuning.xyz',    // 与公众号「网页授�
   需离线座位全部超过 `OFFLINE_END_MS`（默认 10 分钟）未回归才允许。全房真人离线超时则自动收场
   （已完成局累计保留，0 局不记历史）。收场后（本场结束）才能退出房间。
 - **日志**：`pm2 logs tongshandagong`。
-- **App 应用内更新**：服务器启动时读 `app-update/manifest.json`（`GET /api/app/update`），
-  `/app-update/latest.apk` 静态托管 APK。该目录已 gitignore、只存在于服务器（首次需手动放入；
-  `redeploy.sh` 是 `git pull`，不会清除它）。发新版本用 `node tools/release-apk.js --note "…"`，
-  构建后 `app-update/` 自动更新；先部署服务器，旧版 App 下次启动即弹窗提示下载。
+- **App 应用内更新**：服务器启动时读 `app-update/manifest.json`（`GET /api/app/update`）返回版本与下载地址。
+  `manifest.json` 已纳入版本库（APK 不入库），`redeploy.sh` 的 `git pull` 会自动更新它。
+  发新版本用 `GH_TOKEN=… node tools/release-apk.js --note "…"`：构建 APK、创建 GitHub Release 并更新 manifest；
+  push 并部署后，旧版 App 下次启动即弹窗提示下载（APK 由 GitHub Release 托管，无需手动上传）。
 
 > 域名 + HTTPS 已上线，配置见「七、域名与 HTTPS」。证书为云厂商免费 DV（一年期），到期前在云控制台重签并替换 `/etc/nginx/ssl/` 下的 pem/key，再 `sudo systemctl reload nginx`。
