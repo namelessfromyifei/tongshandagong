@@ -106,8 +106,9 @@ app.use('/api', (req, res, next) => {
 
 /* ---------- App 应用内更新：读 app-update/manifest.json ----------
  * 发布流程：tools/release-apk.js（bump 版本 → 构建 → 写入 release/latest.apk 入仓 / 可选 scp、GitHub Release → 写 manifest.json）。
- * 默认入仓方式下，redeploy.sh 在 git pull 后把 release/latest.apk 同步到 app-update/latest.apk。
- * manifest 里 apkUrl 多为 /app-update/latest.apk（服务器同域，主用），fallbackUrl 为 GitHub Release 地址（兜底）。
+ * 默认入仓方式下，redeploy.sh 在 git pull 后把 release/latest.apk 同步到 app-update/tongshandagong-<版本>.apk
+ * （下载文件名带版本）；旧的 /app-update/latest.apk 仍兼容。
+ * manifest 里 apkUrl 多为 /app-update/<文件名>（服务器同域，主用），fallbackUrl 为 GitHub Release 地址（兜底）。
  * 若 apkUrl 指向本地但文件缺失/大小与 manifest 不一致，自动退回 fallbackUrl。
  * App 每次启动拉 /api/app/update，发现版本更新则弹窗提示下载。 */
 app.get('/api/app/update', (req, res) => {
@@ -120,14 +121,23 @@ app.get('/api/app/update', (req, res) => {
       if(/^https?:\/\//i.test(u)) return u;
       return req.protocol + '://' + req.get('host') + (u.startsWith('/') ? u : '/' + u);
     }
-    let primary = absUrl(m.apkUrl) || absUrl('/app-update/latest.apk');
+    // 从 /app-update/<文件名> 取出本地文件名（防目录穿越）
+    function localApkName(u){
+      u = String(u || '').trim();
+      if(!u){ return 'latest.apk'; }
+      if(!u.startsWith('/app-update/')) return '';
+      const name = decodeURIComponent(u.slice('/app-update/'.length));
+      if(!name || name.includes('/') || name.includes('\\') || name.includes('..')) return '';
+      return name;
+    }
+    const localName = localApkName(m.apkUrl);
+    let primary = absUrl(m.apkUrl) || absUrl('/app-update/' + (localName || 'latest.apk'));
     let fallback = absUrl(m.fallbackUrl);
     // 主地址是服务器本地文件：校验文件存在且大小与发布时一致，否则退回兜底地址
-    const wantLocal = !m.apkUrl || String(m.apkUrl).trim().startsWith('/app-update/');
-    if(wantLocal){
+    if(localName){
       let localOk = false;
       try{
-        const st = fs.statSync(path.join(__dirname, 'app-update', 'latest.apk'));
+        const st = fs.statSync(path.join(__dirname, 'app-update', localName));
         localOk = !m.apkSize || Number(m.apkSize) === st.size;
       }catch(e){}
       if(!localOk){
@@ -190,7 +200,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 /* App 应用内更新：latest.apk 下载目录（app-update/，gitignore，由发布脚本 scp 上传） */
 app.use('/app-update', express.static(path.join(__dirname, 'app-update'), { maxAge: 60*60*1000 }));
 
-/* 启动时兜底同步：默认发布方式下 APK 入库在 release/latest.apk，部署脚本会复制到 app-update/；
+/* 启动时兜底同步：默认发布方式下 APK 入库在 release/latest.apk，部署脚本会复制到
+ * app-update/<manifest 指定的文件名>（tongshandagong-<版本>.apk，下载时带版本）。
  * 若本次部署跑的仍是旧版 redeploy.sh（还没同步），这里按 manifest 校验后补上，保证 push 部署即可生效。
  * 只在 manifest 指定本地地址且仓库 APK 大小与 manifest 一致时才复制，不影响 --release / --scp 分发。 */
 function syncRepoApk(){
@@ -198,25 +209,33 @@ function syncRepoApk(){
     const mPath = path.join(__dirname, 'app-update', 'manifest.json');
     if(!fs.existsSync(mPath)) return;
     const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-    if(!m || !m.apkUrl || !String(m.apkUrl).trim().startsWith('/app-update/')) return;
+    const url = String((m && m.apkUrl) || '').trim();
+    if(!url.startsWith('/app-update/')) return;
+    let name = decodeURIComponent(url.slice('/app-update/'.length));
+    if(!name || name.includes('/') || name.includes('\\') || name.includes('..')) return;
     const src = path.join(__dirname, 'release', 'latest.apk');
     if(!fs.existsSync(src)) return;
     const srcStat = fs.statSync(src);
     if(m.apkSize && Number(m.apkSize) !== srcStat.size) return; // 仓库 APK 与 manifest 不匹配，跳过
-    const dst = path.join(__dirname, 'app-update', 'latest.apk');
-    let same = false;
-    try{
-      const dstStat = fs.statSync(dst);
-      if(dstStat.size === srcStat.size){
-        const crypto = require('crypto');
-        const h = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
-        same = h(src) === h(dst);
-      }
-    }catch(e){ same = false; }
-    if(same) return;
-    fs.mkdirSync(path.dirname(dst), { recursive: true });
-    fs.copyFileSync(src, dst);
-    console.log('[app-update] 已同步 release/latest.apk → app-update/latest.apk');
+    const crypto = require('crypto');
+    const sha = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+    const srcHash = sha(src);
+    const targets = [name];
+    if(name !== 'latest.apk') targets.push('latest.apk'); // 兼容旧地址/手动下载
+    let copied = false;
+    for(const t of targets){
+      const dst = path.join(__dirname, 'app-update', t);
+      let same = false;
+      try{
+        const dstStat = fs.statSync(dst);
+        same = dstStat.size === srcStat.size && sha(dst) === srcHash;
+      }catch(e){ same = false; }
+      if(same) continue;
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+      copied = true;
+    }
+    if(copied) console.log('[app-update] 已同步 release/latest.apk → app-update/' + name);
   }catch(e){
     console.warn('[app-update] 同步仓库 APK 失败：' + (e && e.message ? e.message : e));
   }

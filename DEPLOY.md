@@ -196,7 +196,8 @@ WX_OAUTH_BASE:   'https://www.zhangyuning.xyz',    // 与公众号「网页授�
 - **日志**：`pm2 logs tongshandagong`。
 - **App 应用内更新**：服务器启动时读 `app-update/manifest.json`（`GET /api/app/update`）返回版本与下载地址。
   默认发布方式为 **APK 入仓**：`node tools/release-apk.js --note "…"` 生成 `release/latest.apk` 与 manifest，
-  提交 push 后 `redeploy.sh` 的 `git pull` 会检测变化并复制到 `app-update/latest.apk`（静态下载，国内主用）。
+  提交 push 后 `redeploy.sh` 的 `git pull` 会检测变化并复制到 `app-update/tongshandagong-<版本>.apk`
+  （静态下载，国内主用；下载文件名带版本，`latest.apk` 保留作兼容）。
   后续可改用 `--release`（GitHub Release）或 `--scp`（直传服务器）。
   `/api/app/update` 会校验服务器上文件是否存在且大小一致，缺失时可退回 manifest 的 `fallbackUrl`。
   部署后，旧版 App 下次启动即弹窗提示下载。

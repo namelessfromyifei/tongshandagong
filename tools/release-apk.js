@@ -15,9 +15,9 @@
  *   2. 调 tools/build-apk.js 构建 production APK
  *   3. 按上述方式分发 APK
  *   4. 写 app-update/manifest.json：
- *        入仓/服务器有 APK → apkUrl=/app-update/latest.apk（同域），有 Release 时兜底
+ *        入仓/服务器有 APK → apkUrl=/app-update/tongshandagong-<版本>.apk（同域，下载文件名带版本），有 Release 时兜底
  *        仅 Release         → apkUrl=Release 地址
- *      /api/app/update 会检查服务器上 latest.apk 是否存在且大小与 manifest 一致，缺失时自动退回 fallbackUrl。
+ *      /api/app/update 会检查该文件是否存在且大小与 manifest 一致，缺失时自动退回 fallbackUrl。
  * ========================================================= */
 "use strict";
 const fs = require('fs');
@@ -84,7 +84,8 @@ const tag = 'v' + versionName;
 const assetName = `tongshandagong-${versionName}.apk`;
 const assetUrl = `https://github.com/${repo}/releases/download/${tag}/${assetName}`;
 const apiBase = `https://api.github.com/repos/${repo}`;
-const LOCAL_APK_URL = '/app-update/latest.apk';
+const localApkName = `tongshandagong-${versionName}.apk`; // 下载保存的文件名带版本
+const LOCAL_APK_URL = '/app-update/' + localApkName;
 
 // 服务器上传（scp）：APP_DEPLOY_SSH=user@host，可选 APP_DEPLOY_PORT / APP_DEPLOY_KEY / APP_DEPLOY_DIR
 const deploySsh = (process.env.APP_DEPLOY_SSH || '').trim();
@@ -107,7 +108,7 @@ function uploadToServer(){
     { stdio: 'inherit', timeout: 120000 });
   if(mk.error) throw mk.error;
   if(mk.status !== 0) throw new Error(`ssh 创建目录失败（退出码 ${mk.status}）`);
-  const up = spawnSync('scp', sshArgs('-P').concat([apkSrc, `${deploySsh}:${deployDir}/latest.apk`]),
+  const up = spawnSync('scp', sshArgs('-P').concat([apkSrc, `${deploySsh}:${deployDir}/${localApkName}`]),
     { stdio: 'inherit', timeout: 300000 });
   if(up.error) throw up.error;
   if(up.status !== 0) throw new Error(`scp 上传失败（退出码 ${up.status}）`);
@@ -232,12 +233,12 @@ async function publishRelease(){
   console.log('\n✅ 发布完成。后续步骤：');
   if(repoOk){
     console.log('  1. 提交 build.gradle、release/latest.apk、app-update/manifest.json，push');
-    console.log('  2. 服务器 redeploy 的 git pull 会检测到 APK 变化并同步到 app-update/latest.apk');
+    console.log('  2. 服务器 redeploy 的 git pull 会检测到 APK 变化并同步到 app-update/' + localApkName);
     console.log('  3. 本机体验：装 dist/tongshandagong-production-debug.apk');
   } else {
     console.log('  1. 提交 build.gradle 版本号与 app-update/manifest.json，push 后部署服务器');
     console.log('  2. ' + (serverOk
-      ? '服务器上 latest.apk 已由本次上传就位；/api/app/update 读取仓库里的 manifest'
+      ? '服务器上 ' + localApkName + ' 已由本次上传就位；/api/app/update 读取仓库里的 manifest'
       : '服务器未上传，客户端走 Release 地址；/api/app/update 读取仓库里的 manifest'));
     console.log('  3. 本机体验：装 dist/tongshandagong-production-debug.apk');
   }

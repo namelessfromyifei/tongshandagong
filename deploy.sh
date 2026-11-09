@@ -37,13 +37,18 @@ npm install --production
 
 echo "==> 同步 APK 到 app-update/"
 mkdir -p app-update
+# 目标文件名取自 manifest 的 apkUrl（tongshandagong-<版本>.apk，下载时带版本）；解析失败退回 latest.apk
+APK_NAME=$(node -e 'try{var m=require("./app-update/manifest.json");var u=String(m.apkUrl||"");if(u.indexOf("/app-update/")===0){var n=u.slice(12);if(n&&n.indexOf("/")<0&&n.indexOf("\\")<0&&n.indexOf("..")<0)process.stdout.write(n);}}catch(e){}' 2>/dev/null)
+[ -n "$APK_NAME" ] || APK_NAME="latest.apk"
 if [ -f release/latest.apk ]; then
-  if [ ! -f app-update/latest.apk ] || ! cmp -s release/latest.apk app-update/latest.apk; then
-    cp -f release/latest.apk app-update/latest.apk
-    echo "   已更新 app-update/latest.apk"
-  else
-    echo "   APK 无变化"
-  fi
+  changed=0
+  for t in "$APK_NAME" latest.apk; do
+    if [ ! -f "app-update/$t" ] || ! cmp -s release/latest.apk "app-update/$t"; then
+      cp -f release/latest.apk "app-update/$t"
+      changed=1
+    fi
+  done
+  if [ "$changed" = "1" ]; then echo "   已更新 app-update/$APK_NAME"; else echo "   APK 无变化"; fi
 else
   echo "   release/latest.apk 不存在，跳过"
 fi

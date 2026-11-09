@@ -315,7 +315,7 @@ node tools/release-apk.js --note "更新说明，支持多行"
 # 可选：--version 1.2.0 指定版本号（默认 patch +1）
 ```
 
-该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 写入 `release/latest.apk` → 写入 `app-update/manifest.json`。之后提交 `build.gradle`、`release/latest.apk`、`manifest.json` 并 push；服务器 `redeploy.sh` 的 `git pull` 会检测 APK 是否有变化，有则复制到 `app-update/latest.apk`。
+该命令会：bump `versionCode+1` / `versionName`（写回 `android/app/build.gradle`）→ 构建 production APK → 写入 `release/latest.apk` → 写入 `app-update/manifest.json`。之后提交 `build.gradle`、`release/latest.apk`、`manifest.json` 并 push；服务器 `redeploy.sh` 的 `git pull` 会检测 APK 是否有变化，有则复制到 `app-update/tongshandagong-<版本>.apk`（用户下载时文件名带版本，同时更新 `latest.apk` 兼容旧地址）。
 
 **其它分发方式**（可选）：
 - `--release`：上传 GitHub Release（需 `GH_TOKEN`），manifest 的 `fallbackUrl` 指向 Release
@@ -323,9 +323,9 @@ node tools/release-apk.js --note "更新说明，支持多行"
 - 两者可同时使用（服务器为主、Release 兜底）
 
 **下载地址策略**：
-- 服务器/仓库有 APK：`apkUrl = /app-update/latest.apk`（同域），有 Release 时 `fallbackUrl` 兜底
+- 服务器/仓库有 APK：`apkUrl = /app-update/tongshandagong-<版本>.apk`（同域，下载文件名带版本），有 Release 时 `fallbackUrl` 兜底
 - 仅 Release：`apkUrl = Release 地址`
-- `/api/app/update` 会校验服务器上 `latest.apk` 是否存在且大小与 manifest 的 `apkSize` 一致；缺失/不匹配时退回 `fallbackUrl`（没有兜底则视为无更新）
+- `/api/app/update` 会按 `apkUrl` 取文件名，校验服务器上该文件是否存在且大小与 manifest 的 `apkSize` 一致；缺失/不匹配时退回 `fallbackUrl`（没有兜底则视为无更新）
 
 > 当前默认的入仓方式会让每次发布的 APK（约 5MB）进入 git 历史，仓库会逐渐变大；后续可切回 `--release` 并清理 `release/latest.apk` 的历史。
 

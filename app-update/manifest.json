@@ -1,8 +1,8 @@
 {
-  "version": "1.0.3",
-  "note": "网页端支持下载 App；更新优先走服务器下载",
-  "apkUrl": "/app-update/latest.apk",
+  "version": "1.0.4",
+  "note": "更换 App 图标；App 内可手动检查更新",
+  "apkUrl": "/app-update/tongshandagong-1.0.4.apk",
   "fallbackUrl": "",
-  "apkSize": 5345294,
-  "publishedAt": "2026-11-09T10:10:08.606Z"
+  "apkSize": 5852107,
+  "publishedAt": "2026-11-09T11:08:34.345Z"
 }
